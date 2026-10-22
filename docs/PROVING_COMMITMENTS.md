@@ -10,6 +10,8 @@ economic verifier remain production requirements. This crate's own
 dependency-free SHA-256 implementation has known-answer tests but has
 not been independently security audited.
 
+Stage 15 adds an [audit-only cross-namespace alignment inspector](TLPT_ZKTL_ALIGNMENT.md) that checks block-height, txid and root-history agreement between TLPT and zkTL metadata. It explicitly leaves the two root namespaces separate.
+
 ## Three commitment layers
 
 1. Protocol root: SHA-256 over a domain tag, unsigned 32-bit big-endian
