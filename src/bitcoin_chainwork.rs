@@ -13,7 +13,7 @@ use crate::bitcoin_inclusion::{
     compact_target_unbounded, BitcoinPowProfile, CheckedHeaderSegment, InclusionError,
     MAX_HEADER_SEGMENT,
 };
-use crate::chain::{BlockId, Tip};
+use crate::chain::Tip;
 use std::cmp::Ordering;
 
 pub const MAINNET_ADJUSTMENT_INTERVAL: u64 = 2016;
@@ -467,7 +467,7 @@ mod tests {
                 continue; // regtest target is above mainnet powLimit
             }
             assert_eq!(
-                mainnet_block_proof_work(bits).unwrap().as_be_bytes()[24..],
+                mainnet_block_proof_work(bits).unwrap().to_be_bytes()[24..],
                 work.to_be_bytes()
             );
         }
