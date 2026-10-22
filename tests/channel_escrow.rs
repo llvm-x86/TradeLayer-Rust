@@ -119,7 +119,10 @@ fn available_escrow_pending_supply_is_conserved_through_maturity() {
     assert_eq!(s.finalize_block_unverified(109).unwrap(), 0);
     assert_eq!(s.ledger().pending_withdrawal_count(), 1);
     assert_eq!(s.finalize_block_unverified(110).unwrap(), 1);
-    assert_eq!(s.finalize_block_unverified(110).unwrap(), 0);
+    assert_eq!(
+        s.finalize_block_unverified(110),
+        Err(ExecutionError::FinalizationOutOfSequence)
+    );
     assert_eq!(s.ledger().available_atoms(p(), &a("alice")), 60);
     assert_eq!(
         s.ledger().channel_atoms(p(), &a("chan1"), ChannelSide::A),

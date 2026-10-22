@@ -1,5 +1,8 @@
 # Stage 10: Channel escrow (offline research model)
 
+
+Stage 11 adds [a deferred-queue parity oracle and finalized-height replay fence](WITHDRAWAL_PARITY.md), documenting concrete differences with historical JavaScript and a type-21 wire amount bug.
+
 This layer extends Stage 9's **unverified** replay projection with typed
 accounting for legacy transaction types 4, 21, and 22. The intent comes from
 the archived JavaScript implementation:
