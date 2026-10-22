@@ -31,14 +31,16 @@ fn joint_write_embedded(out: &mut Vec<u8>, bytes: &[u8]) -> Result<(), JointSnap
     out.extend_from_slice(bytes);
     Ok(())
 }
-fn joint_read_embedded<'a>(
-    reader: &mut Cursor<'a>,
-) -> Result<&'a [u8], JointSnapshotError> {
-    let length = reader.u32().map_err(|_| joint_bad("missing embedded size"))? as usize;
+fn joint_read_embedded<'a>(reader: &mut Cursor<'a>) -> Result<&'a [u8], JointSnapshotError> {
+    let length = reader
+        .u32()
+        .map_err(|_| joint_bad("missing embedded size"))? as usize;
     if length == 0 || length > MAX_CHECKPOINT_BYTES {
         return Err(joint_bad("invalid embedded size"));
     }
-    reader.take(length).map_err(|_| joint_bad("truncated embedded snapshot"))
+    reader
+        .take(length)
+        .map_err(|_| joint_bad("truncated embedded snapshot"))
 }
 fn joint_write_replay_ids(
     out: &mut Vec<u8>,
@@ -55,7 +57,9 @@ fn joint_write_replay_ids(
     Ok(())
 }
 fn joint_read_replay_ids(reader: &mut Cursor<'_>) -> Result<BTreeSet<TxId>, JointSnapshotError> {
-    let size = reader.u32().map_err(|_| joint_bad("replay count truncated"))? as usize;
+    let size = reader
+        .u32()
+        .map_err(|_| joint_bad("replay count truncated"))? as usize;
     if size > MAX_JOINT_REPLAY_MARKERS {
         return Err(joint_bad("replay count excessive"));
     }
@@ -63,7 +67,9 @@ fn joint_read_replay_ids(reader: &mut Cursor<'_>) -> Result<BTreeSet<TxId>, Join
     let mut last = None;
     for _ in 0..size {
         let id = TxId::from_bytes(
-            reader.fixed::<32>().map_err(|_| joint_bad("replay ID truncated"))?,
+            reader
+                .fixed::<32>()
+                .map_err(|_| joint_bad("replay ID truncated"))?,
         );
         if last.is_some_and(|prev| id <= prev) || !ids.insert(id) {
             return Err(joint_bad("unsorted or duplicate input replay ID"));
@@ -120,24 +126,25 @@ impl JointProtocolState {
     ) -> Result<Self, JointSnapshotError> {
         let raw = verify_crc(bytes).map_err(|_| joint_bad("joint state CRC or length"))?;
         let mut reader = Cursor::new(raw);
-        if reader.fixed::<5>().map_err(|_| joint_bad("joint state magic"))?
+        if reader
+            .fixed::<5>()
+            .map_err(|_| joint_bad("joint state magic"))?
             != *JOINT_STATE_MAGIC
         {
             return Err(joint_bad("joint state version"));
         }
-        let network = TradeLayerMainnet::from_tag(
-            reader.u8().map_err(|_| joint_bad("network tag"))?,
-        )
-        .map_err(|_| joint_bad("invalid network tag"))?;
-        let genesis = reader.fixed::<32>().map_err(|_| joint_bad("genesis bytes"))?;
+        let network =
+            TradeLayerMainnet::from_tag(reader.u8().map_err(|_| joint_bad("network tag"))?)
+                .map_err(|_| joint_bad("invalid network tag"))?;
+        let genesis = reader
+            .fixed::<32>()
+            .map_err(|_| joint_bad("genesis bytes"))?;
         if network != expected_network || genesis != expected_network.genesis().0 {
             return Err(joint_bad("wrong network or genesis"));
         }
-        let registry = Registry::from_snapshot_bytes(
-            joint_read_embedded(&mut reader)?,
-            expected_admin,
-        )
-        .map_err(JointSnapshotError::Registry)?;
+        let registry =
+            Registry::from_snapshot_bytes(joint_read_embedded(&mut reader)?, expected_admin)
+                .map_err(JointSnapshotError::Registry)?;
         let spot = SpotExchange::from_snapshot_bytes(
             joint_read_embedded(&mut reader)?,
             expected_permitted,
@@ -150,7 +157,9 @@ impl JointProtocolState {
             1 => Some(reader.u64().map_err(|_| joint_bad("finalized height"))?),
             _ => return Err(joint_bad("invalid finalized flag")),
         };
-        reader.end().map_err(|_| joint_bad("joint snapshot trailing bytes"))?;
+        reader
+            .end()
+            .map_err(|_| joint_bad("joint snapshot trailing bytes"))?;
         let result = Self {
             network,
             registry,
