@@ -253,3 +253,42 @@ impl LegacyWithdrawalShadow {
         Ok(())
     }
 }
+
+
+/// Legacy JS encodeWithdrawal writes its scaled amount with base-10 toString(),
+/// then decodeWithdrawal parses the field as base 36. These functions diagnose
+/// the resulting mutation of atomic units without authorizing any transfer.
+/// This exact-integer diagnostic excludes JS Number precision loss for amounts
+/// above Number.MAX_SAFE_INTEGER.
+pub const MAX_EXACT_LEGACY_JS_ATOMS: u128 = 9_007_199_254_740_991;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LegacyAmountFinding {
+    pub decimal_encoded: String,
+    pub base36_decoded_atoms: u128,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LegacyAmountError {
+    UnsafeJsIntegerRange,
+    ArithmeticOverflow,
+}
+
+pub fn audit_legacy_type21_amount(atoms: u128) -> Result<LegacyAmountFinding, LegacyAmountError> {
+    if atoms > MAX_EXACT_LEGACY_JS_ATOMS {
+        return Err(LegacyAmountError::UnsafeJsIntegerRange);
+    }
+    let decimal_encoded = atoms.to_string();
+    let mut base36_decoded_atoms: u128 = 0;
+    for digit in decimal_encoded.bytes() {
+        let value = u128::from(digit - b'0');
+        base36_decoded_atoms = base36_decoded_atoms
+            .checked_mul(36)
+            .and_then(|n| n.checked_add(value))
+            .ok_or(LegacyAmountError::ArithmeticOverflow)?;
+    }
+    Ok(LegacyAmountFinding {
+        decimal_encoded,
+        base36_decoded_atoms,
+    })
+}
