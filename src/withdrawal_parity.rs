@@ -238,8 +238,9 @@ impl LegacyWithdrawalShadow {
                 if self.pending.len() >= MAX_SHADOW_QUEUE {
                     return Err(ShadowError::QueueLimit);
                 }
-                let maturity_height =
-                    height.checked_add(WITHDRAWAL_DELAY).ok_or(ShadowError::ArithmeticOverflow)?;
+                let maturity_height = height
+                    .checked_add(WITHDRAWAL_DELAY)
+                    .ok_or(ShadowError::ArithmeticOverflow)?;
                 if !self.seen.insert(txid) {
                     return Err(ShadowError::DuplicateRequest);
                 }
@@ -253,7 +254,6 @@ impl LegacyWithdrawalShadow {
         Ok(())
     }
 }
-
 
 /// Legacy JS encodeWithdrawal writes its scaled amount with base-10 toString(),
 /// then decodeWithdrawal parses the field as base 36. These functions diagnose
