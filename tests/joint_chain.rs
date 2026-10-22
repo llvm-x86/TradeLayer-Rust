@@ -950,3 +950,25 @@ fn legacy_tluc_registry_and_ledger_migrate_into_one_joint_ledger() {
     assert_eq!(joint.checkpoint_bytes().unwrap(), migrated);
     assert_eq!(old.checkpoint_bytes().unwrap(), previous_bytes);
 }
+
+
+#[test]
+fn joint_bootstrap_rejects_outstanding_channel_and_settlement_state() {
+    let mut original = ledger();
+    original.apply(tx(41), Operation::ChannelCommit {
+        id: p(7),
+        owner: a("seller"),
+        channel: a("channel"),
+        side: ChannelSide::A,
+        amount_atoms: 50,
+    }).unwrap();
+    assert!(!original.has_no_channel_or_settlement_liabilities_unverified());
+    assert!(matches!(
+        JointChainState::new_unverified(
+            TradeLayerMainnet::Litecoin,
+            anchor(TradeLayerMainnet::Litecoin),
+            a("admin"), original, permitted(), 4
+        ),
+        Err(JointChainError::Joint(JointError::UnsupportedLegacyLiabilities))
+    ));
+}
