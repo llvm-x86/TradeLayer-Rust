@@ -61,6 +61,24 @@ pub enum ProtocolOperation {
         to_side: ChannelSide,
         amount_atoms: u128,
     },
+    /// Type 23 NET_SETTLE: non-spending, channel-origin PnL journal entry.
+    ChannelNetSettle {
+        id: PropertyId,
+        payer_side: ChannelSide,
+        amount_atoms: u128,
+        trade_reference: TxId,
+        expiry_height: u64,
+    },
+    /// Type 31 KING_SETTLE: exact root-bound net clearing of journaled claims.
+    ChannelKingSettle {
+        id: PropertyId,
+        start_height: u64,
+        end_height: u64,
+        expected_root: [u8; 32],
+        expected_count: u32,
+        payer_side: ChannelSide,
+        net_atoms: u128,
+    },
 }
 
 impl ProtocolOperation {
@@ -74,6 +92,8 @@ impl ProtocolOperation {
             Self::ChannelCommit { .. } => 4,
             Self::ChannelWithdraw { .. } => 21,
             Self::ChannelTransfer { .. } => 22,
+            Self::ChannelNetSettle { .. } => 23,
+            Self::ChannelKingSettle { .. } => 31,
         }
     }
 }
@@ -358,6 +378,52 @@ impl ProtocolState {
                         to_channel,
                         to_side,
                         amount_atoms,
+                    },
+                )?;
+            }
+            ProtocolOperation::ChannelNetSettle {
+                id,
+                payer_side,
+                amount_atoms,
+                trade_reference,
+                expiry_height,
+            } => {
+                self.assert_activated(ty, height)?;
+                self.ledger.apply(
+                    txid,
+                    Operation::ChannelNetClaim {
+                        id,
+                        channel: actor,
+                        payer_side,
+                        amount_atoms,
+                        trade_reference,
+                        height,
+                        expiry_height,
+                    },
+                )?;
+            }
+            ProtocolOperation::ChannelKingSettle {
+                id,
+                start_height,
+                end_height,
+                expected_root,
+                expected_count,
+                payer_side,
+                net_atoms,
+            } => {
+                self.assert_activated(ty, height)?;
+                self.ledger.apply(
+                    txid,
+                    Operation::ChannelKingSettle {
+                        id,
+                        channel: actor,
+                        start_height,
+                        end_height,
+                        settled_at: height,
+                        expected_root,
+                        expected_count,
+                        payer_side,
+                        net_atoms,
                     },
                 )?;
             }

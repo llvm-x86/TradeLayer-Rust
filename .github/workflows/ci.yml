@@ -7,6 +7,11 @@ on:
 permissions:
   contents: read
 
+# Cancel superseded branch commits so only the newest proposal consumes CI.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   check:
     runs-on: ubuntu-24.04
@@ -18,7 +23,7 @@ jobs:
       - name: Check formatting
         run: cargo fmt --all -- --check
       - name: Check included snapshot file formatting
-        run: rustfmt --check --edition 2021 src/registry_snapshot_impl.rs src/execution_snapshot_impl.rs src/ledger_channels_impl.rs
+        run: rustfmt --check --edition 2021 src/registry_snapshot_impl.rs src/execution_snapshot_impl.rs src/ledger_channels_impl.rs src/ledger_settlement_impl.rs
       - name: Lint
         run: cargo clippy --all-targets --locked -- -D warnings
       - name: Run tests

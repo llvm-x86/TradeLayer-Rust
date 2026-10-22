@@ -143,7 +143,7 @@ pub const TRANSACTION_CATALOG: [TransactionSpec; 36] = [
     TransactionSpec {
         number: 23,
         name: "Settle Channel PNL",
-        stage: PortStage::ZkTlJsPrototype,
+        stage: PortStage::RustLedgerPrimitive,
     },
     TransactionSpec {
         number: 24,
@@ -183,7 +183,7 @@ pub const TRANSACTION_CATALOG: [TransactionSpec; 36] = [
     TransactionSpec {
         number: 31,
         name: "King Settle",
-        stage: PortStage::Planned,
+        stage: PortStage::RustLedgerPrimitive,
     },
     TransactionSpec {
         number: 32,
