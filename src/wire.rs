@@ -208,10 +208,9 @@ pub fn parse_body(tx_type: TransactionType, body: &str) -> Result<ParsedTransact
     match tx_type.as_u8() {
         0 => {
             let f = fields(body, ',', 2)?;
-            if f[1].is_empty() {
+            if f[1].is_empty() || f[1].bytes().any(|c| base36_digit(c).is_none()) {
                 return Err(WireError::InvalidField("activation code hash"));
             }
-            parse_base36(f[1])?;
             let types = f[0]
                 .split(';')
                 .map(|raw| {
@@ -352,6 +351,19 @@ mod tests {
                 amount_atoms: ATOMS_PER_TOKEN,
             }
         );
+    }
+
+    #[test]
+    fn activation_hash_supports_256_bit_values() {
+        let base36_hash = "z".repeat(50);
+        let wire = format!("tl00,{base36_hash}");
+        let tx = parse_typed(&wire).unwrap();
+        match tx {
+            ParsedTransaction::Activate { code_hash_base36, .. } => {
+                assert_eq!(code_hash_base36, base36_hash);
+            }
+            other => panic!("expected activation, got {other:?}"),
+        }
     }
 
     #[test]
