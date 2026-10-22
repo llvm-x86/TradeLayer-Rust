@@ -433,7 +433,9 @@ fn origin_matches_operation(origin: &AccountId, operation: &Operation) -> bool {
         // Channel operations are routed through UnifiedChainState only.
         Operation::ChannelCommit { .. }
         | Operation::ChannelWithdraw { .. }
-        | Operation::ChannelTransfer { .. } => false,
+        | Operation::ChannelTransfer { .. }
+        | Operation::ChannelNetClaim { .. }
+        | Operation::ChannelKingSettle { .. } => false,
     }
 }
 
