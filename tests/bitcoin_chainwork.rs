@@ -2,6 +2,7 @@
 //! UNTRUSTED checkpoint/retarget metadata. No best-chain or script verification.
 
 use std::cmp::Ordering;
+use tradelayer_core::bitcoin_inclusion::MerklePath;
 use tradelayer_core::bitcoin_chainwork::{
     mainnet_block_proof_work, mainnet_retarget_bits, AnchorStatus, ClaimedMainnetCheckpoint,
     MainnetWorkChain, Work256, WorkError, MAINNET_ADJUSTMENT_INTERVAL, MAINNET_TARGET_TIMESPAN,
@@ -72,6 +73,15 @@ fn actual_genesis_and_block_one_validate_pow_link_mtp_and_accumulated_work() {
         "00000000839a8e6886ab5951d76f411475428afc90947ee320161bbf18eb6048"
     );
     assert_eq!(seg.headers()[0].n_bits(), 0x1d00ffff);
+    let coinbase = decode_hex(include_str!("../fixtures/bitcoin_mainnet_block1_coinbase.hex").trim()).unwrap();
+    let coinbase_included = seg.check_transaction_inclusion(
+        1, &coinbase, &MerklePath { tx_index: 0, tx_count: 1, siblings_raw: vec![] },
+    ).unwrap();
+    assert_eq!(coinbase_included.height(), 1);
+    assert_eq!(coinbase_included.block_id(), seg.tip().id);
+    assert_eq!(coinbase_included.legacy_type_hint(), None);
+    assert_eq!(hex(&coinbase_included.txid_display()),
+        "0e3e2357e806b6cdb1f70b54c3a3a17b6714ee1f0e68bebb44a74b1efd512098");
     assert_eq!(chain.checkpoint().timestamp, 1231469665);
     assert_eq!(chain.checkpoint().first_period_timestamp, 1231006505);
     assert_eq!(chain.checkpoint().prior_timestamps.len(), 2);
