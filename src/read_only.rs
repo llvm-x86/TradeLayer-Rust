@@ -131,7 +131,7 @@ pub fn decode_hex(hex: &str) -> Result<Vec<u8>, ScanError> {
             _ => None,
         }
     }
-    if hex.len() % 2 != 0 || hex.len() > 2 * MAX_RAW_TRANSACTION {
+    if !hex.len().is_multiple_of(2) || hex.len() > 2 * MAX_RAW_TRANSACTION {
         return Err(ScanError::InvalidHex);
     }
     let mut result = Vec::with_capacity(hex.len() / 2);
@@ -292,8 +292,12 @@ pub fn inspect_transaction(raw: &[u8]) -> Result<TransactionObservation, ScanErr
     let version = reader.read(4)?;
     let has_witness = raw.get(4).copied() == Some(0);
     if has_witness {
-        if reader.byte()? != 0 || reader.byte()? != 1 {
-            return Err(ScanError::Invalid("unsupported SegWit marker/flag".into()));
+        let marker = reader.byte()?;
+        let flag = reader.byte()?;
+        if marker != 0 || flag != 1 {
+            return Err(ScanError::Invalid(
+                "unsupported SegWit marker/flag".into(),
+            ));
         }
     }
     let inputs_start = reader.offset;
