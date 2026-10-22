@@ -89,6 +89,17 @@ fn actual_genesis_and_block_one_validate_pow_link_mtp_and_accumulated_work() {
     );
     assert_eq!(chain.expected_next_bits().unwrap(), 0x1d00ffff);
 
+    // The stronger cross-root audit path accepts only opaque work receipts
+    // produced by the nBits/MTP verifier, with explicit anchor provenance.
+    let mut receipt_chain = previous.clone();
+    let work_receipt = receipt_chain.extend_with_work_receipt(&[header(BLOCK_ONE)]).unwrap();
+    assert_eq!(work_receipt.anchor_status(), AnchorStatus::PublishedGenesis);
+    assert_eq!(work_receipt.checked_headers().anchor(), previous.tip());
+    assert_eq!(work_receipt.checked_headers().tip(), chain.tip());
+    assert_eq!(work_receipt.work_before(), previous.checkpoint().cumulative_work);
+    assert_eq!(work_receipt.work_after(), chain.checkpoint().cumulative_work);
+    assert_ne!(work_receipt.work_before(), work_receipt.work_after());
+
     let same = MainnetWorkChain::from_published_genesis(&header(GENESIS)).unwrap();
     assert_eq!(
         previous.compare_work_since_same_anchor(&same).unwrap(),
