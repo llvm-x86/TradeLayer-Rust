@@ -105,6 +105,8 @@ wallet keys, RPC credentials, or sensitive mounts. CI uses a small fake decoder
 to test comparison plumbing; it deliberately does not install or run the old
 511-instance dependency graph.
 
+Stage 15 adds a [cross-root audit inspector](TLPT_ZKTL_ALIGNMENT.md) that can consume declared per-block transaction observations. The existing archival collector has not yet been adapted into an authenticated observation provider, and no collector output is promoted to consensus evidence by the inspector.
+
 ## Remaining checks
 
 - Acquire actual chain-backed `tl` payloads and commit only reviewed excerpts

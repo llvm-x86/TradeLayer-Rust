@@ -37,6 +37,11 @@ impl Digest {
         self.0.iter().map(|b| format!("{b:02x}")).collect()
     }
 
+    /// Fixed-width canonical digest bytes for read-only root reconciliation.
+    pub const fn as_bytes(self) -> [u8; 32] {
+        self.0
+    }
+
     fn hash(bytes: &[u8]) -> Self {
         Self(sha256(bytes))
     }
