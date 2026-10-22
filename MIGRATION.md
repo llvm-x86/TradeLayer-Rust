@@ -68,3 +68,22 @@ A written protocol specification and independent consensus reference vectors mus
 - Remaining: historically confirmed TradeLayer payloads from chain-indexed archival RPC, inclusion/UTXO ownership verification, consensus rules, and replay against the original JS node. The scanner does not satisfy the trusted-adapter contract.
 
 See [docs/READ_ONLY_REPLAY.md](docs/READ_ONLY_REPLAY.md).
+
+## Step 6: Node-backed Litecoin archive and differential decoder (prototype)
+
+- Standard-library-only local Litecoin Core collector checks full-block
+  transaction Merkle roots, confirmations, block-parent continuity, raw txids,
+  exact output scripts, and final best-chain membership before emitting TSV and
+  provenance manifest. The node supplies PoW/consensus verification.
+- Bounded by default to 500 consecutive blocks, local RPC only, and explicit
+  network selection. No wallet or transaction-broadcast methods.
+- Added Rust legacy typed-field export and optional comparison against an
+  actual trusted JavaScript `txDecoder.js` checkout. CI tests the integration
+  with a deliberately synthetic decoder and avoids executing the legacy npm
+  dependency graph.
+- Remaining: acquire an unpruned archival node's actual observed TradeLayer
+  bytes, verify sender/UTXO histories and signatures, and establish replay
+  verdicts for live consensus activation. No real TradeLayer archival fixtures
+  have been collected in this branch.
+
+See [docs/ARCHIVE_REPLAY.md](docs/ARCHIVE_REPLAY.md).
