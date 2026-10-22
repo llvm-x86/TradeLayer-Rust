@@ -486,7 +486,6 @@ fn history_limit_evicts_old_reversals_but_preserves_tip_snapshots() {
     ));
 }
 
-
 #[test]
 fn queued_preblock_snapshot_roundtrip_retains_replay_ids() {
     let mut spot = SpotExchange::from_ledger_unverified(bootstrap_ledger(), policy()).unwrap();
@@ -549,14 +548,9 @@ fn recovered_block_checkpoint_rejects_old_txid_and_duplicate_ancestor_hash() {
         ))
         .unwrap();
     let original = chain.checkpoint_bytes().unwrap();
-    let mut recovered = SpotChainState::from_checkpoint_bytes(
-        &original,
-        network(),
-        anchor(),
-        3,
-        &policy(),
-    )
-    .unwrap();
+    let mut recovered =
+        SpotChainState::from_checkpoint_bytes(&original, network(), anchor(), 3, &policy())
+            .unwrap();
     let saved = recovered.clone();
     let replay = block(recovered.tip(), 101, vec![place(10, true, 101, 50, 100)]);
     assert!(matches!(
