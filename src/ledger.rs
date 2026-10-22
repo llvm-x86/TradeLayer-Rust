@@ -297,6 +297,19 @@ impl Ledger {
             .unwrap_or(0)
     }
 
+    /// Audit-only access for the isolated spot lane to reject foreign or
+    /// orphaned internal escrows. No mutable ledger handle is exposed.
+    pub(crate) fn balances_with_account_prefix(
+        &self,
+        prefix: &str,
+    ) -> Vec<(PropertyId, AccountId, u128)> {
+        self.available
+            .iter()
+            .filter(|((_, account), _)| account.as_str().starts_with(prefix))
+            .map(|((id, account), atoms)| (*id, account.clone(), *atoms))
+            .collect()
+    }
+
     pub fn is_processed(&self, txid: TxId) -> bool {
         self.processed.contains(&txid)
     }
