@@ -526,3 +526,6 @@ impl Registry {
         Ok(())
     }
 }
+
+// Checkpoint implementation lives in this module to retain private-field access.
+include!("registry_snapshot_impl.rs");
