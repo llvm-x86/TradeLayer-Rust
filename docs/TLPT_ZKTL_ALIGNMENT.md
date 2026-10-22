@@ -111,6 +111,8 @@ instead of freely supplied IDs or ordering. The header anchor, network
 selection, consensus difficulty, best chain, scripts and economic
 validity are not established by that checker.
 
+Stage 17 adds [mainnet header retarget, MTP and work validation](BITCOIN_CHAINWORK.md). The TLPT/zkTL root aligner remains a *separate* read-only audit; it has not acquired authenticated full-block provenance or economic proof validation.
+
 ## Production path still required
 
 The next step is an externally authenticated per-block observation
