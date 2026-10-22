@@ -246,10 +246,16 @@ impl Ledger {
     }
 
     fn existing_property(&self, id: PropertyId) -> Result<&Property, LedgerError> {
-        self.properties.get(&id).ok_or(LedgerError::UnknownProperty(id))
+        self.properties
+            .get(&id)
+            .ok_or(LedgerError::UnknownProperty(id))
     }
 
-    fn check_managed_issuer(&self, id: PropertyId, actor: &AccountId) -> Result<&Property, LedgerError> {
+    fn check_managed_issuer(
+        &self,
+        id: PropertyId,
+        actor: &AccountId,
+    ) -> Result<&Property, LedgerError> {
         let property = self.existing_property(id)?;
         if property.kind != PropertyKind::Managed {
             return Err(LedgerError::FixedSupply(id));
@@ -417,7 +423,10 @@ mod tests {
     fn checked_account_and_property_ids() {
         assert_eq!(PropertyId::try_from(0), Err(LedgerError::InvalidPropertyId));
         for invalid in ["", "alice bob", "\n", "🚀"] {
-            assert_eq!(AccountId::try_from(invalid), Err(LedgerError::InvalidAccount));
+            assert_eq!(
+                AccountId::try_from(invalid),
+                Err(LedgerError::InvalidAccount)
+            );
         }
         assert_eq!(
             AccountId::try_from("a".repeat(MAX_ACCOUNT_BYTES + 1).as_str()),
@@ -429,20 +438,37 @@ mod tests {
     #[test]
     fn rejects_supply_mismatch() {
         let mut ledger = Ledger::new();
-        ledger.apply(tx(1), Operation::CreateProperty {
-            id: p(7), issuer: a("alice"), kind: PropertyKind::Fixed, initial_atoms: 10,
-        }).unwrap();
+        ledger
+            .apply(
+                tx(1),
+                Operation::CreateProperty {
+                    id: p(7),
+                    issuer: a("alice"),
+                    kind: PropertyKind::Fixed,
+                    initial_atoms: 10,
+                },
+            )
+            .unwrap();
         ledger.available.insert((p(7), a("alice")), 11);
-        assert_eq!(ledger.verify_conservation(), Err(LedgerError::SupplyMismatch(p(7))));
+        assert_eq!(
+            ledger.verify_conservation(),
+            Err(LedgerError::SupplyMismatch(p(7)))
+        );
     }
 
     #[test]
     fn rejects_orphan_balances_and_zero_entries() {
         let mut ledger = Ledger::new();
         ledger.available.insert((p(7), a("alice")), 1);
-        assert_eq!(ledger.verify_conservation(), Err(LedgerError::BalanceWithoutProperty(p(7))));
+        assert_eq!(
+            ledger.verify_conservation(),
+            Err(LedgerError::BalanceWithoutProperty(p(7)))
+        );
         ledger.available.insert((p(7), a("alice")), 0);
-        assert_eq!(ledger.verify_conservation(), Err(LedgerError::NonCanonicalZeroBalance(p(7))));
+        assert_eq!(
+            ledger.verify_conservation(),
+            Err(LedgerError::NonCanonicalZeroBalance(p(7)))
+        );
     }
 }
 
@@ -452,10 +478,15 @@ mod tests {
 impl Ledger {
     pub fn snapshot_bytes(&self) -> Result<Vec<u8>, SnapshotError> {
         use crate::codec::{with_crc, MAX_CHECKPOINT_BYTES};
-        self.verify_conservation().map_err(SnapshotError::InvalidLedger)?;
-        if [self.properties.len(), self.available.len(), self.processed.len()]
-            .iter()
-            .any(|&count| count > MAX_SNAPSHOT_ENTRIES)
+        self.verify_conservation()
+            .map_err(SnapshotError::InvalidLedger)?;
+        if [
+            self.properties.len(),
+            self.available.len(),
+            self.processed.len(),
+        ]
+        .iter()
+        .any(|&count| count > MAX_SNAPSHOT_ENTRIES)
         {
             return Err(SnapshotError::InvalidFormat("too many ledger records"));
         }
@@ -513,7 +544,14 @@ impl Ledger {
                 _ => return Err(SnapshotError::InvalidFormat("property kind")),
             };
             let supply = reader.u128().map_err(snapshot_codec_error)?;
-            state.properties.insert(id, Property { issuer, kind, total_supply_atoms: supply });
+            state.properties.insert(
+                id,
+                Property {
+                    issuer,
+                    kind,
+                    total_supply_atoms: supply,
+                },
+            );
         }
         let count = snapshot_count(&mut reader)?;
         let mut last: Option<(PropertyId, AccountId)> = None;
@@ -543,7 +581,9 @@ impl Ledger {
             state.processed.insert(id);
         }
         reader.end().map_err(snapshot_codec_error)?;
-        state.verify_conservation().map_err(SnapshotError::InvalidLedger)?;
+        state
+            .verify_conservation()
+            .map_err(SnapshotError::InvalidLedger)?;
         Ok(state)
     }
 }
@@ -595,28 +635,49 @@ fn read_account(reader: &mut crate::codec::Cursor<'_>) -> Result<AccountId, Snap
         return Err(SnapshotError::InvalidFormat("account length"));
     }
     let raw = reader.take(len).map_err(snapshot_codec_error)?;
-    let value = core::str::from_utf8(raw)
-        .map_err(|_| SnapshotError::InvalidFormat("account encoding"))?;
+    let value =
+        core::str::from_utf8(raw).map_err(|_| SnapshotError::InvalidFormat("account encoding"))?;
     AccountId::try_from(value).map_err(SnapshotError::InvalidLedger)
 }
 
 #[cfg(test)]
 mod snapshot_tests {
     use super::*;
-    fn account(value: &str) -> AccountId { AccountId::try_from(value).unwrap() }
-    fn prop(value: u32) -> PropertyId { PropertyId::try_from(value).unwrap() }
-    fn tx(v: u8) -> TxId { TxId::from_bytes([v; 32]) }
+    fn account(value: &str) -> AccountId {
+        AccountId::try_from(value).unwrap()
+    }
+    fn prop(value: u32) -> PropertyId {
+        PropertyId::try_from(value).unwrap()
+    }
+    fn tx(v: u8) -> TxId {
+        TxId::from_bytes([v; 32])
+    }
 
     #[test]
     fn round_trip_and_byte_stability() {
         let mut state = Ledger::new();
-        state.apply(tx(1), Operation::CreateProperty {
-            id: prop(7), issuer: account("issuer"), kind: PropertyKind::Managed,
-            initial_atoms: 100_000_000,
-        }).unwrap();
-        state.apply(tx(2), Operation::Transfer {
-            id: prop(7), from: account("issuer"), to: account("recipient"), amount_atoms: 43,
-        }).unwrap();
+        state
+            .apply(
+                tx(1),
+                Operation::CreateProperty {
+                    id: prop(7),
+                    issuer: account("issuer"),
+                    kind: PropertyKind::Managed,
+                    initial_atoms: 100_000_000,
+                },
+            )
+            .unwrap();
+        state
+            .apply(
+                tx(2),
+                Operation::Transfer {
+                    id: prop(7),
+                    from: account("issuer"),
+                    to: account("recipient"),
+                    amount_atoms: 43,
+                },
+            )
+            .unwrap();
         let bytes = state.snapshot_bytes().unwrap();
         let recovered = Ledger::from_snapshot_bytes(&bytes).unwrap();
         assert_eq!(state, recovered);
