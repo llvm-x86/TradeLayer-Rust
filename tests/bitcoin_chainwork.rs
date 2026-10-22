@@ -3,9 +3,9 @@
 
 use std::cmp::Ordering;
 use tradelayer_core::bitcoin_chainwork::{
-    mainnet_block_proof_work, mainnet_retarget_bits, AnchorStatus,
-    ClaimedMainnetCheckpoint, MainnetWorkChain, Work256, WorkError,
-    MAINNET_ADJUSTMENT_INTERVAL, MAINNET_TARGET_TIMESPAN, MTP_WINDOW,
+    mainnet_block_proof_work, mainnet_retarget_bits, AnchorStatus, ClaimedMainnetCheckpoint,
+    MainnetWorkChain, Work256, WorkError, MAINNET_ADJUSTMENT_INTERVAL, MAINNET_TARGET_TIMESPAN,
+    MTP_WINDOW,
 };
 use tradelayer_core::chain::{BlockId, Tip};
 use tradelayer_core::read_only::decode_hex;
@@ -36,7 +36,10 @@ fn claimed_epoch_checkpoint(first_time: u32, last_time: u32) -> ClaimedMainnetCh
     let mut work = [0u8; 32];
     work[24..].copy_from_slice(&4_295_032_833u64.to_be_bytes());
     ClaimedMainnetCheckpoint {
-        tip: Tip { height: 2015, id: BlockId([0x88; 32]) },
+        tip: Tip {
+            height: 2015,
+            id: BlockId([0x88; 32]),
+        },
         bits: 0x1d00ffff,
         timestamp: last_time,
         first_period_timestamp: first_time,
@@ -92,9 +95,13 @@ fn actual_genesis_and_block_one_validate_pow_link_mtp_and_accumulated_work() {
         Ordering::Equal
     );
     assert!(matches!(
-        chain.compare_work_since_same_anchor(&MainnetWorkChain::from_claimed_checkpoint(
-            claimed_epoch_checkpoint(1_000_000_000, 1_000_604_800)
-        ).unwrap()),
+        chain.compare_work_since_same_anchor(
+            &MainnetWorkChain::from_claimed_checkpoint(claimed_epoch_checkpoint(
+                1_000_000_000,
+                1_000_604_800
+            ))
+            .unwrap()
+        ),
         Err(WorkError::NotCommonCheckpoint)
     ));
 }
@@ -123,28 +130,32 @@ fn bitcoin_core_mainnet_retarget_and_clamp_regression() {
     assert_eq!(MAINNET_ADJUSTMENT_INTERVAL, 2016);
     assert_eq!(MAINNET_TARGET_TIMESPAN, 1_209_600);
     assert_eq!(MTP_WINDOW, 11);
+    assert_eq!(mainnet_retarget_bits(0x1d00ffff, 0, 0).unwrap(), 0x1c3fffc0);
     assert_eq!(
-        mainnet_retarget_bits(0x1d00ffff, 0, 0).unwrap(), 0x1c3fffc0
+        mainnet_retarget_bits(0x1d00ffff, 0, 302_400).unwrap(),
+        0x1c3fffc0
     );
     assert_eq!(
-        mainnet_retarget_bits(0x1d00ffff, 0, 302_400).unwrap(), 0x1c3fffc0
+        mainnet_retarget_bits(0x1d00ffff, 0, 604_800).unwrap(),
+        0x1c7fff80
     );
     assert_eq!(
-        mainnet_retarget_bits(0x1d00ffff, 0, 604_800).unwrap(), 0x1c7fff80
+        mainnet_retarget_bits(0x1d00ffff, 0, 1_209_600).unwrap(),
+        0x1d00ffff
     );
     assert_eq!(
-        mainnet_retarget_bits(0x1d00ffff, 0, 1_209_600).unwrap(), 0x1d00ffff
-    );
-    assert_eq!(
-        mainnet_retarget_bits(0x1d00ffff, 0, 9_676_800).unwrap(), 0x1d00ffff
+        mainnet_retarget_bits(0x1d00ffff, 0, 9_676_800).unwrap(),
+        0x1d00ffff
     );
     // For a harder *previous* epoch target, retargeting allows a 2x
     // reduction in difficulty and a maximum 4x adjustment.
     assert_eq!(
-        mainnet_retarget_bits(0x1c00ffff, 0, 2_419_200).unwrap(), 0x1c01fffe
+        mainnet_retarget_bits(0x1c00ffff, 0, 2_419_200).unwrap(),
+        0x1c01fffe
     );
     assert_eq!(
-        mainnet_retarget_bits(0x1c00ffff, 0, 4_838_400).unwrap(), 0x1c03fffc
+        mainnet_retarget_bits(0x1c00ffff, 0, 4_838_400).unwrap(),
+        0x1c03fffc
     );
 
     let anchored = claimed_epoch_checkpoint(1_000_000_000, 1_000_604_800);
@@ -153,8 +164,10 @@ fn bitcoin_core_mainnet_retarget_and_clamp_regression() {
     assert_eq!(chain.tip().height, 2015);
     assert_eq!(chain.expected_next_bits().unwrap(), 0x1c7fff80);
     assert_eq!(chain.checkpoint(), &anchored);
-    assert_eq!(mainnet_block_proof_work(0x1d00ffff).unwrap().to_be_bytes()[24..],
-        4_295_032_833u64.to_be_bytes());
+    assert_eq!(
+        mainnet_block_proof_work(0x1d00ffff).unwrap().to_be_bytes()[24..],
+        4_295_032_833u64.to_be_bytes()
+    );
 }
 
 #[test]
