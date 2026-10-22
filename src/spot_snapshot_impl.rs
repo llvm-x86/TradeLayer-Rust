@@ -89,19 +89,7 @@ impl SpotExchange {
         if self.processed_through == Some(0) {
             return Err(spot_invalid("zero block boundary"));
         }
-        let Some(height) = self.processed_through else {
-            if !self.books.is_empty() || !self.fills.is_empty() || self.next_sequence != 0 {
-                return Err(spot_invalid("nonempty unprocessed book"));
-            }
-            for item in &self.queued {
-                if item.height == 0 {
-                    return Err(spot_invalid("zero queued height"));
-                }
-            }
-            self.ledger.verify_conservation().map_err(SpotError::Ledger).map_err(SpotSnapshotError::Spot)?;
-            self.verify_reserves().map_err(SpotSnapshotError::Spot)?;
-            return Ok(());
-        };
+        let height = self.processed_through.unwrap_or(0);
         let mut active_ids = BTreeSet::new();
         let mut sequences = BTreeSet::new();
         for queued in &self.queued {
@@ -117,14 +105,25 @@ impl SpotExchange {
                 return Err(spot_invalid("queued replay mismatch"));
             }
         }
+        if self.processed_through.is_none() {
+            if !self.books.is_empty() || !self.fills.is_empty()
+                || self.next_sequence != 0 || active_ids.len() != self.seen.len()
+            {
+                return Err(spot_invalid("nonempty unprocessed book or replay"));
+            }
+            self.ledger.verify_conservation().map_err(SpotError::Ledger).map_err(SpotSnapshotError::Spot)?;
+            self.verify_reserves().map_err(SpotSnapshotError::Spot)?;
+            return Ok(());
+        }
         for (pair, orders) in &self.books {
-            if orders.is_empty() || *pair != SpotPair::new(pair.base, pair.quote).map_err(SpotSnapshotError::Spot)? {
+            if *pair != SpotPair::new(pair.base, pair.quote).map_err(SpotSnapshotError::Spot)? {
                 return Err(spot_invalid("noncanonical book"));
             }
             self.check_pair(pair.base, pair.quote).map_err(SpotSnapshotError::Spot)?;
             let mut previous_sequence = None;
             for order in orders {
-                if order.pair() != *pair || order.height == 0 || order.height > height
+                if SpotPair::new(order.offered, order.desired) != Ok(*pair)
+                    || order.height == 0 || order.height > height
                     || order.owner.as_str().starts_with(ESCROW_PREFIX)
                     || order.offered_atoms == 0 || order.expected_atoms == 0
                     || order.remaining_offered == 0 || order.remaining_offered > order.offered_atoms
@@ -292,9 +291,6 @@ impl SpotExchange {
             }
             last_pair = Some(pair);
             let count = spot_length(&mut reader, MAX_SPOT_OPEN_AND_QUEUED)?;
-            if count == 0 {
-                return Err(spot_invalid("empty book"));
-            }
             let mut orders = Vec::with_capacity(count);
             for _ in 0..count {
                 orders.push(RestingSpotOrder {
