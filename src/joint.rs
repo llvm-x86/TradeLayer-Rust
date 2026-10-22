@@ -219,7 +219,10 @@ impl JointProtocolState {
     }
 
     fn check_activated(&self, ty: u8, height: u64) -> Result<(), JointError> {
-        let record = self.registry.activation(ty).ok_or(JointError::NoActivation(ty))?;
+        let record = self
+            .registry
+            .activation(ty)
+            .ok_or(JointError::NoActivation(ty))?;
         if height <= record.height {
             return Err(JointError::ActivatedInSameBlock(ty));
         }
@@ -325,12 +328,13 @@ impl JointProtocolState {
             }
             JointOperation::SpotPlace(intent) => {
                 self.check_activated(5, height)?;
-                self.spot.enqueue_type5_unverified(UnverifiedSpotPlacement {
-                    txid,
-                    actor,
-                    height,
-                    intent,
-                })?;
+                self.spot
+                    .enqueue_type5_unverified(UnverifiedSpotPlacement {
+                        txid,
+                        actor,
+                        height,
+                        intent,
+                    })?;
             }
             JointOperation::SpotCancel {
                 offered,
@@ -339,15 +343,16 @@ impl JointProtocolState {
                 selector,
             } => {
                 self.check_activated(6, height)?;
-                self.spot.cancel_type6_unverified(UnverifiedSpotCancellation {
-                    txid,
-                    actor,
-                    height,
-                    offered,
-                    desired,
-                    is_contract,
-                    selector,
-                })?;
+                self.spot
+                    .cancel_type6_unverified(UnverifiedSpotCancellation {
+                        txid,
+                        actor,
+                        height,
+                        offered,
+                        desired,
+                        is_contract,
+                        selector,
+                    })?;
             }
             JointOperation::UtxoTradeType3 => return Err(JointError::UtxoAuthenticationRequired),
             JointOperation::EconomicSettlement { .. } => {
@@ -371,18 +376,27 @@ impl JointProtocolState {
     }
 
     pub fn verify_components_unverified(&self) -> Result<(), JointError> {
-        self.spot.ledger().verify_conservation().map_err(SpotError::Ledger)?;
+        self.spot
+            .ledger()
+            .verify_conservation()
+            .map_err(SpotError::Ledger)?;
         self.spot.verify_reserves()?;
         if self.spot.processed_through() != self.finalized_height {
             return Err(JointError::InconsistentComponents);
         }
-        if self.registry.last_height().is_some_and(|h| {
-            self.finalized_height.is_none_or(|f| h > f)
-        }) {
+        if self
+            .registry
+            .last_height()
+            .is_some_and(|h| self.finalized_height.is_none_or(|f| h > f))
+        {
             return Err(JointError::InconsistentComponents);
         }
         let mut union = self.ledger_input_ids.clone();
-        if self.ledger_input_ids.iter().any(|id| !self.ledger().is_processed(*id)) {
+        if self
+            .ledger_input_ids
+            .iter()
+            .any(|id| !self.ledger().is_processed(*id))
+        {
             return Err(JointError::ReplayConflict);
         }
         for id in self.registry.input_txids_unverified() {
