@@ -7,6 +7,7 @@
 
 pub mod chain; // Trust-boundary and reversible block progression, prototype only.
 mod codec; // Bounded, checksummed snapshot codec.
+pub mod execution; // Prototype unified registry+ledger replay; input unverified.
 mod hash256; // Offline SHA-256d txid fingerprints; not trusted consensus.
 pub mod ledger; // In-memory atomic accounting primitives; not chain consensus.
 pub mod protocol; // Audited legacy transaction catalog, not consensus execution.
