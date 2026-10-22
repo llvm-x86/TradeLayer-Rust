@@ -77,7 +77,15 @@ hashes, chainwork, compact target and retarget arithmetic.
 
     cargo test --locked --test bitcoin_chainwork
     python3 scripts/audit_bitcoin_chainwork.py
+    cargo run --locked --bin tradelayer-bitcoin-work -- \\
+      fixtures/bitcoin_mainnet_genesis_block1_headers.txt
     cargo test --locked
+
+The read-only CLI accepts a bounded file with genuine Bitcoin mainnet
+genesis as its first lowercase 160-hex-character header, then up to
+500 consecutive raw mainnet headers. It refuses any non-genesis anchor
+and prints the resulting cumulative work plus explicit UNVERIFIED
+statuses for active-chain membership and economic validity.
 
 ## Remaining limitations before trust promotion
 
