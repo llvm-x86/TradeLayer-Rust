@@ -219,6 +219,17 @@ impl SpotExchange {
     pub fn processed_through(&self) -> Option<u64> {
         self.processed_through
     }
+
+    /// Initial state from the caller's prefunded offline ledger, before
+    /// any spot event has been queued, matched, or canceled.
+    pub fn is_pristine_unverified(&self) -> bool {
+        self.processed_through.is_none()
+            && self.seen.is_empty()
+            && self.queued.is_empty()
+            && self.books.is_empty()
+            && self.fills.is_empty()
+            && self.next_sequence == 0
+    }
     pub fn pending_count(&self) -> usize {
         self.queued.len()
     }
