@@ -477,7 +477,7 @@ fn valid_crc_does_not_authorize_a_forged_receipt_root() {
     let mut bytes = s.ledger().snapshot_bytes().unwrap();
     let root_at = bytes
         .windows(32)
-        .position(|slice| slice == expected.root)
+        .position(|slice| slice == expected.root.as_slice())
         .unwrap();
     bytes[root_at] ^= 1;
     let tail = bytes.len() - 4;
