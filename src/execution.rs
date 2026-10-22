@@ -95,6 +95,10 @@ pub enum ExecutionError {
     WrongChain,
     InvalidHeight,
     HeightRegression,
+    /// An operation arrived after its block was finalized.
+    FinalizedHeight,
+    /// Finalization repeated or skipped a height after the first fenced block.
+    FinalizationOutOfSequence,
     Replay(TxId),
     NotActivated(u8),
     SameBlockActivation(u8),
@@ -130,6 +134,9 @@ pub struct ProtocolState {
     ledger: Ledger,
     processed: BTreeSet<TxId>,
     last_height: Option<u64>,
+    /// Block height whose end-of-block withdrawal processing has completed.
+    /// None identifies pre-Stage-11 snapshots and direct replay not yet fenced.
+    finalized_height: Option<u64>,
 }
 
 impl ProtocolState {
@@ -142,6 +149,7 @@ impl ProtocolState {
             ledger: Ledger::new(),
             processed: BTreeSet::new(),
             last_height: None,
+            finalized_height: None,
         }
     }
 
@@ -159,6 +167,9 @@ impl ProtocolState {
     }
     pub fn last_height(&self) -> Option<u64> {
         self.last_height
+    }
+    pub fn finalized_height(&self) -> Option<u64> {
+        self.finalized_height
     }
 
     /// A clone is the current experimental rollback mechanism. Production
@@ -186,6 +197,12 @@ impl ProtocolState {
             }
             if pending.last_height.is_some_and(|h| tx.claimed_height < h) {
                 return Err(ExecutionError::HeightRegression);
+            }
+            if pending
+                .finalized_height
+                .is_some_and(|h| tx.claimed_height <= h)
+            {
+                return Err(ExecutionError::FinalizedHeight);
             }
             if !pending.processed.insert(tx.txid) {
                 return Err(ExecutionError::Replay(tx.txid));
@@ -359,9 +376,22 @@ impl ProtocolState {
         if self.last_height.is_some_and(|previous| height < previous) {
             return Err(ExecutionError::HeightRegression);
         }
-        self.ledger
+        if self.finalized_height.is_some_and(|previous| {
+            previous.checked_add(1) != Some(height)
+        }) {
+            return Err(ExecutionError::FinalizationOutOfSequence);
+        }
+        // On the first finalization, an older TLPS v1 checkpoint may have
+        // advanced through tip-only blocks; the caller supplies that height.
+        // Every later finalization must be strictly contiguous.
+        let mut staged = self.clone();
+        let count = staged
+            .ledger
             .settle_due_withdrawals_unverified(height)
-            .map_err(ExecutionError::Ledger)
+            .map_err(ExecutionError::Ledger)?;
+        staged.finalized_height = Some(height);
+        *self = staged;
+        Ok(count)
     }
 }
 
