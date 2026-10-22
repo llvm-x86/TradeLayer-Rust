@@ -4,7 +4,8 @@ use crate::codec::{verify_crc, with_crc, Cursor, MAX_CHECKPOINT_BYTES};
 use crate::ledger::SnapshotError as LedgerSnapshotError;
 use crate::registry::RegistrySnapshotError;
 
-const PROTOCOL_MAGIC: &[u8; 5] = b"TLPS\x01";
+const PROTOCOL_MAGIC_V1: &[u8; 5] = b"TLPS\x01";
+const PROTOCOL_MAGIC_V2: &[u8; 5] = b"TLPS\x02";
 
 #[derive(Debug)]
 pub enum ProtocolSnapshotError {
@@ -44,7 +45,11 @@ impl ProtocolState {
     /// CRC guards against accidental corruption. A digest or proof of these
     /// bytes is a separate external requirement before trusting chain state.
     pub fn snapshot_bytes(&self) -> Result<Vec<u8>, ProtocolSnapshotError> {
-        let mut out = PROTOCOL_MAGIC.to_vec();
+        let mut out = if self.finalized_height.is_some() {
+            PROTOCOL_MAGIC_V2.to_vec()
+        } else {
+            PROTOCOL_MAGIC_V1.to_vec()
+        };
         out.extend_from_slice(&self.chain.0);
         write_embedded(
             &mut out,
@@ -73,6 +78,12 @@ impl ProtocolState {
                 out.extend_from_slice(&height.to_be_bytes());
             }
         }
+        if let Some(height) = self.finalized_height {
+            if height == 0 || self.last_height.is_some_and(|last| last > height) {
+                return Err(protocol_bad("invalid finalized height"));
+            }
+            out.extend_from_slice(&height.to_be_bytes());
+        }
         with_crc(out).map_err(|_| protocol_bad("protocol snapshot too large"))
     }
 
@@ -84,13 +95,14 @@ impl ProtocolState {
         let data =
             verify_crc(bytes).map_err(|_| protocol_bad("protocol snapshot checksum/size"))?;
         let mut reader = Cursor::new(data);
-        if reader
+        let version = match reader
             .fixed::<5>()
             .map_err(|_| protocol_bad("protocol magic truncated"))?
-            != *PROTOCOL_MAGIC
         {
-            return Err(protocol_bad("wrong protocol version"));
-        }
+            magic if magic == *PROTOCOL_MAGIC_V1 => 1,
+            magic if magic == *PROTOCOL_MAGIC_V2 => 2,
+            _ => return Err(protocol_bad("wrong protocol version")),
+        };
         let chain = ChainId(
             reader
                 .fixed::<32>()
@@ -132,9 +144,19 @@ impl ProtocolState {
             ),
             _ => return Err(protocol_bad("noncanonical height option")),
         };
+        let finalized_height = if version == 2 {
+            Some(reader.u64().map_err(|_| protocol_bad("finalized height truncated"))?)
+        } else {
+            None
+        };
         reader
             .end()
             .map_err(|_| protocol_bad("trailing protocol bytes"))?;
+        if finalized_height == Some(0)
+            || finalized_height.is_some_and(|height| last_height.is_some_and(|last| height < last))
+        {
+            return Err(protocol_bad("inconsistent finalized height"));
+        }
         if last_height == Some(0) || (processed.is_empty() != last_height.is_none()) {
             return Err(protocol_bad("inconsistent transaction height"));
         }
@@ -163,6 +185,7 @@ impl ProtocolState {
             ledger,
             processed,
             last_height,
+            finalized_height,
         };
         if state.snapshot_bytes()? != bytes {
             return Err(protocol_bad("noncanonical protocol encoding"));
