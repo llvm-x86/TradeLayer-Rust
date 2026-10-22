@@ -261,3 +261,28 @@ economic proof verification and zkTL state-root semantic reconciliation.
 TLPT metadata is not a valid proof or authorization token.
 
 See [docs/PROVING_COMMITMENTS.md](docs/PROVING_COMMITMENTS.md).
+
+
+## Stage 15: Read-only cross-namespace TLPT/zkTL alignment audit
+
+- Align each local TLPT v1 statement to an exact, consecutive block
+  height in a source-derived zkTL batch interval, with independently
+  supplied expected chain namespace and anchor/final block IDs.
+- Require TLPT parent/child and Rust before/after root continuity,
+  plus the existing strict zkTL receipt-digest and root-chain checks.
+- Cross-match every zkTL receipt against one declared observation of
+  block hash, height, txid, transaction type and within-block order.
+  Empty zkTL blocks preserve the zkTL root while Rust TLPS may change.
+- Produce a domain-separated SHA-256 digest over both root histories,
+  receipt mappings and complete TLPT statement IDs. The two state-root
+  namespaces stay distinct and there is no economic equivalence claim.
+- Add a bounded read-only CLI, 26-receipt/8-block synthetic tests, and
+  a Python-only synthetic smoke fixture. No new Rust dependencies or
+  protocol state mutations.
+
+**BLOCKED:** actual independent L1 best-chain and transaction membership
+verification, UTXO/script/signer provenance, confirmed TradeLayer archive
+replay, zkTL-to-TLPS semantic state mapping and real STWO proof validation.
+All input observations in this stage are untrusted assertions.
+
+See [docs/TLPT_ZKTL_ALIGNMENT.md](docs/TLPT_ZKTL_ALIGNMENT.md).
