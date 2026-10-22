@@ -170,7 +170,10 @@ impl SpotChainState {
             return Err(SpotChainError::ParentMismatch);
         }
         if block.header.id == self.tip.id
-            || self.history.iter().any(|prior| prior.tip.id == block.header.id)
+            || self
+                .history
+                .iter()
+                .any(|prior| prior.tip.id == block.header.id)
         {
             return Err(SpotChainError::DuplicateBlockId);
         }
