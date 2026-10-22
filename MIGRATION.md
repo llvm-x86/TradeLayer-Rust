@@ -130,3 +130,20 @@ See [docs/ZK_CAIRO_INTEGRATION.md](docs/ZK_CAIRO_INTEGRATION.md).
   implementations remain separate future steps.
 
 See `docs/UNIFIED_EXECUTION.md`.
+
+## Stage 9: Combined state checkpoint and reversible protocol blocks
+
+- Canonically encode/decode the registry, full unified execution state, and
+  chain snapshots with strict bounds, replay-set integrity checks, and
+  immutable checkpoint saves.
+- Restore registry activations, whitelists, attestations, and oracle quotes
+  together with ledger balances, so rollbacks restore the same global state.
+- Add a chain-neutral external `TrustedProtocolAdapter` seam. Tests only use
+  fake adapter assertions; actual block, transaction, signature, UTXO, and
+  authority verification remain unimplemented.
+- Add adversarial tests for mid-block failures, fork replacement, checkpoint
+  corruption, wrong chain/admin/anchor, and immutable checkpoint conflicts.
+
+**Future:** versioned chain-authorization adapter, persistence compaction,
+full historical replay, and independent cryptographic state root/proof
+verification. [Design details](docs/UNIFIED_CHAIN_CHECKPOINTS.md).
