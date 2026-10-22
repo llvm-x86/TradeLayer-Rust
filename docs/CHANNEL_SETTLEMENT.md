@@ -1,5 +1,9 @@
 # Stage 12: NET_SETTLE journal and KING_SETTLE escrow clearing (offline)
 
+Stage 13 adds a [separate, default-deny economic authorization seam](SETTLEMENT_AUTHORIZATION.md)
+for type 23/31 when replaying through the chain adapter. The direct
+unverified simulation API stays available for offline tests.
+
 This is a **synthetic research projection**, not live Bitcoin/Litecoin/
 Dogecoin consensus, a deployable settlement bridge, or economic proof
 verification. All caller-supplied identities, trade references, signatures,
