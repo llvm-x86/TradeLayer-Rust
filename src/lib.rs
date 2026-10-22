@@ -13,6 +13,8 @@ mod codec; // Bounded, checksummed snapshot codec.
 pub mod execution; // Prototype unified registry+ledger replay; input unverified.
 mod hash256; // Offline SHA-256d txid fingerprints; not trusted consensus.
 pub mod ledger; // In-memory atomic accounting primitives; not chain consensus.
+pub mod network_bound; // Stage 21 profile-bound replay and versioned checkpoint envelopes; unverified.
+pub mod network_profile; // Independent Bitcoin/Litecoin/Dogecoin mainnet identities and proof capabilities.
 pub mod protocol; // Audited legacy transaction catalog, not consensus execution.
 pub mod read_only; // Offline transaction scanning; cannot authorize ledger state.
 pub mod registry; // Standalone tx0/7-9/13-15 registry state; authentication external.
