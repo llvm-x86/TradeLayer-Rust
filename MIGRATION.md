@@ -195,3 +195,29 @@ differential replay, channel reserve shortfalls, withdraw-all, proven source
 authorization and full type 23 settlement remain blocked.
 
 See [docs/WITHDRAWAL_PARITY.md](docs/WITHDRAWAL_PARITY.md).
+
+
+## Stage 12: Bounded net-settlement journal and channel King clearing (synthetic)
+
+- Add explicitly typed type23 NET_SETTLE subset as **non-spending**
+  PnL intent. Require a channel with two participants, unique trade
+  reference, positive exact atomic amount and valid expiry height.
+- Add type31 KING_SETTLE subset as an atomic channel A/B transfer
+  of the **net** pending claims in a property-scoped inclusive block
+  range. Refuse a mismatch between expected and recomputed root,
+  count, direction and net amount, and prevent reuse of swept claims.
+- Retain supply conservation across free channel escrow, reserved
+  withdrawals and available account balances.
+- Extend the versioned ledger snapshot with canonical TLL v3 for
+  pending/settled journal records and sweep receipts, preserving v1/v2
+  compatibility and the existing TLPS/TLUC wrappers and reorg path.
+- Include adversarial tests for bogus roots, overdraw, expiry, replay
+  and snapshot/reorg integrity. No Rust dependency additions.
+
+**Not live consensus.** Types 23/31 are explicitly restricted
+primitives. Root matching is not a proof of authorized trades. The
+chain authentication adapter, legacy semantic reconciliation, types
+19/20, price/margin clearing, full type23 mode coverage and Cairo/STWO
+economic proofs remain unfinished.
+
+See [docs/CHANNEL_SETTLEMENT.md](docs/CHANNEL_SETTLEMENT.md).
