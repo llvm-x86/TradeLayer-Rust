@@ -387,8 +387,7 @@ impl SpotExchange {
                 &buyer
             };
             let (num, den) = price_source.quote_per_base();
-            let amount = (u128::from(base) * u128::from(num))
-                .div_ceil(u128::from(den));
+            let amount = (u128::from(base) * u128::from(num)).div_ceil(u128::from(den));
             let quote = u64::try_from(amount).map_err(|_| SpotError::UnrepresentableFill)?;
             let sell_limit = u128::from(base) * u128::from(seller.expected_atoms);
             let buy_limit = u128::from(base) * u128::from(buyer.offered_atoms);
@@ -493,9 +492,10 @@ impl SpotExchange {
         let mut staged = self.clone();
         let orders = staged.books.entry(pair).or_default();
         if let CancelSelector::ByOrderTxId(id) = request.selector {
-            if orders.iter().any(|order| {
-                order.txid == id && order.owner != request.actor
-            }) {
+            if orders
+                .iter()
+                .any(|order| order.txid == id && order.owner != request.actor)
+            {
                 return Err(SpotError::UnauthorizedCancellation);
             }
         }
@@ -536,7 +536,11 @@ impl SpotExchange {
             .collect::<Result<Vec<_>, SpotError>>()?;
         staged.ledger.apply_batch(operations)?;
         let ids: BTreeSet<TxId> = selected.iter().map(|order| order.txid).collect();
-        staged.books.entry(pair).or_default().retain(|o| !ids.contains(&o.txid));
+        staged
+            .books
+            .entry(pair)
+            .or_default()
+            .retain(|o| !ids.contains(&o.txid));
         staged.seen.insert(request.txid);
         staged.ledger.verify_conservation()?;
         staged.verify_reserves()?;
