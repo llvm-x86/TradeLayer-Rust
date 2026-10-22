@@ -67,7 +67,12 @@ impl ChannelState {
             self.escrow_mut(side).insert(id, atoms);
         }
     }
-    fn claim(&mut self, channel: &AccountId, side: ChannelSide, owner: &AccountId) -> Result<(), LedgerError> {
+    fn claim(
+        &mut self,
+        channel: &AccountId,
+        side: ChannelSide,
+        owner: &AccountId,
+    ) -> Result<(), LedgerError> {
         if self.owner(side.other()) == Some(owner) {
             return Err(LedgerError::ChannelSideOccupied(channel.clone()));
         }
@@ -107,7 +112,8 @@ impl Ledger {
         self.pending_withdrawals.len()
     }
     pub fn pending_withdrawal_atoms(&self, id: PropertyId, owner: &AccountId) -> u128 {
-        self.pending_withdrawals.values()
+        self.pending_withdrawals
+            .values()
             .filter(|p| p.id == id && &p.owner == owner)
             .fold(0u128, |sum, p| sum.saturating_add(p.atoms))
     }
@@ -134,7 +140,9 @@ impl Ledger {
         }
         let state = self.channels.entry(channel.clone()).or_default();
         state.claim(&channel, side, &from)?;
-        let after = state.atoms(side, id).checked_add(amount_atoms)
+        let after = state
+            .atoms(side, id)
+            .checked_add(amount_atoms)
             .ok_or(LedgerError::ArithmeticOverflow)?;
         state.put(side, id, after);
         self.put_balance(id, from, balance - amount_atoms);
@@ -154,7 +162,9 @@ impl Ledger {
         if request.unlock_height == 0 {
             return Err(LedgerError::InvalidWithdrawalHeight);
         }
-        let state = self.channels.get_mut(&request.channel)
+        let state = self
+            .channels
+            .get_mut(&request.channel)
             .ok_or_else(|| LedgerError::UnknownChannel(request.channel.clone()))?;
         if state.owner(request.side) != Some(&request.owner) {
             return Err(LedgerError::ChannelSideMismatch(request.channel.clone()));
@@ -188,9 +198,14 @@ impl Ledger {
         if from_channel == to_channel {
             return Err(LedgerError::SameChannel);
         }
-        let from = self.channels.get(&from_channel)
+        let from = self
+            .channels
+            .get(&from_channel)
             .ok_or_else(|| LedgerError::UnknownChannel(from_channel.clone()))?;
-        let owner = from.owner(from_side).ok_or_else(|| LedgerError::ChannelSideMismatch(from_channel.clone()))?.clone();
+        let owner = from
+            .owner(from_side)
+            .ok_or_else(|| LedgerError::ChannelSideMismatch(from_channel.clone()))?
+            .clone();
         let balance = from.atoms(from_side, id);
         if balance < amount_atoms {
             return Err(LedgerError::InsufficientAvailable {
@@ -201,10 +216,14 @@ impl Ledger {
         }
         let to = self.channels.entry(to_channel.clone()).or_default();
         to.claim(&to_channel, to_side, &owner)?;
-        let after = to.atoms(to_side, id).checked_add(amount_atoms)
+        let after = to
+            .atoms(to_side, id)
+            .checked_add(amount_atoms)
             .ok_or(LedgerError::ArithmeticOverflow)?;
         to.put(to_side, id, after);
-        self.channels.get_mut(&from_channel).expect("verified channel")
+        self.channels
+            .get_mut(&from_channel)
+            .expect("verified channel")
             .put(from_side, id, balance - amount_atoms);
         Ok(())
     }
@@ -217,15 +236,20 @@ impl Ledger {
             return Err(LedgerError::InvalidWithdrawalHeight);
         }
         let mut staged = self.clone();
-        let due: Vec<TxId> = staged.pending_withdrawals.iter()
+        let due: Vec<TxId> = staged
+            .pending_withdrawals
+            .iter()
             .filter(|(_, withdrawal)| withdrawal.unlock_height <= height)
             .map(|(txid, _)| *txid)
             .collect();
         for txid in &due {
-            let withdrawal = staged.pending_withdrawals.remove(txid)
+            let withdrawal = staged
+                .pending_withdrawals
+                .remove(txid)
                 .expect("selected pending withdrawal");
             let prior = staged.available_atoms(withdrawal.id, &withdrawal.owner);
-            let after = prior.checked_add(withdrawal.atoms)
+            let after = prior
+                .checked_add(withdrawal.atoms)
                 .ok_or(LedgerError::ArithmeticOverflow)?;
             staged.put_balance(withdrawal.id, withdrawal.owner, after);
         }
@@ -246,13 +270,20 @@ impl Ledger {
         if !self.properties.contains_key(&id) {
             return Err(LedgerError::BalanceWithoutProperty(id));
         }
-        let sum = sums.get(&id).copied().unwrap_or(0).checked_add(atoms)
+        let sum = sums
+            .get(&id)
+            .copied()
+            .unwrap_or(0)
+            .checked_add(atoms)
             .ok_or(LedgerError::ArithmeticOverflow)?;
         sums.insert(id, sum);
         Ok(())
     }
 
-    fn add_channel_conservation(&self, sums: &mut BTreeMap<PropertyId, u128>) -> Result<(), LedgerError> {
+    fn add_channel_conservation(
+        &self,
+        sums: &mut BTreeMap<PropertyId, u128>,
+    ) -> Result<(), LedgerError> {
         for (address, state) in &self.channels {
             if state.owner_a.is_some() && state.owner_a == state.owner_b {
                 return Err(LedgerError::ChannelSideOccupied(address.clone()));
@@ -320,7 +351,10 @@ impl Ledger {
         Ok(())
     }
 
-    fn read_channel_snapshot(&mut self, reader: &mut crate::codec::Cursor<'_>) -> Result<(), SnapshotError> {
+    fn read_channel_snapshot(
+        &mut self,
+        reader: &mut crate::codec::Cursor<'_>,
+    ) -> Result<(), SnapshotError> {
         let count = snapshot_count(reader)?;
         let mut prev = None;
         for _ in 0..count {
@@ -373,9 +407,17 @@ impl Ledger {
                 .map_err(SnapshotError::InvalidLedger)?;
             let atoms = reader.u128().map_err(snapshot_codec_error)?;
             let unlock_height = reader.u64().map_err(snapshot_codec_error)?;
-            self.pending_withdrawals.insert(txid, PendingWithdrawal {
-                channel, side, owner, id, atoms, unlock_height,
-            });
+            self.pending_withdrawals.insert(
+                txid,
+                PendingWithdrawal {
+                    channel,
+                    side,
+                    owner,
+                    id,
+                    atoms,
+                    unlock_height,
+                },
+            );
         }
         Ok(())
     }
