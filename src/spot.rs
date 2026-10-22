@@ -23,6 +23,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 pub const MAX_SPOT_OPEN_AND_QUEUED: usize = 4096;
 pub const MAX_SPOT_FILLS: usize = 16384;
+pub const MAX_SPOT_INPUT_EVENTS: usize = 65536;
 const ESCROW_PREFIX: &str = "~spot:";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -264,7 +265,9 @@ impl SpotExchange {
         if self.seen.contains(&entry.txid) {
             return Err(SpotError::Replay(entry.txid));
         }
-        if self.open_count() + self.pending_count() >= MAX_SPOT_OPEN_AND_QUEUED {
+        if self.seen.len() >= MAX_SPOT_INPUT_EVENTS
+            || self.open_count() + self.pending_count() >= MAX_SPOT_OPEN_AND_QUEUED
+        {
             return Err(SpotError::CapacityExceeded);
         }
         self.seen.insert(entry.txid);
@@ -488,6 +491,9 @@ impl SpotExchange {
         let pair = self.check_pair(request.offered, request.desired)?;
         if self.seen.contains(&request.txid) {
             return Err(SpotError::Replay(request.txid));
+        }
+        if self.seen.len() >= MAX_SPOT_INPUT_EVENTS {
+            return Err(SpotError::CapacityExceeded);
         }
         let mut staged = self.clone();
         let orders = staged.books.entry(pair).or_default();
