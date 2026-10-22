@@ -55,3 +55,14 @@ See [MIGRATION.md](MIGRATION.md) for milestones. License selection and protocol 
 `tradelayer_core::chain::ChainState` accepts candidate blocks only through a `TrustedChainAdapter` implementation, whose job is to verify chain headers, raw transaction bytes, and the authorized actor for each ledger operation. The library enforces origin/operation binding, sequential blocks, atomic application, replay protection, reversible snapshots, and new-file checkpoint saves. It **does not provide a real adapter, signature verification, or a production consensus engine**.
 
 See [chain-state design and remaining security work](docs/CHAIN_STATE.md).
+
+## Offline transaction replay (experimental)
+
+The dependency-free `read_only` module parses Bitcoin-style raw transactions, checks txid/wtxid fingerprints, and identifies single-push OP_RETURN messages with exact `tl` or `TLR` markers. It deliberately does **not** implement `TrustedChainAdapter`, validate chain inclusion, or authorize a state transition.
+
+```sh
+cargo run --locked --bin tradelayer-scan -- fixtures/real_transactions.tsv
+cargo run --locked --bin tradelayer-scan -- fixtures/synthetic_transactions.tsv
+```
+
+The real-byte corpus includes the Bitcoin genesis transaction, a published non-SegWit Bitcoin transaction, and a Bitcoin regtest SegWit OP_RETURN example. Only the last carries OP_RETURN, and none is established as a TradeLayer transaction. Synthetic fixtures explicitly exercise the TradeLayer markers. See [READ_ONLY_REPLAY.md](docs/READ_ONLY_REPLAY.md) for sources, limitations, and the eventual authenticated chain-replay requirements.
