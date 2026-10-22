@@ -225,9 +225,18 @@ mod tests {
             assert!(!entry.name.is_empty());
         }
         assert!(lookup_transaction(36).is_none());
-        assert_eq!(lookup_transaction(5).unwrap().stage, PortStage::RustSpotPrimitive);
-        assert_eq!(lookup_transaction(6).unwrap().stage, PortStage::RustSpotPrimitive);
-        assert_eq!(lookup_transaction(3).unwrap().stage, PortStage::ZkTlJsPrototype);
+        assert_eq!(
+            lookup_transaction(5).unwrap().stage,
+            PortStage::RustSpotPrimitive
+        );
+        assert_eq!(
+            lookup_transaction(6).unwrap().stage,
+            PortStage::RustSpotPrimitive
+        );
+        assert_eq!(
+            lookup_transaction(3).unwrap().stage,
+            PortStage::ZkTlJsPrototype
+        );
     }
 
     #[test]
