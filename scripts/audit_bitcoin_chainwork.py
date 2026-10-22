@@ -92,7 +92,21 @@ def main() -> None:
         (0x1c00ffff, 4838400, 0x1c03fffc),
     ]:
         assert retarget(bits, 0, elapsed) == expected
-    print("Bitcoin mainnet genesis+block1, exact bigint chainwork and retarget vectors: PASS")
+    from pathlib import Path
+    data = Path(__file__).resolve().parents[1] / "fixtures" / "bitcoin_chainwork_vectors.tsv"
+    verified = 0
+    for row in data.read_text(encoding="ascii").splitlines():
+        if not row or row.startswith("#"):
+            continue
+        fields = row.split("\t")
+        assert len(fields) == 2
+        bits = int(fields[0], 16)
+        assert 0 < from_compact(bits) <= from_compact(0x1d00ffff)
+        assert work(bits).to_bytes(32, "big").hex() == fields[1]
+        verified += 1
+    assert verified == 25
+
+    print("Bitcoin mainnet genesis+block1, exact bigint chainwork and retarget vectors + 25 U256 width samples: PASS")
 
 
 if __name__ == "__main__":
