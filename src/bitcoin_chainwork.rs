@@ -296,10 +296,18 @@ pub struct MainnetWorkSegment {
     after_work: Work256,
 }
 impl MainnetWorkSegment {
-    pub fn checked_headers(&self) -> &CheckedHeaderSegment { &self.checked_headers }
-    pub fn anchor_status(&self) -> AnchorStatus { self.source }
-    pub fn work_before(&self) -> Work256 { self.before_work }
-    pub fn work_after(&self) -> Work256 { self.after_work }
+    pub fn checked_headers(&self) -> &CheckedHeaderSegment {
+        &self.checked_headers
+    }
+    pub fn anchor_status(&self) -> AnchorStatus {
+        self.source
+    }
+    pub fn work_before(&self) -> Work256 {
+        self.before_work
+    }
+    pub fn work_after(&self) -> Work256 {
+        self.after_work
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -388,7 +396,8 @@ impl MainnetWorkChain {
     /// Builds an opaque receipt carrying explicit work/provenance metadata.
     /// This remains header-only audit evidence, never settlement permission.
     pub fn extend_with_work_receipt(
-        &mut self, raw_headers: &[[u8; 80]],
+        &mut self,
+        raw_headers: &[[u8; 80]],
     ) -> Result<MainnetWorkSegment, WorkError> {
         let before_work = self.current.cumulative_work;
         let checked_headers = self.extend_checked(raw_headers)?;
