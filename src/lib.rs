@@ -5,6 +5,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod bitcoin_chainwork; // Bitcoin mainnet nBits/MTP/chainwork from explicit checkpoints; not full consensus.
 pub mod bitcoin_inclusion; // Bitcoin SHA256d header and tx Merkle checks; no full consensus.
 pub mod chain; // Trust-boundary and reversible block progression, prototype only.
 mod codec; // Bounded, checksummed snapshot codec.
