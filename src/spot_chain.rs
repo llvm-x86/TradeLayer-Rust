@@ -12,8 +12,7 @@ use crate::chain::{
 use crate::codec::{verify_crc, with_crc, Cursor, MAX_CHECKPOINT_BYTES};
 use crate::ledger::PropertyId;
 use crate::spot::{
-    SpotError, SpotExchange, SpotSnapshotError, UnverifiedSpotCancellation,
-    UnverifiedSpotPlacement,
+    SpotError, SpotExchange, SpotSnapshotError, UnverifiedSpotCancellation, UnverifiedSpotPlacement,
 };
 use std::collections::{BTreeSet, VecDeque};
 use std::fs::{self, File, OpenOptions};
@@ -125,11 +124,13 @@ impl SpotChainState {
             return Err(SpotChainError::InvalidHistoryLimit);
         }
         if !state.is_pristine_unverified() {
-            return Err(SpotChainError::Checkpoint(
-                bad("initial spot state must be pristine"),
-            ));
+            return Err(SpotChainError::Checkpoint(bad(
+                "initial spot state must be pristine",
+            )));
         }
-        state.snapshot_bytes().map_err(SpotChainCheckpointError::Spot)?;
+        state
+            .snapshot_bytes()
+            .map_err(SpotChainCheckpointError::Spot)?;
         Ok(Self {
             chain,
             anchor,
@@ -290,9 +291,9 @@ impl SpotChainState {
         for _ in 0..count {
             let prev_tip = read_tip(&mut r)?;
             if prev_tip.height < anchor.height
-                || history.back().is_some_and(|old| {
-                    old.tip.height.checked_add(1) != Some(prev_tip.height)
-                })
+                || history
+                    .back()
+                    .is_some_and(|old| old.tip.height.checked_add(1) != Some(prev_tip.height))
             {
                 return Err(bad("noncontiguous rollback history"));
             }
@@ -317,8 +318,7 @@ impl SpotChainState {
             || (tip.height == anchor.height && (tip != anchor || count != 0))
             || (tip.height > anchor.height && count == 0)
             || history.back().is_some_and(|old| {
-                old.tip.height.checked_add(1) != Some(tip.height)
-                    || old.tip.id == tip.id
+                old.tip.height.checked_add(1) != Some(tip.height) || old.tip.id == tip.id
             })
             || state.processed_through()
                 != if tip == anchor {
@@ -346,10 +346,7 @@ impl SpotChainState {
 
     /// create_new prevents replacement of a previous checkpoint on collision.
     /// File fsync is used; directory fsync/authenticated roots are future work.
-    pub fn write_new_checkpoint(
-        &self,
-        path: &Path,
-    ) -> Result<(), SpotChainCheckpointError> {
+    pub fn write_new_checkpoint(&self, path: &Path) -> Result<(), SpotChainCheckpointError> {
         let bytes = self.checkpoint_bytes()?;
         let mut file = OpenOptions::new().write(true).create_new(true).open(path)?;
         if let Err(e) = file.write_all(&bytes).and_then(|()| file.sync_all()) {
@@ -368,8 +365,8 @@ impl SpotChainState {
         expected_permitted: &BTreeSet<PropertyId>,
     ) -> Result<Self, SpotChainCheckpointError> {
         let file = File::open(path)?;
-        let length = usize::try_from(file.metadata()?.len())
-            .map_err(|_| bad("checkpoint file size"))?;
+        let length =
+            usize::try_from(file.metadata()?.len()).map_err(|_| bad("checkpoint file size"))?;
         if length > MAX_CHECKPOINT_BYTES {
             return Err(bad("checkpoint file too large"));
         }
@@ -413,7 +410,9 @@ fn read_state(
     if length > MAX_CHECKPOINT_BYTES {
         return Err(bad("embedded state too large"));
     }
-    let bytes = r.take(length).map_err(|_| bad("embedded state truncated"))?;
+    let bytes = r
+        .take(length)
+        .map_err(|_| bad("embedded state truncated"))?;
     SpotExchange::from_snapshot_bytes(bytes, expected_permitted)
         .map_err(SpotChainCheckpointError::Spot)
 }
