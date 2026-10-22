@@ -1,34 +1,36 @@
-# TradeLayer JS → Rust: first milestones
+# TradeLayer JS -> Rust: staged migration
 
-Historical implementation: [patrickdugan/tradelayer.js](https://github.com/patrickdugan/tradelayer.js)
+Historical reference: [patrickdugan/tradelayer.js](https://github.com/patrickdugan/tradelayer.js)
 
-This is a **migration scaffold**, not a deployable consensus node. Preserve the JS repository and its test vectors during the port. Work on isolated, reviewable changes.
+This repository is a prototype, not a deployable consensus node. Preserve the JavaScript implementation and its complete transaction history throughout the port. Work in small, reviewable steps.
 
-## Step 0: Bootstrap (this commit)
+## Step 0: Bootstrap (complete)
 
-- A Rust library crate, with no external crate dependencies.
-- Pinned Rust toolchain, checked-in lockfile, formatter, linter, and CI.
-- A type-range wrapper for the 36 transaction identifiers currently dispatched by `src/types.js`.
-- Tests verifying supported type numbers and explicit rejection of unknown types.
+- Dependency-free Rust library with toolchain pinning, committed lockfile, and GitHub CI.
+- Type-range wrapper for the 36 transaction IDs dispatched by the JavaScript implementation.
+- Unit tests for type range and explicit unsupported values.
 
-## Step 1: Wire-format characterization
+## Step 1: Characterize wire format (in progress)
 
-Inspect `src/txEncoder.js`, `src/txDecoder.js`, `src/types.js`, and existing JS tests. Export canonical input/output fixtures and known edge cases. Clarify the `tl` marker, base-36 type selector, integer/decimal amount encoding, and differences between wrapper and per-type encoders.
+- Completed: source-derived fixture generator for type 0 (activation), type 1 (issuance), type 2 (send), type 11 (managed grant), and type 12 (managed redemption).
+- Completed: checked Rust ASCII envelope parser and preliminary typed field decoders.
+- Completed: explicit regression cases for nested prefix, fractional-unit marker, and multi-whitelist discrepancies.
+- Remaining: actual JavaScript `txEncoder` / `txDecoder` execution in isolation, accepted on-chain corpus, and cross-language differential outputs.
 
-Only then add a Rust parser/encoder. Distinguish exact legacy behavior from protocol rules requiring correction.
+See [docs/WIRE_FORMAT.md](docs/WIRE_FORMAT.md).
 
-## Step 2: Deterministic amounts and ledger
+## Step 2: Exact quantities and ledger
 
-Choose canonical integer units through verified vectors. Add checked arithmetic and typed account/property identifiers. Establish total-supply accounting, account-balance invariants, rollback behavior, and replay protection.
+Pin canonical integer scaling with independently validated vectors. Establish checked amounts, account/property identifiers, total-supply conservation, atomic rollback, replay protection, and reorg invariants. Investigate all differences from the existing JavaScript number semantics.
 
-## Step 3: Minimal transaction execution
+## Step 3: Limited state transitions
 
-Port activation, fixed/managed token issuance, and ordinary type-2 transfers with adversarial tests. Compare Rust outputs with independently validated JS fixtures. Keep special native tokens, vesting, compliance restrictions, and procedural tokens isolated until their rules are fully specified.
+Port activation, fixed/managed issuance, and ordinary sends after the wire format is settled. Compare Rust results with confirmed JavaScript and chain-history fixtures. Isolate native tokens, vesting, policy restrictions, and procedural issuance until specified.
 
-## Step 4: Integration and expansion
+## Step 4: Integration
 
-Add persistence, transaction/block ordering, reorg support, and RPC as separate layers. Expand to channels, contracts, settlement, and remaining transaction types under property-based and differential testing.
+Add persistence, block ordering, reorg handling, and RPC as separate layers. Continue through channels, derivatives, clearing, and settlement using adversarial testing and review.
 
 ## Before any production deployment
 
-A protocol spec and independently reviewed consensus fixtures must determine behavior. Require security review, chain-replay tests, fuzzing, dependency audits, reproducible build checks, and key-isolation testing. Never infer financial correctness from compilation alone.
+A written protocol specification and independent consensus reference vectors must determine behavior. Require fuzzing, chain replay, multiple-implementation comparison, build reproducibility, review of dependencies and build scripts, and key-isolation testing.
