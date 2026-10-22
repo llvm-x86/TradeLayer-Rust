@@ -183,7 +183,10 @@ impl JointProtocolState {
         {
             return Err(JointError::InconsistentComponents);
         }
-        if !spot.ledger().has_no_channel_or_settlement_liabilities_unverified() {
+        if !spot
+            .ledger()
+            .has_no_channel_or_settlement_liabilities_unverified()
+        {
             return Err(JointError::UnsupportedLegacyLiabilities);
         }
         let mut global_input_ids = spot.spot_input_ids_unverified().clone();
@@ -218,7 +221,10 @@ impl JointProtocolState {
         if tip_height == 0 || old.finalized_height() != Some(tip_height) {
             return Err(JointError::InconsistentComponents);
         }
-        if !old.ledger().has_no_channel_or_settlement_liabilities_unverified() {
+        if !old
+            .ledger()
+            .has_no_channel_or_settlement_liabilities_unverified()
+        {
             return Err(JointError::UnsupportedLegacyLiabilities);
         }
         let mut spot = SpotExchange::from_ledger_unverified(old.ledger().clone(), permitted)?;
