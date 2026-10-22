@@ -73,7 +73,17 @@ timespan cases, malformed checkpoints, wrong parents, atomic
 rejection, and cross-anchor work comparisons.
 
 An independent Python bigint implementation checks real header
-hashes, chainwork, compact target and retarget arithmetic.
+hashes, the actual block-1 coinbase transaction against its Merkle
+root, chainwork, compact target and retarget arithmetic. A separate
+25-case corpus covers very small targets and 256-bit-wide work values.
+
+An opaque MainnetWorkSegment receipt now binds each verified header
+segment to its starting and ending cumulative work and explicit
+checkpoint provenance. The root reconciliation auditor can hash that
+receipt alongside the TLPT/zkTL audit statement, but it remains
+untrusted as best-chain/economic evidence. A real historical block-1
+coinbase is rejected when relabeled as a TradeLayer payment, despite
+its genuine PoW/Merkle inclusion proof.
 
     cargo test --locked --test bitcoin_chainwork
     python3 scripts/audit_bitcoin_chainwork.py
