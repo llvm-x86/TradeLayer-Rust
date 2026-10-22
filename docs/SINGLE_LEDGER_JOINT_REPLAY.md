@@ -103,10 +103,24 @@ spot input IDs and registry records. A new TLJC chain anchor is created
 left behind. Conflicting input IDs across registry and spot replay
 histories cause rejection.
 
-This operation is a research migration. A production TLUC-to-TLJC
-migration is outstanding because TLUC already contains separate
-registry/ledger history and TLJC currently supports a smaller execution
-surface. The original TLUC/TLSC loaders do not silently load TLJC files.
+An explicit `JointChainState::migrate_from_unified_unverified` path
+also imports an existing **profile-bound TLUC registry+ledger state**.
+Its source must have a finalized tip, and the ledger must have no
+remaining channel escrow, pending withdrawals, settlement claims or
+receipts. Such obligations would otherwise stop progressing under the
+joint executor's narrower economic instruction set.
+
+This migration copies the old registry, ledger balances, supply and both
+component replay marker sets into TLJP. It checks that their union matches
+the original unified global input IDs. The new spot orderbook begins empty,
+with a single copy of the imported token ledger. The new TLJC anchor is the
+old tip; prior TLUC rollback frames are deliberately excluded.
+
+Both import methods are **unverified research migrations**. A fully
+authenticated production migration with historical chain provenance,
+protocol rule parity, native/vesting restrictions and complete legacy
+channel continuity remains outstanding. The original TLUC/TLSC loaders
+continue using their former formats and cannot silently load TLJC files.
 
 ## Three independent chains and proving constraints
 
