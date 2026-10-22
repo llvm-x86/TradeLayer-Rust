@@ -23,8 +23,26 @@ pub const MTP_WINDOW: usize = 11;
 
 /// Private unsigned 256-bit integer, four little-endian u64 limbs. All ops
 /// return errors instead of silently wrapping chainwork or retarget amounts.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct U256([u64; 4]);
+
+// Little-endian LIMB order is NOT numeric lexicographic order.
+impl Ord for U256 {
+    fn cmp(&self, other: &Self) -> Ordering {
+        for i in (0..4).rev() {
+            match self.0[i].cmp(&other.0[i]) {
+                Ordering::Equal => {}
+                non_equal => return non_equal,
+            }
+        }
+        Ordering::Equal
+    }
+}
+impl PartialOrd for U256 {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
 
 impl U256 {
     const ZERO: Self = Self([0; 4]);
@@ -360,7 +378,6 @@ fn validate_checkpoint(c: &ClaimedMainnetCheckpoint) -> Result<(), WorkError> {
     if c.prior_timestamps.len() != count
         || c.prior_timestamps.last() != Some(&c.timestamp)
         || c.first_period_timestamp == 0
-        || c.first_period_timestamp > c.timestamp
         || (c.tip.height.is_multiple_of(MAINNET_ADJUSTMENT_INTERVAL)
             && c.first_period_timestamp != c.timestamp)
         || c.cumulative_work.as_u256() < mainnet_block_proof_work(c.bits)?.as_u256()
