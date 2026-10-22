@@ -177,6 +177,28 @@ node scripts/audit_spot_vectors.cjs --check
 
 See [Stage 19 source-parity findings](docs/SPOT_EXCHANGE.md).
 
+## Stage 20: isolated spot replay checkpoints
+
+`spot_chain::SpotChainState` now applies pre-decoded **unverified** type-5
+placements and type-6 cancellations in sequential block order, with an
+atomic end-of-block match and complete rollback of balances, orders, fills,
+and replay IDs. `TLSP\x01` embeds the spot book and canonical token ledger;
+`TLSC\x01` embeds every retained pre-block state with chain and anchor
+continuity checks. Failed immutable-file checkpoint writes leave state
+unmodified.
+
+This remains a separate spot ledger, **not** a unified consensus executor
+and **not** a Litecoin authenticated-chain adapter. Integrating it with
+the registry ledger requires one common transaction replay set and
+a versioned combined snapshot migration.
+
+```sh
+cargo test --locked --test spot_chain
+cargo test --locked --test spot_exchange
+```
+
+See [Stage 20 spot checkpoints and security boundaries](docs/SPOT_CHAIN_CHECKPOINTS.md).
+
 ## Unified chain replay with combined checkpoints (experimental)
 
 `tradelayer_core::unified_chain::UnifiedChainState` brings the atomic ledger

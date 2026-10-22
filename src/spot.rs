@@ -198,6 +198,12 @@ impl SpotExchange {
             return Err(SpotError::UnknownProperty);
         }
         ledger.verify_conservation()?;
+        if !ledger
+            .balances_with_account_prefix(ESCROW_PREFIX)
+            .is_empty()
+        {
+            return Err(SpotError::EscrowCollision);
+        }
         Ok(Self {
             ledger,
             permitted,
@@ -215,6 +221,17 @@ impl SpotExchange {
     }
     pub fn processed_through(&self) -> Option<u64> {
         self.processed_through
+    }
+
+    /// Initial state from the caller's prefunded offline ledger, before
+    /// any spot event has been queued, matched, or canceled.
+    pub fn is_pristine_unverified(&self) -> bool {
+        self.processed_through.is_none()
+            && self.seen.is_empty()
+            && self.queued.is_empty()
+            && self.books.is_empty()
+            && self.fills.is_empty()
+            && self.next_sequence == 0
     }
     pub fn pending_count(&self) -> usize {
         self.queued.len()
@@ -562,16 +579,26 @@ impl SpotExchange {
 
     /// Canonical accounting invariant across all outstanding orders.
     pub fn verify_reserves(&self) -> Result<(), SpotError> {
+        let mut expected = BTreeMap::new();
         for orders in self.books.values() {
             for order in orders {
                 let escrow = escrow_account(order.txid)?;
-                if self.ledger.available_atoms(order.offered, &escrow)
-                    != u128::from(order.remaining_offered)
-                    || order.remaining_offered == 0
+                if order.remaining_offered == 0
+                    || expected
+                        .insert((order.offered, escrow), u128::from(order.remaining_offered))
+                        .is_some()
                 {
                     return Err(SpotError::ReserveMismatch);
                 }
             }
+        }
+        for (id, account, atoms) in self.ledger.balances_with_account_prefix(ESCROW_PREFIX) {
+            if expected.remove(&(id, account)) != Some(atoms) {
+                return Err(SpotError::ReserveMismatch);
+            }
+        }
+        if !expected.is_empty() {
+            return Err(SpotError::ReserveMismatch);
         }
         Ok(())
     }
@@ -666,3 +693,6 @@ mod tests {
         );
     }
 }
+
+// Snapshot code is included in-module to retain private ledger/book invariants.
+include!("spot_snapshot_impl.rs");
