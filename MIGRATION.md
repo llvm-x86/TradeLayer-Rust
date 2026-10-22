@@ -115,3 +115,18 @@ See [docs/ZK_CAIRO_INTEGRATION.md](docs/ZK_CAIRO_INTEGRATION.md).
   validated state machine is built.
 - See `docs/REGISTRY_PORT.md` and
   `tests/registry_transitions.rs`. No new external Rust crates.
+
+## Step 8: Unified transaction replay (simulation-grade)
+
+- Added `execution::ProtocolState` coordinating registry actions and
+  ledger issuance, send, managed grant and redemption as one staged state.
+- Maintains a single replay set, chain namespace and monotonic height,
+  while requiring activation in a strictly earlier block for balance actions.
+- Atomic mixed batches roll back whitelist/oracle records, token balances,
+  and replay markers together. Regression tests exercise fork cloning and
+  cross-module duplicate IDs.
+- Inputs remain explicitly `UnverifiedTx`; the signed-chain adapter,
+  unified durable checkpoint, ZK proof verification and all other transaction
+  implementations remain separate future steps.
+
+See `docs/UNIFIED_EXECUTION.md`.
