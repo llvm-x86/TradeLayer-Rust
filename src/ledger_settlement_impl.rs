@@ -67,13 +67,13 @@ fn nonzero_side_claim(
 /// Build a strictly byte-delimited root. Claims are sorted by txid because
 /// all underlying journals use BTreeMap. The channel, property and range are
 /// part of the root so the same claim set cannot be relabelled for a new sweep.
-fn calculate_settlement_preview<'a>(
+fn calculate_settlement_preview(
     channel: &AccountId,
     property: PropertyId,
     start: u64,
     end: u64,
     settled_at: u64,
-    claims: &[(TxId, &'a NetClaim)],
+    claims: &[(TxId, &NetClaim)],
 ) -> Result<SettlementPreview, LedgerError> {
     if start == 0 || end < start || end > settled_at || claims.is_empty() {
         return Err(LedgerError::InvalidSettlementRange);
