@@ -96,3 +96,22 @@ See [docs/ARCHIVE_REPLAY.md](docs/ARCHIVE_REPLAY.md).
 - **Not yet:** Cairo per-transition computation, cryptographic STWO proof verification, authenticated L1 inclusion, a shared Rust/zkTL state-root scheme or permission to mutate the ledger from the checkpoint.
 
 See [docs/ZK_CAIRO_INTEGRATION.md](docs/ZK_CAIRO_INTEGRATION.md).
+
+## Step 7: Authenticated registry execution (isolated prototype)
+
+- Added `registry.rs` with typed, bounded state transitions for tx0,
+  tx7–tx9 and tx13–tx15. State includes ordered activation records,
+  clearlist ownership and attestations, oracle owners and last quotes,
+  replay markers, and deterministic ID allocation.
+- Each batch applies atomically with rollback-on-error, strictly
+  monotonic heights, administrator checks, and activation only in
+  blocks later than its activation block.
+- Type 34 activation, token-admin migration, special list 0
+  self-certification/banlist updates, and arbitrary xpub batches
+  explicitly fail closed.
+- The caller remains responsible for independently verifying
+  signature authority, chain origin and transaction ordering.
+  Registry and ledger replay sets are separate until a unified
+  validated state machine is built.
+- See `docs/REGISTRY_PORT.md` and
+  `tests/registry_transitions.rs`. No new external Rust crates.

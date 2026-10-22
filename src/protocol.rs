@@ -7,6 +7,8 @@
 pub enum PortStage {
     /// Only standalone accounting operations, not chain consensus rules.
     RustLedgerPrimitive,
+    /// Standalone registry state transitions, without chain authentication.
+    RustRegistryPrimitive,
     /// zkTL has a JavaScript transition prototype; full Cairo proof absent.
     ZkTlJsPrototype,
     /// Source-mapping or unported logic.
@@ -26,7 +28,7 @@ pub const TRANSACTION_CATALOG: [TransactionSpec; 36] = [
     TransactionSpec {
         number: 0,
         name: "Activate TradeLayer",
-        stage: PortStage::ZkTlJsPrototype,
+        stage: PortStage::RustRegistryPrimitive,
     },
     TransactionSpec {
         number: 1,
@@ -61,17 +63,17 @@ pub const TRANSACTION_CATALOG: [TransactionSpec; 36] = [
     TransactionSpec {
         number: 7,
         name: "Create Whitelist",
-        stage: PortStage::ZkTlJsPrototype,
+        stage: PortStage::RustRegistryPrimitive,
     },
     TransactionSpec {
         number: 8,
         name: "Update Admin",
-        stage: PortStage::ZkTlJsPrototype,
+        stage: PortStage::RustRegistryPrimitive,
     },
     TransactionSpec {
         number: 9,
         name: "Issue or Revoke Attestation",
-        stage: PortStage::ZkTlJsPrototype,
+        stage: PortStage::RustRegistryPrimitive,
     },
     TransactionSpec {
         number: 10,
@@ -91,17 +93,17 @@ pub const TRANSACTION_CATALOG: [TransactionSpec; 36] = [
     TransactionSpec {
         number: 13,
         name: "Create Oracle",
-        stage: PortStage::ZkTlJsPrototype,
+        stage: PortStage::RustRegistryPrimitive,
     },
     TransactionSpec {
         number: 14,
         name: "Publish Oracle Data",
-        stage: PortStage::ZkTlJsPrototype,
+        stage: PortStage::RustRegistryPrimitive,
     },
     TransactionSpec {
         number: 15,
         name: "Close Oracle",
-        stage: PortStage::ZkTlJsPrototype,
+        stage: PortStage::RustRegistryPrimitive,
     },
     TransactionSpec {
         number: 16,

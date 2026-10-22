@@ -101,3 +101,19 @@ cargo run --locked --bin tradelayer-zk-inspect -- /tmp/tlzk.tsv
 ```
 
 See [Cairo integration and blocked trust boundaries](docs/ZK_CAIRO_INTEGRATION.md).
+
+## Registry transitions (isolated Rust prototype)
+
+The dependency-free [`registry` module](src/registry.rs) ports bounded state
+transitions for legacy transaction types 0, 7, 8, 9, 13, 14 and 15:
+activations, whitelists/admin rotation, attestations, and oracle lifecycle.
+It uses monotonic block heights, checked IDs, exact 1e-4 oracle quote units,
+replay protection, and atomic batches. All transaction actors and heights
+**must come from a future authenticated chain adapter**; these APIs do not
+verify signatures, UTXO ownership, or proof-of-work. The module does not yet
+persist or compose with the balance ledger.
+
+[Registry design and incompatibilities](docs/REGISTRY_PORT.md) explains
+unported self-certification, banlist/xpub logic, token-admin migration and
+ZK proof-verification gates. Type 34 stays blocked by the legacy/zkTL conflict.
+Tests: `cargo test --locked --test registry_transitions`.
