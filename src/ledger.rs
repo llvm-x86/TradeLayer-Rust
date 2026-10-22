@@ -436,12 +436,14 @@ impl Ledger {
                 unlock_height,
             } => self.request_channel_withdrawal(
                 txid,
-                id,
-                owner,
-                channel,
-                side,
-                amount_atoms,
-                unlock_height,
+                PendingWithdrawal {
+                    channel,
+                    side,
+                    owner,
+                    id,
+                    atoms: amount_atoms,
+                    unlock_height,
+                },
             ),
             Operation::ChannelTransfer {
                 id,
