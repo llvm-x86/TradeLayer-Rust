@@ -202,15 +202,16 @@ impl Ledger {
         if self.king_settlements.len() >= MAX_SETTLEMENT_RECORDS {
             return Err(LedgerError::SettlementJournalFull);
         }
-        let selected: Vec<_> = self.pending_net_settlements.iter()
+        let selected: Vec<(TxId, NetClaim)> = self.pending_net_settlements.iter()
             .filter(|(_, claim)| claim.channel == receipt.channel
                 && claim.property == receipt.property
                 && (receipt.start_height..=receipt.end_height).contains(&claim.height))
-            .map(|(id, claim)| (*id, claim))
+            .map(|(id, claim)| (*id, claim.clone()))
             .collect();
+        let borrowed: Vec<_> = selected.iter().map(|(id, claim)| (*id, claim)).collect();
         let recomputed = calculate_settlement_preview(
             &receipt.channel, receipt.property,
-            receipt.start_height, receipt.end_height, receipt.settled_at, &selected,
+            receipt.start_height, receipt.end_height, receipt.settled_at, &borrowed,
         )?;
         if recomputed != receipt.preview || selected.iter().map(|(id, _)| *id)
             .collect::<Vec<_>>() != receipt.claim_txids
