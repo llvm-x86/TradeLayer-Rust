@@ -240,3 +240,24 @@ real Cairo/STWO proof verification. The interface cannot authenticate a
 dishonest external verifier.
 
 See [docs/SETTLEMENT_AUTHORIZATION.md](docs/SETTLEMENT_AUTHORIZATION.md).
+
+
+## Stage 14: Canonical read-only TLPT proving commitment metadata
+
+- Add independent domain-separated SHA-256 roots for canonical TLPS
+  protocol snapshots and network/block-bound chain head commitments.
+- Add 277-byte TLPT v1 records that bind two consecutively reversible
+  projections, before/after protocol roots and their head roots.
+- Check rollback ancestry before constructing TLPT and verify precise
+  length, field encoding, root agreement and digest when parsing records.
+- Pin the full TLPT v1 wire and digest against a second implementation
+  using Python's standard-library hashlib; test checkpoint consistency,
+  fork replacement and wrong-chain/wrong-ancestor rejection.
+- Keep all existing ledger, protocol and unified chain checkpoint formats
+  byte-compatible. No third-party Rust dependencies.
+
+**Still blocked:** live authenticated chain replay, actual Cairo/STWO
+economic proof verification and zkTL state-root semantic reconciliation.
+TLPT metadata is not a valid proof or authorization token.
+
+See [docs/PROVING_COMMITMENTS.md](docs/PROVING_COMMITMENTS.md).

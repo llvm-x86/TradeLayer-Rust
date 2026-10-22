@@ -13,6 +13,7 @@ pub mod ledger; // In-memory atomic accounting primitives; not chain consensus.
 pub mod protocol; // Audited legacy transaction catalog, not consensus execution.
 pub mod read_only; // Offline transaction scanning; cannot authorize ledger state.
 pub mod registry; // Standalone tx0/7-9/13-15 registry state; authentication external.
+pub mod state_commitment; // Experimental domain-separated state and transition metadata; no proof verifier.
 pub mod unified_chain; // Offline reversible registry+ledger block projection; adapter external.
 pub mod wire; // Read-only legacy ASCII format analysis; never auto-fallback.
 pub mod wire_v1;
