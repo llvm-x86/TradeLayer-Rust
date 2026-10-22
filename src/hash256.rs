@@ -107,7 +107,7 @@ mod tests {
             "cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0"
         );
         assert_eq!(
-            hex(&sha256(&vec![b'a'; 55])),
+            hex(&sha256(&[b'a'; 55])),
             "9f4390f8d30c2dd92ec9f095b65e2b9ae9b0a925a5258e241c9f1e910f734318"
         );
     }
