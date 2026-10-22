@@ -902,3 +902,51 @@ impl TrustedProtocolAdapter for HistoricalUnifiedMock {
         }))
     }
 }
+
+
+#[test]
+fn legacy_tluc_registry_and_ledger_migrate_into_one_joint_ledger() {
+    let net = TradeLayerMainnet::Bitcoin;
+    let mut old = NetworkBoundUnified::new_unverified(net, anchor(net), a("admin"), 4).unwrap();
+    let mk = |prior: Tip, n: u8, raws: &[u8]| CandidateBlock {
+        chain: net.chain_id(),
+        header: BlockHeader {
+            height: prior.height + 1,
+            id: BlockId([n; 32]),
+            parent: prior.id
+        },
+        raw_transactions: raws.iter().map(|x| vec![*x]).collect(),
+    };
+    old.apply_block(&mk(old.tip(), 25, &[10]), &HistoricalUnifiedMock).unwrap();
+    old.apply_block(&mk(old.tip(), 26, &[11, 12]), &HistoricalUnifiedMock).unwrap();
+    let previous_bytes = old.checkpoint_bytes().unwrap();
+    let mut joint = JointChainState::migrate_from_unified_unverified(
+        &old, permitted(), 4
+    ).unwrap();
+    assert_eq!(joint.anchor(), old.tip());
+    assert_eq!(joint.rollback_depth(), 0);
+    assert_eq!(joint.state().processed_count(), 3);
+    assert_eq!(joint.state().registry().activation(5).unwrap().height, 1);
+    assert_eq!(joint.state().ledger().available_atoms(p(7), &a("seller")), 1000);
+    let migrated = joint.checkpoint_bytes().unwrap();
+    assert_ne!(previous_bytes, migrated);
+    assert!(JointChainState::from_checkpoint_bytes(
+        &previous_bytes, net, anchor(net), &a("admin"), &permitted(), 4
+    ).is_err());
+
+    joint.apply_unverified_block(&block(&joint, 27, vec![
+        place(true, 13, 100, 200),
+        place(false, 14, 220, 100),
+    ])).unwrap();
+    assert_eq!(joint.state().spot().fills().len(), 1);
+    assert_eq!(joint.state().ledger().available_atoms(p(7), &a("buyer")), 100);
+    assert_eq!(joint.state().ledger().available_atoms(p(8), &a("seller")), 220);
+    joint.state().verify_components_unverified().unwrap();
+    let restored = JointChainState::from_checkpoint_bytes(
+        &joint.checkpoint_bytes().unwrap(), net, old.tip(), &a("admin"), &permitted(), 4
+    ).unwrap();
+    assert_eq!(restored, joint);
+    joint.rollback_tip(joint.tip()).unwrap();
+    assert_eq!(joint.checkpoint_bytes().unwrap(), migrated);
+    assert_eq!(old.checkpoint_bytes().unwrap(), previous_bytes);
+}
