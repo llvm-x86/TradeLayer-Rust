@@ -10,14 +10,20 @@ fn cross_repo_canonical_commitments_agree() {
     assert_eq!(claim.receipts.len(), 26);
     assert_eq!(claim.start_height, 132_900);
     assert_eq!(claim.end_height, 132_907);
-    assert_eq!(claim.batch_id.hex(), "ffa178c4297787ed947e6a2b79816f6f2755f0cb5e249e32ea75817dc514187d");
+    assert_eq!(
+        claim.batch_id.hex(),
+        "ffa178c4297787ed947e6a2b79816f6f2755f0cb5e249e32ea75817dc514187d"
+    );
 }
 
 #[test]
 fn mutated_receipt_and_batch_are_rejected() {
     let mut claim = parse_bridge_tsv(REAL_ZKTL_FIXTURE).unwrap();
     claim.receipts[0].economic_mutation = false;
-    assert_eq!(claim.inspect_strict(), Err(ClaimError::Mismatch("receiptId")));
+    assert_eq!(
+        claim.inspect_strict(),
+        Err(ClaimError::Mismatch("receiptId"))
+    );
     let mut claim = parse_bridge_tsv(REAL_ZKTL_FIXTURE).unwrap();
     claim.batch_id = claim.receipts[0].receipt_id;
     assert_eq!(claim.inspect_strict(), Err(ClaimError::Mismatch("batchId")));
@@ -37,10 +43,16 @@ fn never_accept_audit_only_or_colliding_type() {
 fn duplicate_transaction_and_root_discontinuity_are_rejected() {
     let mut claim = parse_bridge_tsv(REAL_ZKTL_FIXTURE).unwrap();
     claim.receipts[1].txid = claim.receipts[0].txid;
-    assert_eq!(claim.inspect_strict(), Err(ClaimError::Invalid("duplicate transaction ID")));
+    assert_eq!(
+        claim.inspect_strict(),
+        Err(ClaimError::Invalid("duplicate transaction ID"))
+    );
     let mut claim = parse_bridge_tsv(REAL_ZKTL_FIXTURE).unwrap();
     claim.receipts[1].old_state_root = claim.first_state_root;
-    assert_eq!(claim.inspect_strict(), Err(ClaimError::Mismatch("root chain")));
+    assert_eq!(
+        claim.inspect_strict(),
+        Err(ClaimError::Mismatch("root chain"))
+    );
 }
 
 #[test]
