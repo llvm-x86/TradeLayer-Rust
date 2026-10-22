@@ -1,5 +1,7 @@
 # Stage 8: One replay domain for registry and token balances
 
+**Stage 10 extension:** See [CHANNEL_ESCROW.md](CHANNEL_ESCROW.md) for the subsequent simulation-only channel commit, delayed withdrawal, and channel transfer operations (types 4, 21, 22). The table below describes the original Stage 8 slice.
+
 Source basis: [legacy TradeLayer.js](https://github.com/patrickdugan/tradelayer.js) and the [zkTL kernel inventory](https://github.com/patrickdugan/zkTL/blob/main/docs/PROTOCOL_SWEEP.md). The new `execution` module is a **simulation-grade, unverified coordinator** for transactions 0, 1, 2, 7–9, 11–15. Its purpose is to demonstrate deterministic state transitions, atomicity, and shared replay semantics while the chain-specific verification surface remains unfinished.
 
 ## Operation mapping

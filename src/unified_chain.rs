@@ -201,6 +201,9 @@ impl UnifiedChainState {
         if !transactions.is_empty() {
             staged.apply_batch_unverified(transactions)?;
         }
+        // Mature queued withdrawals at the end of every authenticated block,
+        // including blocks with no TradeLayer protocol transactions.
+        staged.finalize_block_unverified(block.header.height)?;
         self.history.push_back(Prior {
             tip: self.tip,
             state: self.state.clone(),

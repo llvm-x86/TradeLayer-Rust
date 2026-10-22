@@ -6,7 +6,7 @@ This implementation is a **pure accounting research component**, not a consensus
 
 - Property keys are nonzero `u32` IDs; account keys are opaque printable non-space ASCII strings of up to 90 bytes.
 - Quantities use **`u128` atomic units**. For the draft wire-v1 direct send, the parser produces a `u64` atom count; conversion to `u128` is exact.
-- The ledger currently models **available balances only**. Vesting, margin, reserved, channel, native, synthetic, procedural, compliance and administrative activation states need separate, verified specifications.
+- The ledger models available balances and Stage 10's restricted two-column **channel escrow and reserved withdrawals**. Vesting, margin, native, synthetic, procedural and compliance details still need independent specifications. See [CHANNEL_ESCROW.md](CHANNEL_ESCROW.md).
 - A property carries a supply counter, a designated issuer identity, and either `Fixed` or `Managed` supply classification. The existing JS implementation has additional behavior that is not included here.
 - `CreateProperty` issues an initial positive supply to the issuer. `Transfer` moves atoms without altering supply. For managed properties, `Mint` credits the recipient and increases supply while `Burn` debits the **issuer's own balance** and decreases supply. Each operation requires a positive amount.
 - The caller supplies a 32-byte `TxId`. A later chain adapter must derive it from **verified** transaction bytes; accepting arbitrary client-provided transaction IDs would make replay protection meaningless.
@@ -16,10 +16,10 @@ This implementation is a **pure accounting research component**, not a consensus
 For each property ID `p`, always require:
 
 ```text
-supply_atoms[p] == sum(available_atoms[(p, account)] for every account)
+supply_atoms[p] == sum(available[p, account]) + sum(channel_escrow[p, channel, side]) + sum(pending_reserved[p, request_txid])
 ```
 
-All sums and increments use checked arithmetic. No negative balances, absent-property balances, or stored zero entries are permitted. Duplicate transaction IDs are rejected. Self-transfers require sufficient funds, consume a transaction ID, and leave all accounting unchanged.
+All sums and increments use checked arithmetic. No negative balances, absent-property balances, or stored zero entries are permitted. Channel owner assignments and pending withdrawal records are included in snapshot conservation checks. Duplicate transaction IDs are rejected. Self-transfers require sufficient funds, consume a transaction ID, and leave all accounting unchanged.
 
 `Ledger::apply_batch` stages an ordered batch on an independent clone. Any failure aborts the **entire batch**, including earlier created properties and replay markers. This is deliberately simple for now and scales as O(state size) per batch. It is **not** suitable for high-throughput replay until a transactional storage layer and deterministic undo journal are designed and audited.
 

@@ -6,11 +6,15 @@
 //! Never connect it to live funds without a independently audited chain adapter.
 
 use crate::chain::ChainId;
-use crate::ledger::{AccountId, Ledger, LedgerError, Operation, PropertyId, PropertyKind, TxId};
+use crate::ledger::{
+    AccountId, ChannelSide, Ledger, LedgerError, Operation, PropertyId, PropertyKind, TxId,
+};
 use crate::registry::{Registry, RegistryAction, RegistryError, RegistryTx};
 use std::collections::BTreeSet;
 
 pub const MAX_UNVERIFIED_BATCH: usize = 10_000;
+/// Legacy queue processing begins seven blocks after a type-21 withdrawal request.
+pub const CHANNEL_WITHDRAWAL_DELAY_BLOCKS: u64 = 7;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProtocolOperation {
@@ -34,6 +38,29 @@ pub enum ProtocolOperation {
         id: PropertyId,
         amount_atoms: u128,
     },
+    /// Type 4, research subset: caller claims column membership; no pay/clearlist flags.
+    ChannelCommit {
+        id: PropertyId,
+        channel: AccountId,
+        side: ChannelSide,
+        amount_atoms: u128,
+    },
+    /// Type 21, research subset: reserve one property's withdrawal for seven blocks.
+    ChannelWithdraw {
+        id: PropertyId,
+        channel: AccountId,
+        side: ChannelSide,
+        amount_atoms: u128,
+    },
+    /// Type 22, research subset: actor is the source CHANNEL, not the owner.
+    /// Destination inherits the current participant of the source column.
+    ChannelTransfer {
+        id: PropertyId,
+        from_side: ChannelSide,
+        to_channel: AccountId,
+        to_side: ChannelSide,
+        amount_atoms: u128,
+    },
 }
 
 impl ProtocolOperation {
@@ -44,6 +71,9 @@ impl ProtocolOperation {
             Self::Send { .. } => 2,
             Self::Grant { .. } => 11,
             Self::Redeem { .. } => 12,
+            Self::ChannelCommit { .. } => 4,
+            Self::ChannelWithdraw { .. } => 21,
+            Self::ChannelTransfer { .. } => 22,
         }
     }
 }
@@ -253,9 +283,85 @@ impl ProtocolState {
                     },
                 )?;
             }
+            ProtocolOperation::ChannelCommit {
+                id,
+                channel,
+                side,
+                amount_atoms,
+            } => {
+                self.assert_activated(ty, height)?;
+                self.ledger.apply(
+                    txid,
+                    Operation::ChannelCommit {
+                        id,
+                        owner: actor,
+                        channel,
+                        side,
+                        amount_atoms,
+                    },
+                )?;
+            }
+            ProtocolOperation::ChannelWithdraw {
+                id,
+                channel,
+                side,
+                amount_atoms,
+            } => {
+                self.assert_activated(ty, height)?;
+                let unlock_height = height
+                    .checked_add(CHANNEL_WITHDRAWAL_DELAY_BLOCKS)
+                    .ok_or(ExecutionError::InvalidHeight)?;
+                self.ledger.apply(
+                    txid,
+                    Operation::ChannelWithdraw {
+                        id,
+                        owner: actor,
+                        channel,
+                        side,
+                        amount_atoms,
+                        unlock_height,
+                    },
+                )?;
+            }
+            ProtocolOperation::ChannelTransfer {
+                id,
+                from_side,
+                to_channel,
+                to_side,
+                amount_atoms,
+            } => {
+                self.assert_activated(ty, height)?;
+                // For legacy type 22 the signed actor is the source channel.
+                self.ledger.apply(
+                    txid,
+                    Operation::ChannelTransfer {
+                        id,
+                        from_channel: actor,
+                        from_side,
+                        to_channel,
+                        to_side,
+                        amount_atoms,
+                    },
+                )?;
+            }
         }
         self.last_height = Some(height);
         Ok(())
+    }
+
+    /// After processing all operations for a block, mature withdrawals even
+    /// when the block contains no TradeLayer transactions. Reorgs restore the
+    /// pre-block unified snapshot including pending reserves.
+    pub fn finalize_block_unverified(&mut self, height: u64) -> Result<usize, ExecutionError> {
+        if height == 0 {
+            return Err(ExecutionError::InvalidHeight);
+        }
+        if self.last_height.is_some_and(|previous| height < previous) {
+            return Err(ExecutionError::HeightRegression);
+        }
+        self.ledger
+            .settle_due_withdrawals_unverified(height)
+            .map_err(ExecutionError::Ledger)
     }
 }
 

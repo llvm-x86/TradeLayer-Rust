@@ -147,3 +147,27 @@ See `docs/UNIFIED_EXECUTION.md`.
 **Future:** versioned chain-authorization adapter, persistence compaction,
 full historical replay, and independent cryptographic state root/proof
 verification. [Design details](docs/UNIFIED_CHAIN_CHECKPOINTS.md).
+
+
+## Stage 10: Channel escrow, transfers and reserved withdrawal settlement (prototype)
+
+- Execute typed versions of legacy 4 (commit), 21 (withdraw request), and
+  22 (channel-to-channel transfer) on the unified replay coordinator.
+- Conserve supply across available balances, individual channel-column
+  escrow, and reserved pending withdrawals using checked arithmetic.
+- Enforce at most two distinct channel participants; reject unauthorized
+  column moves and preserve owner identity on inter-channel transfers.
+- Queue one-property requests to mature at H+7 and process those releases
+  after each unified chain block, even a block with no TL transactions.
+  Complete rollback restores the queue and amounts. Legacy JavaScript does
+  not reserve at request time; this deliberate difference requires further
+  differential testing before historical consensus parity.
+- Preserve TLL v1 for channel-free states; read/write canonical TLL v2
+  including channels and pending reserves through existing TLPS/TLUC
+  checkpoints. Rust remains dependency-free.
+
+**Blocked:** on-chain authorization, legacy column tie-breaking, whitelist
+and payment-reference options, withdraw-all, clearing/PNL, native balances,
+accepted-chain fixtures, and Cairo/STWO economic proof verification.
+
+See [docs/CHANNEL_ESCROW.md](docs/CHANNEL_ESCROW.md).

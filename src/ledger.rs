@@ -80,7 +80,7 @@ impl TxId {
 }
 
 /// Property classes supported by this initial accounting model.
-/// Native/vesting/synthetic/procedural and channel balances are out of scope.
+/// Native/vesting/synthetic/procedural balances are out of scope; channels are an offline model.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PropertyKind {
     Fixed,
@@ -123,6 +123,32 @@ pub enum Operation {
         issuer: AccountId,
         amount_atoms: u128,
     },
+    /// Type 4: move available tokens into an explicitly selected channel column.
+    ChannelCommit {
+        id: PropertyId,
+        owner: AccountId,
+        channel: AccountId,
+        side: ChannelSide,
+        amount_atoms: u128,
+    },
+    /// Type 21: reserve escrow for release at a separately checked block height.
+    ChannelWithdraw {
+        id: PropertyId,
+        owner: AccountId,
+        channel: AccountId,
+        side: ChannelSide,
+        amount_atoms: u128,
+        unlock_height: u64,
+    },
+    /// Type 22: move escrow to another channel while retaining the column owner.
+    ChannelTransfer {
+        id: PropertyId,
+        from_channel: AccountId,
+        from_side: ChannelSide,
+        to_channel: AccountId,
+        to_side: ChannelSide,
+        amount_atoms: u128,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -144,6 +170,13 @@ pub enum LedgerError {
     SupplyMismatch(PropertyId),
     BalanceWithoutProperty(PropertyId),
     NonCanonicalZeroBalance(PropertyId),
+    UnknownChannel(AccountId),
+    ChannelSideOccupied(AccountId),
+    ChannelSideMismatch(AccountId),
+    SameChannel,
+    MalformedChannel(PropertyId),
+    MalformedPendingWithdrawal(PropertyId),
+    InvalidWithdrawalHeight,
 }
 
 impl fmt::Display for LedgerError {
@@ -176,6 +209,17 @@ impl fmt::Display for LedgerError {
             Self::NonCanonicalZeroBalance(id) => {
                 write!(f, "zero balance stored for property {}", id.get())
             }
+            Self::UnknownChannel(id) => write!(f, "unknown channel {}", id.as_str()),
+            Self::ChannelSideOccupied(id) => write!(f, "channel {} column occupied", id.as_str()),
+            Self::ChannelSideMismatch(id) => {
+                write!(f, "channel {} participant mismatch", id.as_str())
+            }
+            Self::SameChannel => write!(f, "channel transfer requires distinct channels"),
+            Self::MalformedChannel(id) => write!(f, "malformed channel balance {}", id.get()),
+            Self::MalformedPendingWithdrawal(id) => {
+                write!(f, "malformed pending withdrawal {}", id.get())
+            }
+            Self::InvalidWithdrawalHeight => write!(f, "invalid withdrawal maturity height"),
         }
     }
 }
@@ -187,6 +231,8 @@ impl std::error::Error for LedgerError {}
 pub struct Ledger {
     properties: BTreeMap<PropertyId, Property>,
     available: BTreeMap<(PropertyId, AccountId), u128>,
+    channels: BTreeMap<AccountId, ChannelState>,
+    pending_withdrawals: BTreeMap<TxId, PendingWithdrawal>,
     processed: BTreeSet<TxId>,
 }
 
@@ -230,7 +276,7 @@ impl Ledger {
             if !pending.processed.insert(txid) {
                 return Err(LedgerError::AlreadyProcessed(txid));
             }
-            pending.execute(op)?;
+            pending.execute(txid, op)?;
         }
         pending.verify_conservation()?;
         *self = pending;
@@ -266,7 +312,7 @@ impl Ledger {
         Ok(property)
     }
 
-    fn execute(&mut self, operation: Operation) -> Result<(), LedgerError> {
+    fn execute(&mut self, txid: TxId, operation: Operation) -> Result<(), LedgerError> {
         match operation {
             Operation::CreateProperty {
                 id,
@@ -374,6 +420,46 @@ impl Ledger {
                 self.put_balance(id, issuer, balance - amount_atoms);
                 Ok(())
             }
+            Operation::ChannelCommit {
+                id,
+                owner,
+                channel,
+                side,
+                amount_atoms,
+            } => self.commit_channel(id, owner, channel, side, amount_atoms),
+            Operation::ChannelWithdraw {
+                id,
+                owner,
+                channel,
+                side,
+                amount_atoms,
+                unlock_height,
+            } => self.request_channel_withdrawal(
+                txid,
+                PendingWithdrawal {
+                    channel,
+                    side,
+                    owner,
+                    id,
+                    atoms: amount_atoms,
+                    unlock_height,
+                },
+            ),
+            Operation::ChannelTransfer {
+                id,
+                from_channel,
+                from_side,
+                to_channel,
+                to_side,
+                amount_atoms,
+            } => self.transfer_channel(
+                id,
+                from_channel,
+                from_side,
+                to_channel,
+                to_side,
+                amount_atoms,
+            ),
         }
     }
 
@@ -395,6 +481,7 @@ impl Ledger {
                     .ok_or(LedgerError::ArithmeticOverflow)?,
             );
         }
+        self.add_channel_conservation(&mut sums)?;
         for (id, property) in &self.properties {
             let owned = sums.get(id).copied().unwrap_or(0);
             if owned != property.total_supply_atoms {
@@ -484,6 +571,8 @@ impl Ledger {
             self.properties.len(),
             self.available.len(),
             self.processed.len(),
+            self.channels.len(),
+            self.pending_withdrawals.len(),
         ]
         .iter()
         .any(|&count| count > MAX_SNAPSHOT_ENTRIES)
@@ -491,7 +580,12 @@ impl Ledger {
             return Err(SnapshotError::InvalidFormat("too many ledger records"));
         }
         let mut bytes = Vec::new();
-        bytes.extend_from_slice(b"TLL\x01");
+        let channel_version = !self.channels.is_empty() || !self.pending_withdrawals.is_empty();
+        bytes.extend_from_slice(if channel_version {
+            b"TLL\x02"
+        } else {
+            b"TLL\x01"
+        });
         bytes.extend_from_slice(&(self.properties.len() as u32).to_be_bytes());
         for (id, property) in &self.properties {
             bytes.extend_from_slice(&id.get().to_be_bytes());
@@ -512,6 +606,9 @@ impl Ledger {
         for txid in &self.processed {
             bytes.extend_from_slice(&txid.as_bytes());
         }
+        if channel_version {
+            self.append_channel_snapshot(&mut bytes)?;
+        }
         if bytes.len() > MAX_CHECKPOINT_BYTES - 4 {
             return Err(SnapshotError::InvalidFormat("ledger checkpoint too large"));
         }
@@ -524,9 +621,11 @@ impl Ledger {
         use crate::codec::{verify_crc, Cursor};
         let payload = verify_crc(input).map_err(snapshot_codec_error)?;
         let mut reader = Cursor::new(payload);
-        if &reader.fixed::<4>().map_err(snapshot_codec_error)? != b"TLL\x01" {
-            return Err(SnapshotError::InvalidFormat("ledger checkpoint version"));
-        }
+        let channel_version = match reader.fixed::<4>().map_err(snapshot_codec_error)? {
+            [b'T', b'L', b'L', 1] => false,
+            [b'T', b'L', b'L', 2] => true,
+            _ => return Err(SnapshotError::InvalidFormat("ledger checkpoint version")),
+        };
         let mut state = Self::new();
         let count = snapshot_count(&mut reader)?;
         let mut last = None;
@@ -580,10 +679,16 @@ impl Ledger {
             last = Some(id);
             state.processed.insert(id);
         }
+        if channel_version {
+            state.read_channel_snapshot(&mut reader)?;
+        }
         reader.end().map_err(snapshot_codec_error)?;
         state
             .verify_conservation()
             .map_err(SnapshotError::InvalidLedger)?;
+        if state.snapshot_bytes()?.as_slice() != input {
+            return Err(SnapshotError::InvalidFormat("noncanonical ledger snapshot"));
+        }
         Ok(state)
     }
 }
@@ -698,3 +803,6 @@ mod snapshot_tests {
         assert!(Ledger::from_snapshot_bytes(&extra).is_err());
     }
 }
+
+// Escrow book and pending withdrawal checkpoint extension.
+include!("ledger_channels_impl.rs");

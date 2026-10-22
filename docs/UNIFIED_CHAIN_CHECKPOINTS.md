@@ -61,7 +61,7 @@ TradeLayer transaction advances the tip without changing economic state.
 
 Full archival Litecoin/Bitcoin replay and a real authenticated protocol adapter,
 chain-specific address and signature verification, UTXO ownership, activation
-rules, full legacy opcode translation, native/vesting/channel balance support,
+rules, full legacy opcode translation, native/vesting balance support,
 full deterministic state-root mapping to zkTL, cryptographic proof verification,
 and economically complete Cairo transition constraints remain future work.
 
