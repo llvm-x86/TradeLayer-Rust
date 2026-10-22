@@ -233,11 +233,7 @@ fn prefers_candidate(candidate: Work256, incumbent: Work256) -> bool {
 fn describe_change(old: &[Tip], new: &[Tip]) -> ObservedBestChange {
     // Both paths are built from the same privately held graph root. No
     // external claim or unauthenticated ancestor enters this comparison.
-    let common = old
-        .iter()
-        .zip(new)
-        .take_while(|(a, b)| a == b)
-        .count();
+    let common = old.iter().zip(new).take_while(|(a, b)| a == b).count();
     assert!(common > 0, "paths must share their observed root");
     ObservedBestChange {
         previous: *old.last().expect("path has root"),
