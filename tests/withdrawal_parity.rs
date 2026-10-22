@@ -5,7 +5,8 @@ use tradelayer_core::execution::{ExecutionError, ProtocolOperation, ProtocolStat
 use tradelayer_core::ledger::{AccountId, ChannelSide, LedgerError, PropertyId, PropertyKind, TxId};
 use tradelayer_core::registry::RegistryAction;
 use tradelayer_core::withdrawal_parity::{
-    LegacyWithdrawalShadow, ShadowError, ShadowEvent, ShadowResolution, ShadowVerdict,
+    audit_legacy_type21_amount, LegacyAmountError, LegacyWithdrawalShadow, ShadowError, ShadowEvent,
+    ShadowResolution, ShadowVerdict, MAX_EXACT_LEGACY_JS_ATOMS,
 };
 
 fn a(name: &str) -> AccountId {
@@ -240,4 +241,26 @@ fn oracle_rejects_unbounded_request_maturity_atomically() {
         Err(ShadowError::ArithmeticOverflow)
     );
     assert_eq!(js, before);
+}
+
+
+#[test]
+fn legacy_type21_wire_base_mismatch_agrees_with_independent_node_vectors() {
+    let fixtures = include_str!("../fixtures/withdrawal_codec_vectors.tsv");
+    let mut count = 0;
+    for line in fixtures.lines().filter(|line| !line.starts_with('#') && !line.is_empty()) {
+        let fields: Vec<_> = line.split('\t').collect();
+        assert_eq!(fields.len(), 3);
+        let atoms: u128 = fields[0].parse().unwrap();
+        let expected_decoded: u128 = fields[2].parse().unwrap();
+        let finding = audit_legacy_type21_amount(atoms).unwrap();
+        assert_eq!(finding.decimal_encoded, fields[1]);
+        assert_eq!(finding.base36_decoded_atoms, expected_decoded);
+        count += 1;
+    }
+    assert!(count >= 6);
+    assert_eq!(
+        audit_legacy_type21_amount(MAX_EXACT_LEGACY_JS_ATOMS + 1),
+        Err(LegacyAmountError::UnsafeJsIntegerRange)
+    );
 }
