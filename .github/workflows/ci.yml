@@ -57,10 +57,10 @@ jobs:
           tmp_dir="$(mktemp -d)"
           trap 'rm -rf "$tmp_dir"' EXIT
           python3 scripts/make_synthetic_tlpt_bridge.py "$tmp_dir"
-          cargo run --locked --bin tradelayer-root-reconcile -- \\
-            "$tmp_dir/synthetic_tlpt.tsv" fixtures/zkTL_sample_batch.tsv \\
-            "$tmp_dir/synthetic_observations.tsv" \\
-            "$(printf '0b%.0s' {1..32})" 132899 "$(printf '13%.0s' {1..32})" \\
+          cargo run --locked --bin tradelayer-root-reconcile -- \
+            "$tmp_dir/synthetic_tlpt.tsv" fixtures/zkTL_sample_batch.tsv \
+            "$tmp_dir/synthetic_observations.tsv" \
+            "$(printf '0b%.0s' {1..32})" 132899 "$(printf '13%.0s' {1..32})" \
             132907 "$(printf '1b%.0s' {1..32})" > "$tmp_dir/report"
           grep -Fxq 'root_alignment=AUDIT_ONLY' "$tmp_dir/report"
           grep -Fxq 'transaction_inclusion=UNVERIFIED' "$tmp_dir/report"
