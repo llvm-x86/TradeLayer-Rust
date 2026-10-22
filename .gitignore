@@ -4,3 +4,6 @@
 .env.*
 !.env.example
 .DS_Store
+
+# Private, node-backed archival observations and differential logs
+/archive/
