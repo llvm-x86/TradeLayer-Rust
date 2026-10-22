@@ -78,7 +78,7 @@ fn exceeds(left: &[u8; 32], right: &[u8; 32]) -> bool {
 
 /// Strict canonical Bitcoin compact target, limited to representable 256-bit
 /// positive targets. No consensus transition difficulty schedule is checked.
-fn compact_target_unbounded(bits: u32) -> Result<[u8; 32], InclusionError> {
+pub(crate) fn compact_target_unbounded(bits: u32) -> Result<[u8; 32], InclusionError> {
     let size = (bits >> 24) as usize;
     let mantissa = bits & 0x007fffff;
     if bits & 0x00800000 != 0 || mantissa == 0 || size == 0 || size > 32 {
