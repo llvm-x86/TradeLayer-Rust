@@ -209,3 +209,23 @@ fn forged_checkpoint_shape_and_cross_anchor_comparison_fail_closed() {
         Err(WorkError::NotCommonCheckpoint)
     ));
 }
+
+
+#[test]
+fn twenty_five_python_bigint_vectors_cover_full_u256_chainwork_width() {
+    let mut checked = 0;
+    for row in include_str!("../fixtures/bitcoin_chainwork_vectors.tsv")
+        .lines()
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+    {
+        let (bits, expected) = row.split_once('\t').expect("two columns");
+        let bits = u32::from_str_radix(bits, 16).unwrap();
+        let actual = mainnet_block_proof_work(bits).unwrap();
+        assert_eq!(hex(&actual.to_be_bytes()), expected);
+        checked += 1;
+    }
+    assert_eq!(checked, 25);
+    for bits in [0u32, 0x1d80ffff, 0x1d000000, 0x1e00ffff, 0x2100ffff] {
+        assert!(mainnet_block_proof_work(bits).is_err(), "invalid bits: {bits:08x}");
+    }
+}
