@@ -1,5 +1,5 @@
-//! Canonical, self-checking checkpoint for the *whole* registry+ledger state.
-//! This file is included inside execution.rs to keep state fields private.
+// Canonical, self-checking checkpoint for the *whole* registry+ledger state.
+// This file is included inside execution.rs to keep state fields private.
 use crate::codec::{verify_crc, with_crc, Cursor, MAX_CHECKPOINT_BYTES};
 use crate::ledger::SnapshotError as LedgerSnapshotError;
 use crate::registry::RegistrySnapshotError;
@@ -19,7 +19,9 @@ impl core::fmt::Display for ProtocolSnapshotError {
 }
 impl std::error::Error for ProtocolSnapshotError {}
 
-fn protocol_bad(s: &'static str) -> ProtocolSnapshotError { ProtocolSnapshotError::Invalid(s) }
+fn protocol_bad(s: &'static str) -> ProtocolSnapshotError {
+    ProtocolSnapshotError::Invalid(s)
+}
 fn write_embedded(out: &mut Vec<u8>, bytes: &[u8]) -> Result<(), ProtocolSnapshotError> {
     let n = u32::try_from(bytes.len()).map_err(|_| protocol_bad("embedded snapshot too large"))?;
     out.extend_from_slice(&n.to_be_bytes());
@@ -27,9 +29,15 @@ fn write_embedded(out: &mut Vec<u8>, bytes: &[u8]) -> Result<(), ProtocolSnapsho
     Ok(())
 }
 fn read_embedded<'a>(reader: &mut Cursor<'a>) -> Result<&'a [u8], ProtocolSnapshotError> {
-    let n = reader.u32().map_err(|_| protocol_bad("embedded size truncated"))? as usize;
-    if n > MAX_CHECKPOINT_BYTES { return Err(protocol_bad("embedded snapshot too large")); }
-    reader.take(n).map_err(|_| protocol_bad("embedded snapshot truncated"))
+    let n = reader
+        .u32()
+        .map_err(|_| protocol_bad("embedded size truncated"))? as usize;
+    if n > MAX_CHECKPOINT_BYTES {
+        return Err(protocol_bad("embedded snapshot too large"));
+    }
+    reader
+        .take(n)
+        .map_err(|_| protocol_bad("embedded snapshot truncated"))
 }
 
 impl ProtocolState {
@@ -38,62 +46,127 @@ impl ProtocolState {
     pub fn snapshot_bytes(&self) -> Result<Vec<u8>, ProtocolSnapshotError> {
         let mut out = PROTOCOL_MAGIC.to_vec();
         out.extend_from_slice(&self.chain.0);
-        write_embedded(&mut out, &self.registry.snapshot_bytes().map_err(ProtocolSnapshotError::Registry)?)?;
-        write_embedded(&mut out, &self.ledger.snapshot_bytes().map_err(ProtocolSnapshotError::Ledger)?)?;
-        let count = u32::try_from(self.processed.len()).map_err(|_| protocol_bad("too many txids"))?;
+        write_embedded(
+            &mut out,
+            &self
+                .registry
+                .snapshot_bytes()
+                .map_err(ProtocolSnapshotError::Registry)?,
+        )?;
+        write_embedded(
+            &mut out,
+            &self
+                .ledger
+                .snapshot_bytes()
+                .map_err(ProtocolSnapshotError::Ledger)?,
+        )?;
+        let count =
+            u32::try_from(self.processed.len()).map_err(|_| protocol_bad("too many txids"))?;
         out.extend_from_slice(&count.to_be_bytes());
-        for txid in &self.processed { out.extend_from_slice(&txid.as_bytes()); }
+        for txid in &self.processed {
+            out.extend_from_slice(&txid.as_bytes());
+        }
         match self.last_height {
             None => out.push(0),
-            Some(height) => { out.push(1); out.extend_from_slice(&height.to_be_bytes()); },
+            Some(height) => {
+                out.push(1);
+                out.extend_from_slice(&height.to_be_bytes());
+            }
         }
         with_crc(out).map_err(|_| protocol_bad("protocol snapshot too large"))
     }
 
     pub fn from_snapshot_bytes(
-        bytes: &[u8], expected_chain: ChainId, expected_admin: &AccountId,
+        bytes: &[u8],
+        expected_chain: ChainId,
+        expected_admin: &AccountId,
     ) -> Result<Self, ProtocolSnapshotError> {
-        let data = verify_crc(bytes).map_err(|_| protocol_bad("protocol snapshot checksum/size"))?;
+        let data =
+            verify_crc(bytes).map_err(|_| protocol_bad("protocol snapshot checksum/size"))?;
         let mut reader = Cursor::new(data);
-        if reader.fixed::<5>().map_err(|_| protocol_bad("protocol magic truncated"))? != *PROTOCOL_MAGIC {
+        if reader
+            .fixed::<5>()
+            .map_err(|_| protocol_bad("protocol magic truncated"))?
+            != *PROTOCOL_MAGIC
+        {
             return Err(protocol_bad("wrong protocol version"));
         }
-        let chain = ChainId(reader.fixed::<32>().map_err(|_| protocol_bad("chain id truncated"))?);
-        if chain != expected_chain { return Err(protocol_bad("wrong chain")); }
+        let chain = ChainId(
+            reader
+                .fixed::<32>()
+                .map_err(|_| protocol_bad("chain id truncated"))?,
+        );
+        if chain != expected_chain {
+            return Err(protocol_bad("wrong chain"));
+        }
         let registry = Registry::from_snapshot_bytes(read_embedded(&mut reader)?, expected_admin)
             .map_err(ProtocolSnapshotError::Registry)?;
         let ledger = Ledger::from_snapshot_bytes(read_embedded(&mut reader)?)
             .map_err(ProtocolSnapshotError::Ledger)?;
-        let count = reader.u32().map_err(|_| protocol_bad("processed count truncated"))? as usize;
-        if count > MAX_CHECKPOINT_BYTES / 32 { return Err(protocol_bad("processed count excessive")); }
+        let count = reader
+            .u32()
+            .map_err(|_| protocol_bad("processed count truncated"))? as usize;
+        if count > MAX_CHECKPOINT_BYTES / 32 {
+            return Err(protocol_bad("processed count excessive"));
+        }
         let mut processed = BTreeSet::new();
         for _ in 0..count {
-            let txid = TxId::from_bytes(reader.fixed::<32>().map_err(|_| protocol_bad("processed txid truncated"))?);
-            if !processed.insert(txid) { return Err(protocol_bad("duplicate global txid")); }
+            let txid = TxId::from_bytes(
+                reader
+                    .fixed::<32>()
+                    .map_err(|_| protocol_bad("processed txid truncated"))?,
+            );
+            if !processed.insert(txid) {
+                return Err(protocol_bad("duplicate global txid"));
+            }
         }
-        let last_height = match reader.u8().map_err(|_| protocol_bad("last height flag truncated"))? {
+        let last_height = match reader
+            .u8()
+            .map_err(|_| protocol_bad("last height flag truncated"))?
+        {
             0 => None,
-            1 => Some(reader.u64().map_err(|_| protocol_bad("last height truncated"))?),
+            1 => Some(
+                reader
+                    .u64()
+                    .map_err(|_| protocol_bad("last height truncated"))?,
+            ),
             _ => return Err(protocol_bad("noncanonical height option")),
         };
-        reader.end().map_err(|_| protocol_bad("trailing protocol bytes"))?;
+        reader
+            .end()
+            .map_err(|_| protocol_bad("trailing protocol bytes"))?;
         if last_height == Some(0) || (processed.is_empty() != last_height.is_none()) {
             return Err(protocol_bad("inconsistent transaction height"));
         }
-        if registry.last_height().is_some_and(|h| last_height.is_none_or(|v| h > v)) {
+        if registry
+            .last_height()
+            .is_some_and(|h| last_height.is_none_or(|v| h > v))
+        {
             return Err(protocol_bad("registry ahead of protocol"));
         }
         // Every global replay marker must belong to exactly one component.
         // This catches cross-component replay and inconsistent snapshots.
-        let component_sum = registry.processed_count().checked_add(ledger.processed_count())
+        let component_sum = registry
+            .processed_count()
+            .checked_add(ledger.processed_count())
             .ok_or_else(|| protocol_bad("processed count overflow"))?;
-        if component_sum != count || processed.iter().any(|txid| {
-            registry.is_processed(*txid) == ledger.is_processed(*txid)
-        }) {
+        if component_sum != count
+            || processed
+                .iter()
+                .any(|txid| registry.is_processed(*txid) == ledger.is_processed(*txid))
+        {
             return Err(protocol_bad("component/global replay mismatch"));
         }
-        let state = Self { chain, registry, ledger, processed, last_height };
-        if state.snapshot_bytes()? != bytes { return Err(protocol_bad("noncanonical protocol encoding")); }
+        let state = Self {
+            chain,
+            registry,
+            ledger,
+            processed,
+            last_height,
+        };
+        if state.snapshot_bytes()? != bytes {
+            return Err(protocol_bad("noncanonical protocol encoding"));
+        }
         Ok(state)
     }
 }
