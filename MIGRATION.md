@@ -221,3 +221,22 @@ chain authentication adapter, legacy semantic reconciliation, types
 economic proofs remain unfinished.
 
 See [docs/CHANNEL_SETTLEMENT.md](docs/CHANNEL_SETTLEMENT.md).
+
+
+## Stage 13: Independent economic evidence gate for channel settlements
+
+- Add default-deny TrustedProtocolAdapter::authenticate_settlement_economics
+  for the Stage 12 type23 NET_SETTLE and type31 KING_SETTLE projections.
+- Bind the economic verifier input to raw transaction bytes, network,
+  block header, decoded operation, claimed actor and txid.
+- Distinguish SettlementAuthorization errors from ordinary chain errors.
+  Rejecting a mixed block preserves its entire previous unified state.
+- Add synthetic tests for default refusal, body/amount/height substitution,
+  explicit test-only allowlisting, and rollback of mixed blocks.
+
+**Still required:** independent on-chain verification, historical
+trade evidence, margin/PnL derivation, settlement-root agreement, and
+real Cairo/STWO proof verification. The interface cannot authenticate a
+dishonest external verifier.
+
+See [docs/SETTLEMENT_AUTHORIZATION.md](docs/SETTLEMENT_AUTHORIZATION.md).

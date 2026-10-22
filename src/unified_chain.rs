@@ -29,6 +29,19 @@ pub struct AuthenticatedProtocolOperation {
     pub operation: ProtocolOperation,
 }
 
+/// Full inputs for the settlement-specific *external* economic verifier.
+/// The extra gate must authenticate the referenced trades or a valid Cairo/
+/// STWO transition proof, with amount, direction, channel, source bytes,
+/// network, block context and txid all bound to one verified statement.
+/// Rust passes all inputs unchanged, but cannot verify their provenance.
+#[derive(Debug, Clone, Copy)]
+pub struct SettlementEvidenceContext<'a> {
+    pub chain: ChainId,
+    pub header: &'a BlockHeader,
+    pub raw_transaction: &'a [u8],
+    pub decoded: &'a AuthenticatedProtocolOperation,
+}
+
 /// `None` denotes an authenticated ordinary L1 transaction that carries no
 /// TradeLayer protocol operation; the block still advances the chain tip.
 ///
@@ -43,6 +56,19 @@ pub trait TrustedProtocolAdapter {
         header: &BlockHeader,
         raw_transaction: &[u8],
     ) -> Result<Option<AuthenticatedProtocolOperation>, String>;
+
+    /// Called for every Type 23 NET_SETTLE and Type 31 KING_SETTLE operation.
+    /// The default deliberately rejects them. Returning Ok is an explicit
+    /// trust assertion by the adapter implementation: it must independently
+    /// check economic authorization, not only operation decoding, balance
+    /// availability or self-reported SHA-256 settlement roots.
+    /// Tests may use a labelled synthetic verifier; none ships for production.
+    fn authenticate_settlement_economics(
+        &self,
+        _context: SettlementEvidenceContext<'_>,
+    ) -> Result<(), String> {
+        Err("independent settlement economic verifier unavailable".to_owned())
+    }
 }
 
 #[derive(Debug)]
@@ -55,6 +81,7 @@ pub enum UnifiedChainError {
     TransactionLimit,
     TransactionSize,
     Authentication(String),
+    SettlementAuthorization(String),
     Execution(ExecutionError),
     EmptyRollbackHistory,
     WrongRollbackTip,
@@ -188,6 +215,20 @@ impl UnifiedChainState {
                 .authenticate_and_decode(self.chain, &block.header, raw)
                 .map_err(UnifiedChainError::Authentication)?
             {
+                if matches!(
+                    &decoded.operation,
+                    ProtocolOperation::ChannelNetSettle { .. }
+                        | ProtocolOperation::ChannelKingSettle { .. }
+                ) {
+                    adapter
+                        .authenticate_settlement_economics(SettlementEvidenceContext {
+                            chain: self.chain,
+                            header: &block.header,
+                            raw_transaction: raw,
+                            decoded: &decoded,
+                        })
+                        .map_err(UnifiedChainError::SettlementAuthorization)?;
+                }
                 transactions.push(UnverifiedTx {
                     chain: self.chain,
                     txid: decoded.txid,

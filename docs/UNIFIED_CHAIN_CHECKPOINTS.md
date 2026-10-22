@@ -40,6 +40,12 @@ There is **no production adapter** here. The tests use a synthetic adapter.
 external adapter makes these claims. That method name remains an explicit
 reminder that this Rust code itself does not authenticate transactions.
 
+Stage 13 adds a **default-deny economic evidence gate** for type 23 NET_SETTLE
+and type 31 KING_SETTLE. Adapters must explicitly verify the external trade
+and clearing evidence using the exact chain/tx/block operation context before
+those operations may enter unified block replay. See
+[SETTLEMENT_AUTHORIZATION.md](SETTLEMENT_AUTHORIZATION.md).
+
 Normal base-layer transactions may yield `None`: a block containing no relevant
 TradeLayer transaction advances the tip without changing economic state.
 

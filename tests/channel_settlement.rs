@@ -8,7 +8,8 @@ use tradelayer_core::ledger::{
 };
 use tradelayer_core::registry::RegistryAction;
 use tradelayer_core::unified_chain::{
-    AuthenticatedProtocolOperation, TrustedProtocolAdapter, UnifiedChainState,
+    AuthenticatedProtocolOperation, SettlementEvidenceContext, TrustedProtocolAdapter,
+    UnifiedChainError, UnifiedChainState,
 };
 
 fn chain() -> ChainId {
@@ -339,6 +340,9 @@ fn zero_net_claims_are_not_economically_mutated() {
 #[derive(Default)]
 struct FakeAdapter {
     entries: BTreeMap<u8, AuthenticatedProtocolOperation>,
+    // Synthetic only: in a real adapter, economic proofs must be independently
+    // derived from actual authenticated trades and source transaction bytes.
+    verified_economics: BTreeMap<(u8, u64, BlockId), AuthenticatedProtocolOperation>,
 }
 impl FakeAdapter {
     fn add(&mut self, number: u8, actor: &str, operation: ProtocolOperation) {
@@ -350,6 +354,15 @@ impl FakeAdapter {
                 operation,
             },
         );
+    }
+    fn authorize_synthetic_economics(&mut self, number: u8, height: u64, marker: u8) {
+        let statement = self
+            .entries
+            .get(&number)
+            .expect("synthetic operation registered")
+            .clone();
+        self.verified_economics
+            .insert((number, height, BlockId([marker; 32])), statement);
     }
 }
 impl TrustedProtocolAdapter for FakeAdapter {
@@ -370,6 +383,28 @@ impl TrustedProtocolAdapter for FakeAdapter {
             .cloned()
             .map(Some)
             .ok_or_else(|| "unknown synthetic input".to_owned())
+    }
+    fn authenticate_settlement_economics(
+        &self,
+        context: SettlementEvidenceContext<'_>,
+    ) -> Result<(), String> {
+        let number = *context
+            .raw_transaction
+            .first()
+            .ok_or_else(|| "empty synthetic settlement input".to_owned())?;
+        if context.chain != chain() || context.raw_transaction != [number] {
+            return Err("synthetic settlement network/source mismatch".to_owned());
+        }
+        if self
+            .verified_economics
+            .get(&(number, context.header.height, context.header.id))
+            != Some(context.decoded)
+        {
+            return Err(
+                "synthetic economic reference not authorized for exact block/operation".to_owned(),
+            );
+        }
+        Ok(())
     }
 }
 fn anchor() -> Tip {
@@ -400,6 +435,8 @@ fn unified_chain_checkpoint_and_reorg_restore_sweep_and_consumed_claims() {
     fake.add(5, "bob", commit(ChannelSide::B, 100));
     fake.add(6, "chan", claim(ChannelSide::A, 30, 40, 200));
     fake.add(7, "chan", claim(ChannelSide::B, 10, 41, 200));
+    fake.authorize_synthetic_economics(6, 104, 104);
+    fake.authorize_synthetic_economics(7, 105, 105);
     state
         .apply_block(&block(state.tip(), 101, &[1]), &fake)
         .unwrap();
@@ -433,6 +470,8 @@ fn unified_chain_checkpoint_and_reorg_restore_sweep_and_consumed_claims() {
         .unwrap()
     );
     fake.add(8, "chan", king(&preview, 104, 105));
+    fake.authorize_synthetic_economics(8, 106, 106);
+    fake.authorize_synthetic_economics(8, 106, 107);
     let prior = state.clone();
     state
         .apply_block(&block(state.tip(), 106, &[8]), &fake)
@@ -484,4 +523,134 @@ fn valid_crc_does_not_authorize_a_forged_receipt_root() {
     let new_crc = checksum(&bytes[..tail]);
     bytes[tail..].copy_from_slice(&new_crc.to_be_bytes());
     assert!(tradelayer_core::ledger::Ledger::from_snapshot_bytes(&bytes).is_err());
+}
+
+/// This adapter authenticates fake blocks/operations but leaves the new
+/// economic proof method at its default DENY implementation.
+struct NoEconomicVerifier<'a>(&'a FakeAdapter);
+impl TrustedProtocolAdapter for NoEconomicVerifier<'_> {
+    fn verify_block(&self, block: &CandidateBlock) -> Result<(), String> {
+        self.0.verify_block(block)
+    }
+    fn authenticate_and_decode(
+        &self,
+        chain: ChainId,
+        header: &BlockHeader,
+        raw: &[u8],
+    ) -> Result<Option<AuthenticatedProtocolOperation>, String> {
+        self.0.authenticate_and_decode(chain, header, raw)
+    }
+}
+
+#[test]
+fn chain_only_adapter_denies_type23_and_type31_and_preserves_full_state() {
+    let mut state = UnifiedChainState::new_unverified(chain(), anchor(), a("admin"), 12).unwrap();
+    let mut fake = FakeAdapter::default();
+    fake.add(1, "admin", activation());
+    fake.add(2, "alice", issue(200));
+    fake.add(3, "alice", send_to_bob(100));
+    fake.add(4, "alice", commit(ChannelSide::A, 100));
+    fake.add(5, "bob", commit(ChannelSide::B, 100));
+    fake.add(6, "chan", claim(ChannelSide::A, 30, 40, 200));
+    state
+        .apply_block(&block(state.tip(), 101, &[1]), &fake)
+        .unwrap();
+    state
+        .apply_block(&block(state.tip(), 102, &[2]), &fake)
+        .unwrap();
+    state
+        .apply_block(&block(state.tip(), 103, &[3, 4, 5]), &fake)
+        .unwrap();
+
+    let before = state.clone();
+    assert!(matches!(
+        state.apply_block(&block(state.tip(), 104, &[6]), &NoEconomicVerifier(&fake)),
+        Err(UnifiedChainError::SettlementAuthorization(_))
+    ));
+    assert_eq!(before, state);
+
+    // The explicit synthetic authorization is tied to txid, body, chain,
+    // height and block ID. Substitution of any one should reject the block.
+    fake.authorize_synthetic_economics(6, 104, 104);
+    let mut malformed = block(state.tip(), 104, &[6]);
+    malformed.raw_transactions[0] = vec![6, 6];
+    assert!(matches!(
+        state.apply_block(&malformed, &fake),
+        Err(UnifiedChainError::SettlementAuthorization(_))
+    ));
+    assert_eq!(before, state);
+    assert!(matches!(
+        state.apply_block(&block(state.tip(), 105, &[6]), &fake),
+        Err(UnifiedChainError::SettlementAuthorization(_))
+    ));
+    assert_eq!(before, state);
+
+    fake.add(6, "chan", claim(ChannelSide::A, 40, 40, 200));
+    assert!(matches!(
+        state.apply_block(&block(state.tip(), 104, &[6]), &fake),
+        Err(UnifiedChainError::SettlementAuthorization(_))
+    ));
+    assert_eq!(before, state);
+
+    fake.add(6, "chan", claim(ChannelSide::A, 30, 40, 200));
+    state
+        .apply_block(&block(state.tip(), 104, &[6]), &fake)
+        .unwrap();
+    assert_eq!(state.state().ledger().pending_net_settlement_count(), 1);
+
+    let preview = state
+        .state()
+        .ledger()
+        .preview_king_settlement_unverified(&a("chan"), p(), 104, 104, 105)
+        .unwrap();
+    fake.add(7, "chan", king(&preview, 104, 104));
+    let before_sweep = state.clone();
+    assert!(matches!(
+        state.apply_block(&block(state.tip(), 105, &[7]), &NoEconomicVerifier(&fake)),
+        Err(UnifiedChainError::SettlementAuthorization(_))
+    ));
+    assert_eq!(state, before_sweep);
+    fake.authorize_synthetic_economics(7, 105, 105);
+    state
+        .apply_block(&block(state.tip(), 105, &[7]), &fake)
+        .unwrap();
+    assert_balances(state.state(), 70, 130);
+    state.rollback_tip(state.tip()).unwrap();
+    assert_eq!(state, before_sweep);
+}
+
+#[test]
+fn economic_proof_denial_reverts_earlier_operations_in_same_block() {
+    let mut state = UnifiedChainState::new_unverified(chain(), anchor(), a("admin"), 12).unwrap();
+    let mut fake = FakeAdapter::default();
+    fake.add(1, "admin", activation());
+    fake.add(2, "alice", issue(200));
+    fake.add(3, "alice", send_to_bob(100));
+    fake.add(4, "alice", commit(ChannelSide::A, 100));
+    fake.add(5, "bob", commit(ChannelSide::B, 100));
+    fake.add(6, "chan", claim(ChannelSide::A, 30, 40, 200));
+    fake.add(7, "alice", withdraw(ChannelSide::A, 20));
+    state
+        .apply_block(&block(state.tip(), 101, &[1]), &fake)
+        .unwrap();
+    state
+        .apply_block(&block(state.tip(), 102, &[2]), &fake)
+        .unwrap();
+    state
+        .apply_block(&block(state.tip(), 103, &[3, 4, 5]), &fake)
+        .unwrap();
+    let prior = state.clone();
+    assert!(matches!(
+        state.apply_block(&block(state.tip(), 104, &[7, 6]), &fake),
+        Err(UnifiedChainError::SettlementAuthorization(_))
+    ));
+    assert_eq!(state, prior);
+    assert_eq!(state.state().ledger().pending_withdrawal_count(), 0);
+    assert_eq!(state.state().ledger().pending_net_settlement_count(), 0);
+    fake.authorize_synthetic_economics(6, 104, 104);
+    state
+        .apply_block(&block(state.tip(), 104, &[7, 6]), &fake)
+        .unwrap();
+    assert_eq!(state.state().ledger().pending_withdrawal_count(), 1);
+    assert_eq!(state.state().ledger().pending_net_settlement_count(), 1);
 }
