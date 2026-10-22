@@ -5,6 +5,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod bitcoin_inclusion; // Bitcoin SHA256d header and tx Merkle checks; no full consensus.
 pub mod chain; // Trust-boundary and reversible block progression, prototype only.
 mod codec; // Bounded, checksummed snapshot codec.
 pub mod execution; // Prototype unified registry+ledger replay; input unverified.
