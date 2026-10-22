@@ -108,7 +108,9 @@ pub enum RegistryAction {
         low_1e4: Option<u128>,
         close_1e4: Option<u128>,
     },
-    CloseOracle { oracle_id: u32 },
+    CloseOracle {
+        oracle_id: u32,
+    },
 }
 
 impl RegistryAction {
@@ -271,7 +273,9 @@ impl Registry {
     }
 
     fn check_active(&self, tx_type: u8, height: u64) -> Result<(), RegistryError> {
-        let activation = self.activation(tx_type).ok_or(RegistryError::NotActive(tx_type))?;
+        let activation = self
+            .activation(tx_type)
+            .ok_or(RegistryError::NotActive(tx_type))?;
         if height <= activation.height {
             return Err(RegistryError::SameBlockActivation(tx_type));
         }
@@ -279,20 +283,29 @@ impl Registry {
     }
 
     fn require_nonempty(raw: &str, field: &'static str, max: usize) -> Result<(), RegistryError> {
-        if raw.is_empty() || raw.len() > max || !raw.is_ascii() || raw.bytes().any(|b| b < 0x20 || b > 0x7e) {
+        if raw.is_empty()
+            || raw.len() > max
+            || !raw.is_ascii()
+            || raw.bytes().any(|b| !(0x20..=0x7e).contains(&b))
+        {
             return Err(RegistryError::InvalidField(field));
         }
         Ok(())
     }
 
     fn require_bounded(raw: &str, field: &'static str, max: usize) -> Result<(), RegistryError> {
-        if raw.len() > max || !raw.is_ascii() || raw.bytes().any(|b| b < 0x20 || b > 0x7e) {
+        if raw.len() > max || !raw.is_ascii() || raw.bytes().any(|b| !(0x20..=0x7e).contains(&b)) {
             return Err(RegistryError::InvalidField(field));
         }
         Ok(())
     }
 
-    fn execute(&mut self, actor: &AccountId, height: u64, action: RegistryAction) -> Result<(), RegistryError> {
+    fn execute(
+        &mut self,
+        actor: &AccountId,
+        height: u64,
+        action: RegistryAction,
+    ) -> Result<(), RegistryError> {
         let ty = action.tx_type();
         if ty != 0 {
             self.check_active(ty, height)?;
@@ -324,41 +337,76 @@ impl Registry {
                     self.activations[usize::from(ty)] = Some(Activation { height, code_hash });
                 }
             }
-            RegistryAction::CreateWhitelist { name, url, description, backup } => {
+            RegistryAction::CreateWhitelist {
+                name,
+                url,
+                description,
+                backup,
+            } => {
                 Self::require_nonempty(&name, "whitelist name", MAX_NAME_BYTES)?;
                 Self::require_bounded(&url, "whitelist url", MAX_URL_BYTES)?;
                 Self::require_bounded(&description, "whitelist description", MAX_METADATA_BYTES)?;
                 let id = self.next_whitelist_id;
                 self.next_whitelist_id = id.checked_add(1).ok_or(RegistryError::IdExhausted)?;
-                self.whitelists.insert(id, Whitelist {
-                    admin: actor.clone(), backup, name, url, description
-                });
+                self.whitelists.insert(
+                    id,
+                    Whitelist {
+                        admin: actor.clone(),
+                        backup,
+                        name,
+                        url,
+                        description,
+                    },
+                );
             }
-            RegistryAction::UpdateAdmin { target, new_address, update_backup } => {
-                match target {
-                    AdminTarget::Whitelist(id) => {
-                        let list = self.whitelists.get_mut(&id).ok_or(RegistryError::UnknownWhitelist(id))?;
-                        if actor != &list.admin && actor != &list.backup {
-                            return Err(RegistryError::Unauthorized);
-                        }
-                        if update_backup { list.backup = new_address; } else { list.admin = new_address; }
+            RegistryAction::UpdateAdmin {
+                target,
+                new_address,
+                update_backup,
+            } => match target {
+                AdminTarget::Whitelist(id) => {
+                    let list = self
+                        .whitelists
+                        .get_mut(&id)
+                        .ok_or(RegistryError::UnknownWhitelist(id))?;
+                    if actor != &list.admin && actor != &list.backup {
+                        return Err(RegistryError::Unauthorized);
                     }
-                    AdminTarget::Oracle(id) => {
-                        let oracle = self.oracles.get_mut(&id).ok_or(RegistryError::UnknownOracle(id))?;
-                        if actor != &oracle.admin && actor != &oracle.backup {
-                            return Err(RegistryError::Unauthorized);
-                        }
-                        if update_backup { oracle.backup = new_address; } else { oracle.admin = new_address; }
+                    if update_backup {
+                        list.backup = new_address;
+                    } else {
+                        list.admin = new_address;
                     }
-                    AdminTarget::Token(_) => return Err(RegistryError::UnsupportedTokenAdmin),
                 }
-            }
-            RegistryAction::Attest { list_id, subject, metadata } => {
+                AdminTarget::Oracle(id) => {
+                    let oracle = self
+                        .oracles
+                        .get_mut(&id)
+                        .ok_or(RegistryError::UnknownOracle(id))?;
+                    if actor != &oracle.admin && actor != &oracle.backup {
+                        return Err(RegistryError::Unauthorized);
+                    }
+                    if update_backup {
+                        oracle.backup = new_address;
+                    } else {
+                        oracle.admin = new_address;
+                    }
+                }
+                AdminTarget::Token(_) => return Err(RegistryError::UnsupportedTokenAdmin),
+            },
+            RegistryAction::Attest {
+                list_id,
+                subject,
+                metadata,
+            } => {
                 if list_id == 0 {
                     return Err(RegistryError::UnsupportedSelfCertification);
                 }
                 Self::require_bounded(&metadata, "attestation metadata", MAX_METADATA_BYTES)?;
-                let list = self.whitelists.get(&list_id).ok_or(RegistryError::UnknownWhitelist(list_id))?;
+                let list = self
+                    .whitelists
+                    .get(&list_id)
+                    .ok_or(RegistryError::UnknownWhitelist(list_id))?;
                 if actor != &list.admin {
                     return Err(RegistryError::Unauthorized);
                 }
@@ -366,24 +414,43 @@ impl Registry {
                 if self.attestations.get(&key).is_some_and(|old| old.active) {
                     return Err(RegistryError::ExistingAttestation);
                 }
-                self.attestations.insert(key, Attestation { metadata, issued_height: height, updated_height: height, active: true });
+                self.attestations.insert(
+                    key,
+                    Attestation {
+                        metadata,
+                        issued_height: height,
+                        updated_height: height,
+                        active: true,
+                    },
+                );
             }
             RegistryAction::RevokeAttestation { list_id, subject } => {
                 if list_id == 0 {
                     return Err(RegistryError::UnsupportedSelfCertification);
                 }
-                let list = self.whitelists.get(&list_id).ok_or(RegistryError::UnknownWhitelist(list_id))?;
+                let list = self
+                    .whitelists
+                    .get(&list_id)
+                    .ok_or(RegistryError::UnknownWhitelist(list_id))?;
                 if actor != &list.admin {
                     return Err(RegistryError::Unauthorized);
                 }
-                let attestation = self.attestations.get_mut(&(list_id, subject)).ok_or(RegistryError::MissingAttestation)?;
+                let attestation = self
+                    .attestations
+                    .get_mut(&(list_id, subject))
+                    .ok_or(RegistryError::MissingAttestation)?;
                 if !attestation.active {
                     return Err(RegistryError::MissingAttestation);
                 }
                 attestation.active = false;
                 attestation.updated_height = height;
             }
-            RegistryAction::CreateOracle { ticker, url, backup, lag } => {
+            RegistryAction::CreateOracle {
+                ticker,
+                url,
+                backup,
+                lag,
+            } => {
                 Self::require_nonempty(&ticker, "oracle ticker", MAX_NAME_BYTES)?;
                 Self::require_bounded(&url, "oracle url", MAX_URL_BYTES)?;
                 if lag == 0 {
@@ -391,19 +458,42 @@ impl Registry {
                 }
                 let id = self.next_oracle_id;
                 self.next_oracle_id = id.checked_add(1).ok_or(RegistryError::IdExhausted)?;
-                self.oracles.insert(id, Oracle {
-                    admin: actor.clone(), backup, ticker, url, lag, closed: false, latest: None
-                });
+                self.oracles.insert(
+                    id,
+                    Oracle {
+                        admin: actor.clone(),
+                        backup,
+                        ticker,
+                        url,
+                        lag,
+                        closed: false,
+                        latest: None,
+                    },
+                );
             }
-            RegistryAction::PublishOracle { oracle_id, price_1e4, high_1e4, low_1e4, close_1e4 } => {
-                let oracle = self.oracles.get_mut(&oracle_id).ok_or(RegistryError::UnknownOracle(oracle_id))?;
+            RegistryAction::PublishOracle {
+                oracle_id,
+                price_1e4,
+                high_1e4,
+                low_1e4,
+                close_1e4,
+            } => {
+                let oracle = self
+                    .oracles
+                    .get_mut(&oracle_id)
+                    .ok_or(RegistryError::UnknownOracle(oracle_id))?;
                 if actor != &oracle.admin {
                     return Err(RegistryError::Unauthorized);
                 }
                 if oracle.closed {
                     return Err(RegistryError::ClosedOracle(oracle_id));
                 }
-                if price_1e4 == 0 || [high_1e4, low_1e4, close_1e4].iter().flatten().any(|v| *v == 0) {
+                if price_1e4 == 0
+                    || [high_1e4, low_1e4, close_1e4]
+                        .iter()
+                        .flatten()
+                        .any(|v| *v == 0)
+                {
                     return Err(RegistryError::InvalidPrice);
                 }
                 if let (Some(high), Some(low)) = (high_1e4, low_1e4) {
@@ -411,10 +501,19 @@ impl Registry {
                         return Err(RegistryError::InvalidPrice);
                     }
                 }
-                oracle.latest = Some(OracleQuote { price_1e4, high_1e4, low_1e4, close_1e4, height });
+                oracle.latest = Some(OracleQuote {
+                    price_1e4,
+                    high_1e4,
+                    low_1e4,
+                    close_1e4,
+                    height,
+                });
             }
             RegistryAction::CloseOracle { oracle_id } => {
-                let oracle = self.oracles.get_mut(&oracle_id).ok_or(RegistryError::UnknownOracle(oracle_id))?;
+                let oracle = self
+                    .oracles
+                    .get_mut(&oracle_id)
+                    .ok_or(RegistryError::UnknownOracle(oracle_id))?;
                 if actor != &oracle.admin {
                     return Err(RegistryError::Unauthorized);
                 }
