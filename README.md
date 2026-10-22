@@ -49,3 +49,9 @@ See [ledger invariants and limits](docs/LEDGER.md) and the [integration tests](t
 - Require adversarial vectors and state invariants before expanding scope.
 
 See [MIGRATION.md](MIGRATION.md) for milestones. License selection and protocol compatibility require review before production development.
+
+## Authenticated block progression (prototype)
+
+`tradelayer_core::chain::ChainState` accepts candidate blocks only through a `TrustedChainAdapter` implementation, whose job is to verify chain headers, raw transaction bytes, and the authorized actor for each ledger operation. The library enforces origin/operation binding, sequential blocks, atomic application, replay protection, reversible snapshots, and new-file checkpoint saves. It **does not provide a real adapter, signature verification, or a production consensus engine**.
+
+See [chain-state design and remaining security work](docs/CHAIN_STATE.md).
