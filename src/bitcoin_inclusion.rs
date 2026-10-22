@@ -9,6 +9,7 @@
 //! - The internal SHA256 implementation is not an independently audited
 //!   production cryptographic primitive.
 //! - These proofs MUST NOT implement TrustedProtocolAdapter directly.
+//!
 //! A self-consistent synthetic regtest-like header is NOT a Bitcoin block.
 
 use crate::chain::{BlockId, Tip};
@@ -349,7 +350,7 @@ impl CheckedHeader {
                 return Err(InclusionError::MutatedMerkleBranch);
             }
             let mut pair = [0u8; 64];
-            if index % 2 == 0 {
+            if index.is_multiple_of(2) {
                 pair[..32].copy_from_slice(&hash);
                 pair[32..].copy_from_slice(&sibling);
             } else {
@@ -358,7 +359,7 @@ impl CheckedHeader {
             }
             hash = double_sha256(&pair);
             index /= 2;
-            count = (count + 1) / 2;
+            count = count.div_ceil(2);
             level += 1;
         }
         if level != proof.siblings_raw.len() || hash != self.merkle_root {
