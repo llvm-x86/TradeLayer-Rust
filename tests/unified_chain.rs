@@ -354,7 +354,6 @@ fn protocol_snapshot_roundtrip_from_unverified_fixture() {
     assert!(ProtocolState::from_snapshot_bytes(&corrupt, chain(), &account("admin")).is_err());
 }
 
-
 /// Recompute checksums to test semantic rejection, rather than a CRC failure.
 fn test_crc32(data: &[u8]) -> u32 {
     let mut crc: u32 = !0;
@@ -372,12 +371,14 @@ fn canonical_but_wrong_finalized_tip_is_rejected_and_reorg_reopens_block() {
     let (mut state, auth) = setup();
     assert_eq!(state.tip().height, 101);
     assert_eq!(state.state().finalized_height(), Some(101));
-    state.apply_block(&block(state.tip(), 102, &[]), &auth).unwrap();
+    state
+        .apply_block(&block(state.tip(), 102, &[]), &auth)
+        .unwrap();
     assert_eq!(state.state().finalized_height(), Some(102));
     let bytes = state.checkpoint_bytes().unwrap();
-    let restored = UnifiedChainState::from_checkpoint_bytes(
-        &bytes, chain(), anchor(), &account("admin"), 8,
-    ).unwrap();
+    let restored =
+        UnifiedChainState::from_checkpoint_bytes(&bytes, chain(), anchor(), &account("admin"), 8)
+            .unwrap();
     assert_eq!(restored, state);
 
     // Last TLPS v2 is the current protocol snapshot at the tail of TLUC.
@@ -395,13 +396,20 @@ fn canonical_but_wrong_finalized_tip_is_rejected_and_reorg_reopens_block() {
     let outer_sum = test_crc32(&forged[..outer_crc]);
     forged[outer_crc..].copy_from_slice(&outer_sum.to_be_bytes());
     assert!(UnifiedChainState::from_checkpoint_bytes(
-        &forged, chain(), anchor(), &account("admin"), 8
-    ).is_err());
+        &forged,
+        chain(),
+        anchor(),
+        &account("admin"),
+        8
+    )
+    .is_err());
 
     state.rollback_tip(state.tip()).unwrap();
     assert_eq!(state.tip().height, 101);
     assert_eq!(state.state().finalized_height(), Some(101));
-    state.apply_block(&block(state.tip(), 103, &[]), &auth).unwrap();
+    state
+        .apply_block(&block(state.tip(), 103, &[]), &auth)
+        .unwrap();
     assert_eq!(state.tip().height, 102);
     assert_eq!(state.state().finalized_height(), Some(102));
 }
