@@ -63,6 +63,12 @@ cargo run --locked --bin tradelayer-scan -- \
 The Rust scanner recomputes txids from the raw serialized bytes and identifies
 legacy `tl` / proposed `TLR` payloads without modifying the ledger.
 
+On standard Linux installations, the collector looks for
+`~/.litecoin/testnet3/.cookie` on Litecoin testnet,
+`~/.litecoin/regtest/.cookie` on regtest, or `~/.litecoin/.cookie`
+on mainnet. Use `--cookie-file` for alternative data directories.
+See [Litecoin Core's data directory documentation](https://github.com/litecoin-project/litecoin/blob/master/doc/files.md).
+
 ## Actual JavaScript decoder comparison (opt-in)
 
 First generate Rust's typed observations from the **same** raw corpus:
