@@ -96,19 +96,23 @@ fn calculate_settlement_preview(
             return Err(LedgerError::MalformedSettlementJournal);
         }
         prev = Some(*txid);
-        if &claim.channel != channel || claim.property != property
+        if &claim.channel != channel
+            || claim.property != property
             || !(start..=end).contains(&claim.height)
-            || claim.expiry_height < settled_at || claim.amount_atoms == 0
+            || claim.expiry_height < settled_at
+            || claim.amount_atoms == 0
         {
             return Err(LedgerError::InvalidSettlementClaim);
         }
         match claim.payer_side {
             ChannelSide::A => {
-                a_to_b = a_to_b.checked_add(claim.amount_atoms)
+                a_to_b = a_to_b
+                    .checked_add(claim.amount_atoms)
                     .ok_or(LedgerError::ArithmeticOverflow)?;
             }
             ChannelSide::B => {
-                b_to_a = b_to_a.checked_add(claim.amount_atoms)
+                b_to_a = b_to_a
+                    .checked_add(claim.amount_atoms)
                     .ok_or(LedgerError::ArithmeticOverflow)?;
             }
         }
@@ -146,17 +150,17 @@ impl Ledger {
         self.king_settlements.len()
     }
     pub fn has_pending_trade_reference(&self, channel: &AccountId, reference: TxId) -> bool {
-        self.pending_net_settlements.values().any(|claim|
-            &claim.channel == channel && claim.trade_reference == reference
-        )
+        self.pending_net_settlements
+            .values()
+            .any(|claim| &claim.channel == channel && claim.trade_reference == reference)
     }
 
-    fn record_net_settlement(
-        &mut self, txid: TxId, claim: NetClaim
-    ) -> Result<(), LedgerError> {
+    fn record_net_settlement(&mut self, txid: TxId, claim: NetClaim) -> Result<(), LedgerError> {
         self.existing_property(claim.property)?;
-        if claim.height == 0 || claim.expiry_height < claim.height
-            || claim.trade_reference == txid || claim.trade_reference == TxId::from_bytes([0; 32])
+        if claim.height == 0
+            || claim.expiry_height < claim.height
+            || claim.trade_reference == txid
+            || claim.trade_reference == TxId::from_bytes([0; 32])
         {
             return Err(LedgerError::InvalidSettlementClaim);
         }
@@ -165,17 +169,27 @@ impl Ledger {
         {
             return Err(LedgerError::SettlementJournalFull);
         }
-        if self.pending_net_settlements.values()
+        if self
+            .pending_net_settlements
+            .values()
             .chain(self.swept_net_settlements.values())
-            .any(|past| past.channel == claim.channel
-                && past.trade_reference == claim.trade_reference)
+            .any(|past| {
+                past.channel == claim.channel && past.trade_reference == claim.trade_reference
+            })
         {
             return Err(LedgerError::DuplicateSettlementReference);
         }
-        let book = self.channels.get(&claim.channel)
+        let book = self
+            .channels
+            .get(&claim.channel)
             .ok_or_else(|| LedgerError::UnknownChannel(claim.channel.clone()))?;
-        nonzero_side_claim(book, &claim.channel, claim.property,
-            claim.payer_side, claim.amount_atoms)?;
+        nonzero_side_claim(
+            book,
+            &claim.channel,
+            claim.property,
+            claim.payer_side,
+            claim.amount_atoms,
+        )?;
         self.pending_net_settlements.insert(txid, claim);
         Ok(())
     }
@@ -183,55 +197,88 @@ impl Ledger {
     /// No state change. The caller may compute this preview to construct an
     /// offline test fixture, never as proof that the claimed trades happened.
     pub fn preview_king_settlement_unverified(
-        &self, channel: &AccountId, property: PropertyId,
-        start_height: u64, end_height: u64, settled_at: u64,
+        &self,
+        channel: &AccountId,
+        property: PropertyId,
+        start_height: u64,
+        end_height: u64,
+        settled_at: u64,
     ) -> Result<SettlementPreview, LedgerError> {
-        let matching: Vec<_> = self.pending_net_settlements.iter()
-            .filter(|(_, claim)| &claim.channel == channel
-                && claim.property == property
-                && (start_height..=end_height).contains(&claim.height))
+        let matching: Vec<_> = self
+            .pending_net_settlements
+            .iter()
+            .filter(|(_, claim)| {
+                &claim.channel == channel
+                    && claim.property == property
+                    && (start_height..=end_height).contains(&claim.height)
+            })
             .map(|(txid, claim)| (*txid, claim))
             .collect();
-        calculate_settlement_preview(channel, property, start_height,
-            end_height, settled_at, &matching)
+        calculate_settlement_preview(
+            channel,
+            property,
+            start_height,
+            end_height,
+            settled_at,
+            &matching,
+        )
     }
 
     fn perform_king_settlement(
-        &mut self, txid: TxId, receipt: KingReceipt,
+        &mut self,
+        txid: TxId,
+        receipt: KingReceipt,
     ) -> Result<(), LedgerError> {
         if self.king_settlements.len() >= MAX_SETTLEMENT_RECORDS {
             return Err(LedgerError::SettlementJournalFull);
         }
-        let selected: Vec<(TxId, NetClaim)> = self.pending_net_settlements.iter()
-            .filter(|(_, claim)| claim.channel == receipt.channel
-                && claim.property == receipt.property
-                && (receipt.start_height..=receipt.end_height).contains(&claim.height))
+        let selected: Vec<(TxId, NetClaim)> = self
+            .pending_net_settlements
+            .iter()
+            .filter(|(_, claim)| {
+                claim.channel == receipt.channel
+                    && claim.property == receipt.property
+                    && (receipt.start_height..=receipt.end_height).contains(&claim.height)
+            })
             .map(|(id, claim)| (*id, claim.clone()))
             .collect();
         let borrowed: Vec<_> = selected.iter().map(|(id, claim)| (*id, claim)).collect();
         let recomputed = calculate_settlement_preview(
-            &receipt.channel, receipt.property,
-            receipt.start_height, receipt.end_height, receipt.settled_at, &borrowed,
+            &receipt.channel,
+            receipt.property,
+            receipt.start_height,
+            receipt.end_height,
+            receipt.settled_at,
+            &borrowed,
         )?;
-        if recomputed != receipt.preview || selected.iter().map(|(id, _)| *id)
-            .collect::<Vec<_>>() != receipt.claim_txids
+        if recomputed != receipt.preview
+            || selected.iter().map(|(id, _)| *id).collect::<Vec<_>>() != receipt.claim_txids
         {
             return Err(LedgerError::SettlementCommitmentMismatch);
         }
-        let state = self.channels.get_mut(&receipt.channel)
+        let state = self
+            .channels
+            .get_mut(&receipt.channel)
             .ok_or_else(|| LedgerError::UnknownChannel(receipt.channel.clone()))?;
-        nonzero_side_claim(state, &receipt.channel, receipt.property,
-            recomputed.payer_side, recomputed.net_atoms)?;
+        nonzero_side_claim(
+            state,
+            &receipt.channel,
+            receipt.property,
+            recomputed.payer_side,
+            recomputed.net_atoms,
+        )?;
         let receiving_side = recomputed.payer_side.other();
-        let receiver = state.atoms(receiving_side, receipt.property)
+        let receiver = state
+            .atoms(receiving_side, receipt.property)
             .checked_add(recomputed.net_atoms)
             .ok_or(LedgerError::ArithmeticOverflow)?;
-        let payer = state.atoms(recomputed.payer_side, receipt.property)
-            - recomputed.net_atoms;
+        let payer = state.atoms(recomputed.payer_side, receipt.property) - recomputed.net_atoms;
         state.put(receiving_side, receipt.property, receiver);
         state.put(recomputed.payer_side, receipt.property, payer);
         for (claim_txid, _) in selected {
-            let claim = self.pending_net_settlements.remove(&claim_txid)
+            let claim = self
+                .pending_net_settlements
+                .remove(&claim_txid)
                 .expect("selected pending settlement");
             self.swept_net_settlements.insert(claim_txid, claim);
         }
@@ -240,14 +287,18 @@ impl Ledger {
     }
 
     fn verify_settlement_journal(&self) -> Result<(), LedgerError> {
-        let total = self.pending_net_settlements.len()
+        let total = self
+            .pending_net_settlements
+            .len()
             .checked_add(self.swept_net_settlements.len())
             .ok_or(LedgerError::ArithmeticOverflow)?;
         if total > MAX_SETTLEMENT_RECORDS || self.king_settlements.len() > MAX_SETTLEMENT_RECORDS {
             return Err(LedgerError::SettlementJournalFull);
         }
         let mut refs = BTreeSet::new();
-        for (txid, claim) in self.pending_net_settlements.iter()
+        for (txid, claim) in self
+            .pending_net_settlements
+            .iter()
             .chain(self.swept_net_settlements.iter())
         {
             if !self.processed.contains(txid)
@@ -264,7 +315,9 @@ impl Ledger {
                 return Err(LedgerError::MalformedSettlementJournal);
             }
         }
-        if self.pending_net_settlements.keys()
+        if self
+            .pending_net_settlements
+            .keys()
             .any(|id| self.swept_net_settlements.contains_key(id))
         {
             return Err(LedgerError::MalformedSettlementJournal);
@@ -285,15 +338,21 @@ impl Ledger {
                 if !covered.insert(*claim_id) {
                     return Err(LedgerError::MalformedSettlementJournal);
                 }
-                let claim = self.swept_net_settlements.get(claim_id)
+                let claim = self
+                    .swept_net_settlements
+                    .get(claim_id)
                     .ok_or(LedgerError::MalformedSettlementJournal)?;
                 claims.push((*claim_id, claim));
             }
             if calculate_settlement_preview(
-                &receipt.channel, receipt.property,
-                receipt.start_height, receipt.end_height,
-                receipt.settled_at, &claims,
-            )? != receipt.preview {
+                &receipt.channel,
+                receipt.property,
+                receipt.start_height,
+                receipt.end_height,
+                receipt.settled_at,
+                &claims,
+            )? != receipt.preview
+            {
                 return Err(LedgerError::MalformedSettlementJournal);
             }
         }
@@ -338,7 +397,8 @@ impl Ledger {
     }
 
     fn read_settlement_snapshot(
-        &mut self, reader: &mut crate::codec::Cursor<'_>
+        &mut self,
+        reader: &mut crate::codec::Cursor<'_>,
     ) -> Result<(), SnapshotError> {
         for settled in [false, true] {
             let count = snapshot_count(reader)?;
@@ -354,14 +414,18 @@ impl Ledger {
                     .map_err(SnapshotError::InvalidLedger)?;
                 let side = ChannelSide::from_tag(reader.u8().map_err(snapshot_codec_error)?)?;
                 let amount_atoms = reader.u128().map_err(snapshot_codec_error)?;
-                let trade_reference = TxId::from_bytes(
-                    reader.fixed::<32>().map_err(snapshot_codec_error)?
-                );
+                let trade_reference =
+                    TxId::from_bytes(reader.fixed::<32>().map_err(snapshot_codec_error)?);
                 let height = reader.u64().map_err(snapshot_codec_error)?;
                 let expiry_height = reader.u64().map_err(snapshot_codec_error)?;
                 let claim = NetClaim {
-                    channel, property, payer_side: side, amount_atoms,
-                    trade_reference, height, expiry_height,
+                    channel,
+                    property,
+                    payer_side: side,
+                    amount_atoms,
+                    trade_reference,
+                    height,
+                    expiry_height,
                 };
                 if settled {
                     self.swept_net_settlements.insert(txid, claim);
@@ -392,18 +456,31 @@ impl Ledger {
             let mut prior = None;
             let mut ids = Vec::with_capacity(ids_count);
             for _ in 0..ids_count {
-                let claim_id = TxId::from_bytes(reader.fixed::<32>().map_err(snapshot_codec_error)?);
+                let claim_id =
+                    TxId::from_bytes(reader.fixed::<32>().map_err(snapshot_codec_error)?);
                 if prior.is_some_and(|id| claim_id <= id) {
                     return Err(SnapshotError::InvalidFormat("unsorted king references"));
                 }
                 prior = Some(claim_id);
                 ids.push(claim_id);
             }
-            self.king_settlements.insert(txid, KingReceipt {
-                channel, property, start_height, end_height, settled_at,
-                preview: SettlementPreview { root, count, payer_side, net_atoms },
-                claim_txids: ids,
-            });
+            self.king_settlements.insert(
+                txid,
+                KingReceipt {
+                    channel,
+                    property,
+                    start_height,
+                    end_height,
+                    settled_at,
+                    preview: SettlementPreview {
+                        root,
+                        count,
+                        payer_side,
+                        net_atoms,
+                    },
+                    claim_txids: ids,
+                },
+            );
         }
         Ok(())
     }
