@@ -51,3 +51,10 @@ Add persistence, block ordering, reorg handling, and RPC as separate layers. Con
 ## Before any production deployment
 
 A written protocol specification and independent consensus reference vectors must determine behavior. Require fuzzing, chain replay, multiple-implementation comparison, build reproducibility, review of dependencies and build scripts, and key-isolation testing.
+
+## Step 2.5: Trusted block adapter and reversible checkpoints (prototype)
+
+- `chain` module requires raw bytes through the `TrustedChainAdapter` boundary and rejects mismatches between authenticated origin and the ledger operation's actor.
+- Atomic block application checks chain identity, contiguous height, parent hash, replay, and conservation. It retains bounded pre-block snapshots for rollback.
+- Deterministic, CRC-protected ledger + chain checkpoint encoding can persist and restore the tip, replay set, and rollback history. A save to a new immutable path must succeed before staged state is published.
+- Real UTXO/script/signature verification, block header validation, chain activation, state authentication, and full consensus replay remain future gates. See [docs/CHAIN_STATE.md](docs/CHAIN_STATE.md).

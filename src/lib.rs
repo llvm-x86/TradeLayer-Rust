@@ -5,6 +5,8 @@
 
 #![forbid(unsafe_code)]
 
+pub mod chain; // Trust-boundary and reversible block progression, prototype only.
+mod codec; // Bounded, checksummed snapshot codec.
 pub mod ledger; // In-memory atomic accounting primitives; not chain consensus.
 pub mod wire; // Read-only legacy ASCII format analysis; never auto-fallback.
 pub mod wire_v1; // Proposed versioned binary format.
