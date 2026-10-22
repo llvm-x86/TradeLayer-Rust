@@ -48,6 +48,8 @@ jobs:
         run: |
           cargo run --locked --bin tradelayer-legacy-fields -- fixtures/synthetic_transactions.tsv > /tmp/tradelayer-rust-fields.tsv
           grep -q 'send' /tmp/tradelayer-rust-fields.tsv
+      - name: Independent mainnet genesis identity audit
+        run: python3 scripts/audit_network_profiles.py
       - name: Independent Bitcoin genesis and SHA256d inclusion vectors
         run: python3 scripts/audit_bitcoin_spv_vectors.py
       - name: Bitcoin mainnet bigint chainwork and retarget audit
