@@ -22,6 +22,11 @@ records, and replay sets, with pre-block snapshots for bounded reorgs.
   compaction, disk-exhaustion handling, signed roots, and transactional storage
   for production.
 
+Stage 14 exposes [read-only domain-separated TLPT proving input metadata](PROVING_COMMITMENTS.md)
+for local state roots and reversible tip-to-tip transitions. The existing
+checkpoint formats remain unchanged and TLPT roots are not live-chain
+or STWO proof assertions.
+
 ## Authentication boundary
 
 `TrustedProtocolAdapter` receives raw transaction bytes and block metadata and
