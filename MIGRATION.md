@@ -19,9 +19,26 @@ This repository is a prototype, not a deployable consensus node. Preserve the Ja
 
 See [docs/WIRE_FORMAT.md](docs/WIRE_FORMAT.md).
 
-## Step 2: Exact quantities and ledger
+## Step 1b: Propose corrected v1 wire encoding (this branch)
 
-Pin canonical integer scaling with independently validated vectors. Establish checked amounts, account/property identifiers, total-supply conservation, atomic rollback, replay protection, and reorg invariants. Investigate all differences from the existing JavaScript number semantics.
+- A distinct binary `TLR` + version + numeric type-byte envelope, avoiding the historical base-36 selector and double-prefix bug.
+- Exact atomic-unit type-2 send encoding and decoding, with address syntax and checked sizes.
+- Deterministic source-independent v1 vectors in `fixtures/v1_vectors.tsv`.
+- Legacy `wire` parser retained for offline diagnostics only, with no implicit fallback from v1.
+- **Not activated on any network.** Consensus activation and chain-history migration must be settled before use.
+
+See [docs/WIRE_V1.md](docs/WIRE_V1.md).
+
+## Step 2: Exact quantities and ledger (prototype complete)
+
+- Added dependency-free `Ledger` accounting primitives and typed account/property/tx identifiers.
+- All amounts use checked `u128` atomic units. This is a **provisional internal representation**, pending reference-ledger and historical replay vectors.
+- Implemented fixed/managed issue, authorized mint, issuer-only burn, and transfers over available balances.
+- Added per-property supply conservation, duplicate transaction rejection, and all-or-nothing batches (clone-and-swap for now).
+- Added deterministic property tests, overflow/rollback adversarial cases, and a draft binary send integration fixture.
+- Remaining: reserved/margin/vesting/channel accounting, persistent transactional storage, cryptographic state commitments, reorg undo journals, state snapshots, and independent accepted-chain corpus.
+
+See [docs/LEDGER.md](docs/LEDGER.md).
 
 ## Step 3: Limited state transitions
 
