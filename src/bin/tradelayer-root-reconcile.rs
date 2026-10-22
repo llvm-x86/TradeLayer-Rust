@@ -36,9 +36,7 @@ fn load_bounded(path: &str, limit: usize) -> Result<String, String> {
 }
 
 fn canonical_height(s: &str) -> Result<u64, String> {
-    if s.is_empty()
-        || (s.len() > 1 && s.starts_with('0'))
-        || !s.bytes().all(|c| c.is_ascii_digit())
+    if s.is_empty() || (s.len() > 1 && s.starts_with('0')) || !s.bytes().all(|c| c.is_ascii_digit())
     {
         return Err("noncanonical decimal height".to_owned());
     }
@@ -81,8 +79,8 @@ fn run() -> Result<(), String> {
     let observations = load_bounded(&args[3], MAX_ROOT_BRIDGE_TEXT_BYTES)?;
     let statements = parse_tlpt_tsv_unverified(&tlpt).map_err(|err| format!("{err}"))?;
     let batch = parse_bridge_tsv(&zk).map_err(|err| format!("{err}"))?;
-    let observed = parse_observations_tsv_unverified(&observations)
-        .map_err(|err| format!("{err}"))?;
+    let observed =
+        parse_observations_tsv_unverified(&observations).map_err(|err| format!("{err}"))?;
     let result = reconcile_unverified(&batch, &statements, &observed, expected)
         .map_err(|err| format!("{err}"))?;
     println!("root_alignment=AUDIT_ONLY");
