@@ -6,7 +6,9 @@
 //! Never connect it to live funds without a independently audited chain adapter.
 
 use crate::chain::ChainId;
-use crate::ledger::{AccountId, ChannelSide, Ledger, LedgerError, Operation, PropertyId, PropertyKind, TxId};
+use crate::ledger::{
+    AccountId, ChannelSide, Ledger, LedgerError, Operation, PropertyId, PropertyKind, TxId,
+};
 use crate::registry::{Registry, RegistryAction, RegistryError, RegistryTx};
 use std::collections::BTreeSet;
 
@@ -281,26 +283,66 @@ impl ProtocolState {
                     },
                 )?;
             }
-            ProtocolOperation::ChannelCommit { id, channel, side, amount_atoms } => {
+            ProtocolOperation::ChannelCommit {
+                id,
+                channel,
+                side,
+                amount_atoms,
+            } => {
                 self.assert_activated(ty, height)?;
-                self.ledger.apply(txid, Operation::ChannelCommit {
-                    id, owner: actor, channel, side, amount_atoms,
-                })?;
+                self.ledger.apply(
+                    txid,
+                    Operation::ChannelCommit {
+                        id,
+                        owner: actor,
+                        channel,
+                        side,
+                        amount_atoms,
+                    },
+                )?;
             }
-            ProtocolOperation::ChannelWithdraw { id, channel, side, amount_atoms } => {
+            ProtocolOperation::ChannelWithdraw {
+                id,
+                channel,
+                side,
+                amount_atoms,
+            } => {
                 self.assert_activated(ty, height)?;
-                let unlock_height = height.checked_add(CHANNEL_WITHDRAWAL_DELAY_BLOCKS)
+                let unlock_height = height
+                    .checked_add(CHANNEL_WITHDRAWAL_DELAY_BLOCKS)
                     .ok_or(ExecutionError::InvalidHeight)?;
-                self.ledger.apply(txid, Operation::ChannelWithdraw {
-                    id, owner: actor, channel, side, amount_atoms, unlock_height,
-                })?;
+                self.ledger.apply(
+                    txid,
+                    Operation::ChannelWithdraw {
+                        id,
+                        owner: actor,
+                        channel,
+                        side,
+                        amount_atoms,
+                        unlock_height,
+                    },
+                )?;
             }
-            ProtocolOperation::ChannelTransfer { id, from_side, to_channel, to_side, amount_atoms } => {
+            ProtocolOperation::ChannelTransfer {
+                id,
+                from_side,
+                to_channel,
+                to_side,
+                amount_atoms,
+            } => {
                 self.assert_activated(ty, height)?;
                 // For legacy type 22 the signed actor is the source channel.
-                self.ledger.apply(txid, Operation::ChannelTransfer {
-                    id, from_channel: actor, from_side, to_channel, to_side, amount_atoms,
-                })?;
+                self.ledger.apply(
+                    txid,
+                    Operation::ChannelTransfer {
+                        id,
+                        from_channel: actor,
+                        from_side,
+                        to_channel,
+                        to_side,
+                        amount_atoms,
+                    },
+                )?;
             }
         }
         self.last_height = Some(height);
@@ -317,7 +359,9 @@ impl ProtocolState {
         if self.last_height.is_some_and(|previous| height < previous) {
             return Err(ExecutionError::HeightRegression);
         }
-        self.ledger.settle_due_withdrawals_unverified(height).map_err(ExecutionError::Ledger)
+        self.ledger
+            .settle_due_withdrawals_unverified(height)
+            .map_err(ExecutionError::Ledger)
     }
 }
 
