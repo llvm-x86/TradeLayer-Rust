@@ -2,6 +2,17 @@
 //! UNTRUSTED checkpoint/retarget metadata. No best-chain or script verification.
 
 use std::cmp::Ordering;
+use tradelayer_core::chain::{BlockHeader, CandidateBlock, ChainId};
+use tradelayer_core::ledger::AccountId;
+use tradelayer_core::root_reconciliation::{
+    reconcile_mainnet_work_headers_unverified, BridgeError, ExpectedChainRange,
+};
+use tradelayer_core::state_commitment::TransitionStatement;
+use tradelayer_core::unified_chain::{
+    AuthenticatedProtocolOperation, TrustedProtocolAdapter, UnifiedChainState,
+};
+use tradelayer_core::zk_batch::{AuditBatch, Digest, Receipt, SupportLevel};
+use tradelayer_core::TransactionType;
 use tradelayer_core::bitcoin_inclusion::MerklePath;
 use tradelayer_core::bitcoin_chainwork::{
     mainnet_block_proof_work, mainnet_retarget_bits, AnchorStatus, ClaimedMainnetCheckpoint,
@@ -249,4 +260,98 @@ fn twenty_five_python_bigint_vectors_cover_full_u256_chainwork_width() {
     for bits in [0u32, 0x1d80ffff, 0x1d000000, 0x1e00ffff, 0x2100ffff] {
         assert!(mainnet_block_proof_work(bits).is_err(), "invalid bits: {bits:08x}");
     }
+}
+
+
+struct SyntheticNoTransactions;
+impl TrustedProtocolAdapter for SyntheticNoTransactions {
+    fn verify_block(&self, _: &CandidateBlock) -> Result<(), String> {
+        Ok(())
+    }
+    fn authenticate_and_decode(
+        &self, _: ChainId, _: &BlockHeader, _: &[u8],
+    ) -> Result<Option<AuthenticatedProtocolOperation>, String> {
+        Ok(None)
+    }
+}
+
+fn mock_digest(byte: u8) -> Digest {
+    Digest::parse(&format!("{byte:02x}").repeat(32)).unwrap()
+}
+
+#[test]
+fn genuine_mainnet_merkle_inclusion_cannot_impersonate_a_trade_layer_receipt() {
+    let mut chain = MainnetWorkChain::from_published_genesis(&header(GENESIS)).unwrap();
+    let receipt = chain.extend_with_work_receipt(&[header(BLOCK_ONE)]).unwrap();
+    assert_eq!(receipt.anchor_status(), AnchorStatus::PublishedGenesis);
+    let coinbase = decode_hex(include_str!("../fixtures/bitcoin_mainnet_block1_coinbase.hex")
+        .trim()).unwrap();
+    let included = receipt.checked_headers().check_transaction_inclusion(
+        1, &coinbase, &MerklePath {
+            tx_index: 0, tx_count: 1, siblings_raw: Vec::new(),
+        },
+    ).unwrap();
+    assert_eq!(included.legacy_type_hint(), None);
+
+    // Deliberately invent a zkTL batch claiming the genuine Bitcoin coinbase
+    // was a TradeLayer type-2 send. Every zkTL metadata hash is consistent;
+    // the actual transaction, however, has no TradeLayer OP_RETURN.
+    let txid = Digest::parse(&hex(&included.txid_display())).unwrap();
+    let mut tx = Receipt {
+        receipt_id: mock_digest(0),
+        txid,
+        tx_type: TransactionType::try_from(2).unwrap(),
+        height: 1,
+        old_state_root: mock_digest(1),
+        new_state_root: mock_digest(2),
+        payload_hash: mock_digest(3),
+        witness_root: mock_digest(4),
+        support: SupportLevel::StateKernel,
+        economic_mutation: true,
+        valid: true,
+    };
+    tx.receipt_id = tx.calculate_receipt_id();
+    let mut batch = AuditBatch {
+        batch_id: mock_digest(0),
+        transition_root: mock_digest(0),
+        first_state_root: tx.old_state_root,
+        final_state_root: tx.new_state_root,
+        start_height: 1,
+        end_height: 1,
+        receipts: vec![tx],
+    };
+    batch.transition_root = batch.calculate_transition_root();
+    batch.batch_id = batch.calculate_batch_id();
+    batch.inspect_strict().unwrap();
+
+    // Construct one local TLPT statement only to exercise *the audit
+    // boundary*. Its actor, protocol state and local adapter are synthetic.
+    let namespace = ChainId([7; 32]);
+    let anchor = receipt.checked_headers().anchor();
+    let prior = UnifiedChainState::new_unverified(
+        namespace, anchor, AccountId::try_from("admin").unwrap(), 2,
+    ).unwrap();
+    let mut next = prior.clone();
+    next.apply_block(&CandidateBlock {
+        chain: namespace,
+        header: BlockHeader {
+            height: 1, id: receipt.checked_headers().tip().id, parent: anchor.id,
+        },
+        raw_transactions: Vec::new(),
+    }, &SyntheticNoTransactions).unwrap();
+    let statement = TransitionStatement::from_reversible_states_unverified(
+        &prior, &next,
+    ).unwrap();
+    let expected = ExpectedChainRange {
+        chain: namespace,
+        anchor,
+        final_tip: receipt.checked_headers().tip(),
+    };
+
+    assert!(matches!(
+        reconcile_mainnet_work_headers_unverified(
+            &batch, &[statement], &receipt, &[included], expected,
+        ),
+        Err(BridgeError::ReceiptMismatch)
+    ));
 }
