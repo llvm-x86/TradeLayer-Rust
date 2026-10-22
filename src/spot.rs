@@ -677,3 +677,6 @@ mod tests {
         );
     }
 }
+
+// Snapshot code is included in-module to retain private ledger/book invariants.
+include!("spot_snapshot_impl.rs");
