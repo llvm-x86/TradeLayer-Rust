@@ -91,9 +91,7 @@ pub fn parse_base36(raw: &str) -> Result<u128, WireError> {
     }
     let mut value = 0u128;
     for ch in raw.bytes() {
-        let digit = u128::from(
-            base36_digit(ch).ok_or(WireError::InvalidField("base-36 integer"))?,
-        );
+        let digit = u128::from(base36_digit(ch).ok_or(WireError::InvalidField("base-36 integer"))?);
         value = value
             .checked_mul(36)
             .and_then(|v| v.checked_add(digit))
@@ -188,10 +186,7 @@ pub fn parse_typed(raw: &str) -> Result<ParsedTransaction, WireError> {
 }
 
 /// Parse a body after its marker and transaction type were separated.
-pub fn parse_body(
-    tx_type: TransactionType,
-    body: &str,
-) -> Result<ParsedTransaction, WireError> {
+pub fn parse_body(tx_type: TransactionType, body: &str) -> Result<ParsedTransaction, WireError> {
     if body.len() > MAX_PAYLOAD_BYTES {
         return Err(WireError::TooLong);
     }
@@ -303,38 +298,71 @@ mod tests {
         assert_eq!(parse_send_amount("1~"), Ok(1));
         assert!(parse_base36("-1").is_err());
         assert!(parse_base36("1z$").is_err());
-        assert_eq!(parse_base36("zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"), Err(WireError::NumberOverflow));
-        assert_eq!(parse_send_amount("~"), Err(WireError::InvalidField("empty base-36 integer")));
+        assert_eq!(
+            parse_base36("zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"),
+            Err(WireError::NumberOverflow)
+        );
+        assert_eq!(
+            parse_send_amount("~"),
+            Err(WireError::InvalidField("empty base-36 integer"))
+        );
     }
 
     #[test]
     fn reject_bad_envelopes() {
-        for input in ["", "tl", "om2a", "tl?x", "tl\n2x", "tl\u{1f642}", "tL20;x;1;1"] {
+        for input in [
+            "",
+            "tl",
+            "om2a",
+            "tl?x",
+            "tl\n2x",
+            "tl\u{1f642}",
+            "tL20;x;1;1",
+        ] {
             assert!(parse_frame(input).is_err(), "{input:?}");
         }
-        assert_eq!(parse_frame(&"x".repeat(MAX_PAYLOAD_BYTES + 1)), Err(WireError::TooLong));
+        assert_eq!(
+            parse_frame(&"x".repeat(MAX_PAYLOAD_BYTES + 1)),
+            Err(WireError::TooLong)
+        );
         assert_eq!(parse_frame("tlAfoo").unwrap().tx_type.as_u8(), 10);
     }
 
     #[test]
     fn a_single_atomic_unit_is_exact() {
         let tx = parse_typed("tl20;alice;5;1~").unwrap();
-        assert_eq!(tx, ParsedTransaction::Send {
-            recipient: "alice".into(), property_id: 5, amount_atoms: 1,
-        });
+        assert_eq!(
+            tx,
+            ParsedTransaction::Send {
+                recipient: "alice".into(),
+                property_id: 5,
+                amount_atoms: 1,
+            }
+        );
     }
 
     #[test]
     fn fractional_encoder_omission_changes_semantics() {
         let tx = parse_typed("tl20;alice;5;1").unwrap();
-        assert_eq!(tx, ParsedTransaction::Send {
-            recipient: "alice".into(), property_id: 5, amount_atoms: ATOMS_PER_TOKEN,
-        });
+        assert_eq!(
+            tx,
+            ParsedTransaction::Send {
+                recipient: "alice".into(),
+                property_id: 5,
+                amount_atoms: ATOMS_PER_TOKEN,
+            }
+        );
     }
 
     #[test]
     fn reject_ambiguous_wrapper() {
-        assert_eq!(parse_typed("tl2tl20;alice;5;2"), Err(WireError::NestedEnvelope));
-        assert_eq!(parse_typed("tl1tl1a,FOO,,1,,0,0,"), Err(WireError::NestedEnvelope));
+        assert_eq!(
+            parse_typed("tl2tl20;alice;5;2"),
+            Err(WireError::NestedEnvelope)
+        );
+        assert_eq!(
+            parse_typed("tl1tl1a,FOO,,1,,0,0,"),
+            Err(WireError::NestedEnvelope)
+        );
     }
 }
