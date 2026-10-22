@@ -404,7 +404,6 @@ fn no_supply_creation_and_two_asset_sums_hold_after_many_orders() {
     state.ledger().verify_conservation().unwrap();
 }
 
-
 #[test]
 fn independent_node_bigint_vectors_match_both_maker_price_paths() {
     let mut counted = 0;
@@ -423,9 +422,29 @@ fn independent_node_bigint_vectors_match_both_maker_price_paths() {
         );
         for (sell_maker, expected) in [(true, cols[5]), (false, cols[6])] {
             let mut state = exchange();
-            let seller = place(50, "seller", if sell_maker { 10 } else { 11 }, 7, 8, sell_atoms, sell_want);
-            let buyer = place(51, "buyer", if sell_maker { 11 } else { 10 }, 8, 7, buy_atoms, buy_want);
-            let (first, second) = if sell_maker { (seller, buyer) } else { (buyer, seller) };
+            let seller = place(
+                50,
+                "seller",
+                if sell_maker { 10 } else { 11 },
+                7,
+                8,
+                sell_atoms,
+                sell_want,
+            );
+            let buyer = place(
+                51,
+                "buyer",
+                if sell_maker { 11 } else { 10 },
+                8,
+                7,
+                buy_atoms,
+                buy_want,
+            );
+            let (first, second) = if sell_maker {
+                (seller, buyer)
+            } else {
+                (buyer, seller)
+            };
             state.enqueue_type5_unverified(first).unwrap();
             state.process_through_unverified(10).unwrap();
             state.enqueue_type5_unverified(second).unwrap();
@@ -436,14 +455,25 @@ fn independent_node_bigint_vectors_match_both_maker_price_paths() {
                     assert_eq!(state.open_count(), 2);
                 }
                 "reject" => {
-                    assert_eq!(state.process_through_unverified(11), Err(SpotError::UnrepresentableFill));
+                    assert_eq!(
+                        state.process_through_unverified(11),
+                        Err(SpotError::UnrepresentableFill)
+                    );
                 }
                 expected => {
                     state.process_through_unverified(11).unwrap();
                     assert_eq!(state.fills().len(), 1, "{label}");
                     let (base, quote) = expected.split_once(':').unwrap();
-                    assert_eq!(state.fills()[0].base_atoms, base.parse::<u64>().unwrap(), "{label}");
-                    assert_eq!(state.fills()[0].quote_atoms, quote.parse::<u64>().unwrap(), "{label}");
+                    assert_eq!(
+                        state.fills()[0].base_atoms,
+                        base.parse::<u64>().unwrap(),
+                        "{label}"
+                    );
+                    assert_eq!(
+                        state.fills()[0].quote_atoms,
+                        quote.parse::<u64>().unwrap(),
+                        "{label}"
+                    );
                 }
             }
             state.ledger().verify_conservation().unwrap();
@@ -453,7 +483,10 @@ fn independent_node_bigint_vectors_match_both_maker_price_paths() {
             // Legacy JS's sell-side offered/expected price is 0.5,
             // while the uniform quote/base safety price is 2.
             assert_eq!(cols[7], "50000000");
-            assert_ne!(sell_atoms * 100_000_000 / sell_want, sell_want * 100_000_000 / sell_atoms);
+            assert_ne!(
+                sell_atoms * 100_000_000 / sell_want,
+                sell_want * 100_000_000 / sell_atoms
+            );
         }
         counted += 1;
     }
