@@ -250,13 +250,17 @@ impl fmt::Display for LedgerError {
                 write!(f, "malformed pending withdrawal {}", id.get())
             }
             Self::InvalidWithdrawalHeight => write!(f, "invalid withdrawal maturity height"),
-            Self::ChannelNotBilateral(channel) => write!(f, "channel {} needs two owners", channel.as_str()),
+            Self::ChannelNotBilateral(channel) => {
+                write!(f, "channel {} needs two owners", channel.as_str())
+            }
             Self::InvalidSettlementClaim => write!(f, "invalid or expired net settlement claim"),
             Self::DuplicateSettlementReference => write!(f, "trade reference already claimed"),
             Self::SettlementJournalFull => write!(f, "settlement journal limit exceeded"),
             Self::InvalidSettlementRange => write!(f, "invalid or empty settlement range"),
             Self::ZeroNetSettlement => write!(f, "zero-net king settlement unsupported"),
-            Self::SettlementCommitmentMismatch => write!(f, "settlement root, amount or count mismatch"),
+            Self::SettlementCommitmentMismatch => {
+                write!(f, "settlement root, amount or count mismatch")
+            }
             Self::MalformedSettlementJournal => write!(f, "invalid settlement journal state"),
         }
     }
@@ -501,24 +505,64 @@ impl Ledger {
                 to_side,
                 amount_atoms,
             ),
-            Operation::ChannelNetClaim { id, channel, payer_side, amount_atoms, trade_reference, height, expiry_height } => {
-                self.record_net_settlement(txid, NetClaim {
-                    channel, property: id, payer_side, amount_atoms,
-                    trade_reference, height, expiry_height,
-                })
-            }
-            Operation::ChannelKingSettle { id, channel, start_height, end_height, settled_at, expected_root, expected_count, payer_side, net_atoms } => {
-                let selected: Vec<TxId> = self.pending_net_settlements.iter()
-                    .filter(|(_, claim)| claim.channel == channel && claim.property == id
-                        && (start_height..=end_height).contains(&claim.height))
-                    .map(|(id, _)| *id).collect();
-                self.perform_king_settlement(txid, KingReceipt {
-                    channel, property: id, start_height, end_height, settled_at,
-                    preview: SettlementPreview {
-                        root: expected_root, count: expected_count, payer_side, net_atoms,
+            Operation::ChannelNetClaim {
+                id,
+                channel,
+                payer_side,
+                amount_atoms,
+                trade_reference,
+                height,
+                expiry_height,
+            } => self.record_net_settlement(
+                txid,
+                NetClaim {
+                    channel,
+                    property: id,
+                    payer_side,
+                    amount_atoms,
+                    trade_reference,
+                    height,
+                    expiry_height,
+                },
+            ),
+            Operation::ChannelKingSettle {
+                id,
+                channel,
+                start_height,
+                end_height,
+                settled_at,
+                expected_root,
+                expected_count,
+                payer_side,
+                net_atoms,
+            } => {
+                let selected: Vec<TxId> = self
+                    .pending_net_settlements
+                    .iter()
+                    .filter(|(_, claim)| {
+                        claim.channel == channel
+                            && claim.property == id
+                            && (start_height..=end_height).contains(&claim.height)
+                    })
+                    .map(|(id, _)| *id)
+                    .collect();
+                self.perform_king_settlement(
+                    txid,
+                    KingReceipt {
+                        channel,
+                        property: id,
+                        start_height,
+                        end_height,
+                        settled_at,
+                        preview: SettlementPreview {
+                            root: expected_root,
+                            count: expected_count,
+                            payer_side,
+                            net_atoms,
+                        },
+                        claim_txids: selected,
                     },
-                    claim_txids: selected,
-                })
+                )
             }
         }
     }
@@ -647,8 +691,8 @@ impl Ledger {
         let settlement_version = !self.pending_net_settlements.is_empty()
             || !self.swept_net_settlements.is_empty()
             || !self.king_settlements.is_empty();
-        let channel_version = settlement_version
-            || !self.channels.is_empty() || !self.pending_withdrawals.is_empty();
+        let channel_version =
+            settlement_version || !self.channels.is_empty() || !self.pending_withdrawals.is_empty();
         bytes.extend_from_slice(if settlement_version {
             b"TLL\x03"
         } else if channel_version {
