@@ -198,7 +198,10 @@ impl SpotExchange {
             return Err(SpotError::UnknownProperty);
         }
         ledger.verify_conservation()?;
-        if !ledger.balances_with_account_prefix(ESCROW_PREFIX).is_empty() {
+        if !ledger
+            .balances_with_account_prefix(ESCROW_PREFIX)
+            .is_empty()
+        {
             return Err(SpotError::EscrowCollision);
         }
         Ok(Self {
@@ -581,7 +584,9 @@ impl SpotExchange {
             for order in orders {
                 let escrow = escrow_account(order.txid)?;
                 if order.remaining_offered == 0
-                    || expected.insert((order.offered, escrow), u128::from(order.remaining_offered)).is_some()
+                    || expected
+                        .insert((order.offered, escrow), u128::from(order.remaining_offered))
+                        .is_some()
                 {
                     return Err(SpotError::ReserveMismatch);
                 }
