@@ -400,12 +400,12 @@ impl JointProtocolState {
             return Err(JointError::ReplayConflict);
         }
         for id in self.registry.input_txids_unverified() {
-            if !union.insert(*id) {
+            if self.ledger().is_processed(*id) || !union.insert(*id) {
                 return Err(JointError::ReplayConflict);
             }
         }
         for id in self.spot.spot_input_ids_unverified() {
-            if !union.insert(*id) {
+            if self.ledger().is_processed(*id) || !union.insert(*id) {
                 return Err(JointError::ReplayConflict);
             }
         }
