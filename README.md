@@ -27,8 +27,9 @@ mixed-operation blocks atomically with complete state rollback.
 Bitcoin, Litecoin and Dogecoin each have **independent** joint instances,
 genesis identities, assets, and versioned `TLJP\x01` / `TLJC\x01`
 checkpoints. The earlier TLUC/TLSC formats remain readable through their
-previous APIs; an explicit unverified migration imports an isolated
-Stage 20 spot instance with independently supplied registry history and
+previous APIs. Explicit, unverified migrations can import a Stage 20 spot
+instance with separately supplied registry history or a finalized TLUC
+registry+ledger instance with no outstanding channel obligations. Each
 starts new rollback history at the migration tip.
 
 All of this remains **offline research replay of caller-supplied input**.
