@@ -10,6 +10,7 @@
 //! in any higher-trust system. Matching this transcript alone proves nothing
 //! about that provenance. This API cannot mutate a ledger or authorize txs.
 
+use crate::bitcoin_inclusion::{CheckedHeaderSegment, IncludedTransaction};
 use crate::chain::{BlockId, ChainId, Tip};
 use crate::hash256::sha256;
 use crate::read_only::decode_hex;
@@ -358,4 +359,110 @@ pub fn parse_observations_tsv_unverified(input: &str) -> Result<Vec<ObservedRece
         });
     }
     Ok(result)
+}
+
+
+const SPV_ALIGNMENT_DOMAIN: &[u8] = b"TLR_SHA256D_MERKLE_AUDIT_V1\0";
+
+/// Internal consistency of hash/PoW/Merkle proofs, bound to separate zkTL
+/// audit receipts and TLPT roots. It does not prove the anchor is trusted,
+/// the headers are the active best chain, or settlement economics.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CheckedInclusionReport {
+    pub root_alignment: ReconciliationReport,
+    pub inclusion_audit_digest: [u8; 32],
+}
+
+/// Unlike reconcile_unverified, this bridge does not accept caller-declared
+/// receipt positions, txids or transaction type metadata. It requires opaque
+/// IncludedTransaction evidence produced after raw transaction parsing and
+/// Merkle verification against SHA256d PoW-checked headers. However, the
+/// header chain's anchor and network choice still come from an external caller.
+pub fn reconcile_checked_bitcoin_inclusions_unverified(
+    batch: &AuditBatch,
+    statements: &[TransitionStatement],
+    header_segment: &CheckedHeaderSegment,
+    included: &[IncludedTransaction],
+    expected: ExpectedChainRange,
+) -> Result<CheckedInclusionReport, BridgeError> {
+    if header_segment.anchor() != expected.anchor
+        || header_segment.tip() != expected.final_tip
+        || header_segment.headers().len() != statements.len()
+    {
+        return Err(BridgeError::WrongAnchors);
+    }
+    if included.len() != batch.receipts.len() || included.len() > MAX_RECEIPTS {
+        return Err(BridgeError::ReceiptMismatch);
+    }
+    let mut observations = Vec::with_capacity(included.len());
+    let mut last_height = None;
+    let mut last_index = None;
+    let mut tx_count_this_block = None;
+    let mut protocol_order = 0u32;
+    for proof in included {
+        let header = header_segment.headers()
+            .iter()
+            .find(|header| header.tip().height == proof.height())
+            .ok_or(BridgeError::MissingBlock)?;
+        if header.tip().id != proof.block_id() {
+            return Err(BridgeError::ReceiptMismatch);
+        }
+        if last_height != Some(proof.height()) {
+            if last_height.is_some_and(|last| proof.height() <= last) {
+                return Err(BridgeError::ReceiptMismatch);
+            }
+            last_height = Some(proof.height());
+            last_index = None;
+            tx_count_this_block = None;
+            protocol_order = 0;
+        }
+        if last_index.is_some_and(|index| proof.tx_index() <= index)
+            || tx_count_this_block.is_some_and(|count| proof.tx_count() != count)
+        {
+            return Err(BridgeError::ReceiptMismatch);
+        }
+        last_index = Some(proof.tx_index());
+        tx_count_this_block = Some(proof.tx_count());
+        let hint = proof.legacy_type_hint().ok_or(BridgeError::ReceiptMismatch)?;
+        let txid_hex: String = proof.txid_display().iter()
+            .map(|b| format!("{b:02x}")).collect();
+        let txid = Digest::parse(&txid_hex)?;
+        observations.push(ObservedReceipt {
+            height: proof.height(),
+            block_id: proof.block_id(),
+            txid,
+            tx_type: hint,
+            order_in_block: protocol_order,
+        });
+        protocol_order += 1;
+    }
+    let root_alignment = reconcile_unverified(batch, statements, &observations, expected)?;
+    // Cryptographically bind full-L1 transaction positions and counts in
+    // addition to Stage 15's protocol-receipt-only ordering. A hash of a
+    // claimed checked result is still not a proof of chain membership.
+    let mut transcript = Vec::new();
+    transcript.extend_from_slice(SPV_ALIGNMENT_DOMAIN);
+    transcript.extend_from_slice(&root_alignment.audit_digest);
+    transcript.extend_from_slice(&expected.chain.0);
+    append_tip(&mut transcript, header_segment.anchor());
+    transcript.extend_from_slice(&(header_segment.headers().len() as u32).to_be_bytes());
+    for header in header_segment.headers() {
+        append_tip(&mut transcript, header.tip());
+        transcript.extend_from_slice(&header.parent().0);
+        transcript.extend_from_slice(&header.merkle_root_raw());
+        transcript.extend_from_slice(&header.n_bits().to_be_bytes());
+    }
+    transcript.extend_from_slice(&(included.len() as u32).to_be_bytes());
+    for proof in included {
+        transcript.extend_from_slice(&proof.height().to_be_bytes());
+        transcript.extend_from_slice(&proof.block_id().0);
+        transcript.extend_from_slice(&proof.txid_display());
+        transcript.extend_from_slice(&proof.tx_index().to_be_bytes());
+        transcript.extend_from_slice(&proof.tx_count().to_be_bytes());
+        transcript.push(proof.legacy_type_hint().expect("checked earlier").as_u8());
+    }
+    Ok(CheckedInclusionReport {
+        root_alignment,
+        inclusion_audit_digest: sha256(&transcript),
+    })
 }
