@@ -246,10 +246,16 @@ impl Ledger {
     }
 
     fn existing_property(&self, id: PropertyId) -> Result<&Property, LedgerError> {
-        self.properties.get(&id).ok_or(LedgerError::UnknownProperty(id))
+        self.properties
+            .get(&id)
+            .ok_or(LedgerError::UnknownProperty(id))
     }
 
-    fn check_managed_issuer(&self, id: PropertyId, actor: &AccountId) -> Result<&Property, LedgerError> {
+    fn check_managed_issuer(
+        &self,
+        id: PropertyId,
+        actor: &AccountId,
+    ) -> Result<&Property, LedgerError> {
         let property = self.existing_property(id)?;
         if property.kind != PropertyKind::Managed {
             return Err(LedgerError::FixedSupply(id));
@@ -417,7 +423,10 @@ mod tests {
     fn checked_account_and_property_ids() {
         assert_eq!(PropertyId::try_from(0), Err(LedgerError::InvalidPropertyId));
         for invalid in ["", "alice bob", "\n", "🚀"] {
-            assert_eq!(AccountId::try_from(invalid), Err(LedgerError::InvalidAccount));
+            assert_eq!(
+                AccountId::try_from(invalid),
+                Err(LedgerError::InvalidAccount)
+            );
         }
         assert_eq!(
             AccountId::try_from("a".repeat(MAX_ACCOUNT_BYTES + 1).as_str()),
@@ -429,19 +438,36 @@ mod tests {
     #[test]
     fn rejects_supply_mismatch() {
         let mut ledger = Ledger::new();
-        ledger.apply(tx(1), Operation::CreateProperty {
-            id: p(7), issuer: a("alice"), kind: PropertyKind::Fixed, initial_atoms: 10,
-        }).unwrap();
+        ledger
+            .apply(
+                tx(1),
+                Operation::CreateProperty {
+                    id: p(7),
+                    issuer: a("alice"),
+                    kind: PropertyKind::Fixed,
+                    initial_atoms: 10,
+                },
+            )
+            .unwrap();
         ledger.available.insert((p(7), a("alice")), 11);
-        assert_eq!(ledger.verify_conservation(), Err(LedgerError::SupplyMismatch(p(7))));
+        assert_eq!(
+            ledger.verify_conservation(),
+            Err(LedgerError::SupplyMismatch(p(7)))
+        );
     }
 
     #[test]
     fn rejects_orphan_balances_and_zero_entries() {
         let mut ledger = Ledger::new();
         ledger.available.insert((p(7), a("alice")), 1);
-        assert_eq!(ledger.verify_conservation(), Err(LedgerError::BalanceWithoutProperty(p(7))));
+        assert_eq!(
+            ledger.verify_conservation(),
+            Err(LedgerError::BalanceWithoutProperty(p(7)))
+        );
         ledger.available.insert((p(7), a("alice")), 0);
-        assert_eq!(ledger.verify_conservation(), Err(LedgerError::NonCanonicalZeroBalance(p(7))));
+        assert_eq!(
+            ledger.verify_conservation(),
+            Err(LedgerError::NonCanonicalZeroBalance(p(7)))
+        );
     }
 }
