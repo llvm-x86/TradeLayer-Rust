@@ -429,6 +429,11 @@ fn origin_matches_operation(origin: &AccountId, operation: &Operation) -> bool {
         Operation::Transfer { from, .. } => origin == from,
         Operation::Mint { issuer, .. } => origin == issuer,
         Operation::Burn { issuer, .. } => origin == issuer,
+        // Ledger-only ChainState has no block-end withdrawal maturation.
+        // Channel operations are routed through UnifiedChainState only.
+        Operation::ChannelCommit { .. }
+        | Operation::ChannelWithdraw { .. }
+        | Operation::ChannelTransfer { .. } => false,
     }
 }
 
