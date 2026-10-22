@@ -114,11 +114,11 @@ fn wrap(
     with_crc(bytes).map_err(|_| invalid("profile checkpoint too large"))
 }
 
-fn unwrap<'a>(
-    bytes: &'a [u8],
+fn unwrap(
+    bytes: &[u8],
     expected_network: TradeLayerMainnet,
     expected_lane: ReplayLane,
-) -> Result<&'a [u8], ProfileReplayError> {
+) -> Result<&[u8], ProfileReplayError> {
     let body = verify_crc(bytes).map_err(|_| invalid("checkpoint CRC/length"))?;
     let mut reader = Cursor::new(body);
     if reader
