@@ -85,10 +85,7 @@ pub fn parse_frame(bytes: &[u8]) -> Result<Frame<'_>, WireV1Error> {
 
 /// Construct exactly one binary envelope for any known transaction type.
 /// Encoding here does not imply the body is valid for that transaction type.
-pub fn encode_frame(
-    tx_type: TransactionType,
-    body: &[u8],
-) -> Result<Vec<u8>, WireV1Error> {
+pub fn encode_frame(tx_type: TransactionType, body: &[u8]) -> Result<Vec<u8>, WireV1Error> {
     if body.len() > MAX_FRAME_BYTES - HEADER_LEN {
         return Err(WireV1Error::TooLong);
     }
@@ -336,10 +333,19 @@ mod tests {
     #[test]
     fn reject_other_type_and_truncations() {
         let wrong = encode_frame(TransactionType::try_from(1).unwrap(), b"hi").unwrap();
-        assert_eq!(parse_send(&wrong), Err(WireV1Error::WrongTransactionType(1)));
+        assert_eq!(
+            parse_send(&wrong),
+            Err(WireV1Error::WrongTransactionType(1))
+        );
         assert_eq!(parse_send(b"TLR\x01\x02\x00"), Err(WireV1Error::Truncated));
-        assert_eq!(parse_send(b"TLR\x01\x02\x7f"), Err(WireV1Error::InvalidSendVariant(127)));
-        assert_eq!(parse_send(b"TLR\x01\x02\x01\x03bo"), Err(WireV1Error::Truncated));
+        assert_eq!(
+            parse_send(b"TLR\x01\x02\x7f"),
+            Err(WireV1Error::InvalidSendVariant(127))
+        );
+        assert_eq!(
+            parse_send(b"TLR\x01\x02\x01\x03bo"),
+            Err(WireV1Error::Truncated)
+        );
     }
 
     #[test]
