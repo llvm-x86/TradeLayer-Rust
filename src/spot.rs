@@ -198,6 +198,9 @@ impl SpotExchange {
             return Err(SpotError::UnknownProperty);
         }
         ledger.verify_conservation()?;
+        if !ledger.balances_with_account_prefix(ESCROW_PREFIX).is_empty() {
+            return Err(SpotError::EscrowCollision);
+        }
         Ok(Self {
             ledger,
             permitted,
@@ -562,16 +565,24 @@ impl SpotExchange {
 
     /// Canonical accounting invariant across all outstanding orders.
     pub fn verify_reserves(&self) -> Result<(), SpotError> {
+        let mut expected = BTreeMap::new();
         for orders in self.books.values() {
             for order in orders {
                 let escrow = escrow_account(order.txid)?;
-                if self.ledger.available_atoms(order.offered, &escrow)
-                    != u128::from(order.remaining_offered)
-                    || order.remaining_offered == 0
+                if order.remaining_offered == 0
+                    || expected.insert((order.offered, escrow), u128::from(order.remaining_offered)).is_some()
                 {
                     return Err(SpotError::ReserveMismatch);
                 }
             }
+        }
+        for (id, account, atoms) in self.ledger.balances_with_account_prefix(ESCROW_PREFIX) {
+            if expected.remove(&(id, account)) != Some(atoms) {
+                return Err(SpotError::ReserveMismatch);
+            }
+        }
+        if !expected.is_empty() {
+            return Err(SpotError::ReserveMismatch);
         }
         Ok(())
     }
