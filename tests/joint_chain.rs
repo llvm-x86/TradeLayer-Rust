@@ -700,3 +700,88 @@ fn immutable_checkpoint_write_failure_preserves_registry_and_ledger() {
     std::fs::remove_file(path).unwrap();
     assert_eq!(restored, chain);
 }
+
+
+#[test]
+fn managed_grant_and_redeem_account_on_the_same_spot_ledger() {
+    let mut chain = start(TradeLayerMainnet::Bitcoin);
+    chain.apply_unverified_block(&block(&chain, 21, vec![
+        jt(11, "buyer", JointOperation::Grant {
+            id: p(8), recipient: a("seller"), amount_atoms: 50
+        }),
+        jt(12, "buyer", JointOperation::Redeem {
+            id: p(8), amount_atoms: 20
+        }),
+    ])).unwrap();
+    assert_eq!(chain.state().ledger().property(p(8)).unwrap().total_supply_atoms, 1030);
+    assert_eq!(chain.state().ledger().available_atoms(p(8), &a("buyer")), 980);
+    assert_eq!(chain.state().ledger().available_atoms(p(8), &a("seller")), 50);
+
+    chain.apply_unverified_block(&block(&chain, 22, vec![
+        place(true, 13, 100, 200),
+        place(false, 14, 220, 100),
+    ])).unwrap();
+    assert_eq!(chain.state().spot().fills().len(), 1);
+    assert_eq!(chain.state().ledger().property(p(8)).unwrap().total_supply_atoms, 1030);
+    assert_eq!(chain.state().ledger().available_atoms(p(8), &a("buyer")), 760);
+    assert_eq!(chain.state().ledger().available_atoms(p(8), &a("seller")), 270);
+    chain.state().verify_components_unverified().unwrap();
+}
+
+#[test]
+fn mixed_block_rollback_restores_registry_activation_and_balances() {
+    let mut chain = start(TradeLayerMainnet::Litecoin);
+    let before = chain.clone();
+    chain.apply_unverified_block(&block(&chain, 21, vec![
+        jt(11, "admin", JointOperation::Registry(RegistryAction::Activate {
+            types: vec![13], code_hash: [19; 32]
+        })),
+        jt(12, "seller", JointOperation::Send {
+            id: p(7), recipient: a("alice"), amount_atoms: 45
+        }),
+    ])).unwrap();
+    assert_eq!(chain.state().registry().activation(13).unwrap().height, 2);
+    assert_eq!(chain.state().ledger().available_atoms(p(7), &a("alice")), 45);
+    let bytes = chain.checkpoint_bytes().unwrap();
+    let restored = JointChainState::from_checkpoint_bytes(
+        &bytes, TradeLayerMainnet::Litecoin, anchor(TradeLayerMainnet::Litecoin),
+        &a("admin"), &permitted(), 4
+    ).unwrap();
+    assert_eq!(restored, chain);
+    chain.rollback_tip(chain.tip()).unwrap();
+    assert_eq!(chain, before);
+    assert!(chain.state().registry().activation(13).is_none());
+    assert_eq!(chain.state().ledger().available_atoms(p(7), &a("alice")), 0);
+}
+
+#[test]
+fn spot_migration_refuses_reused_registry_and_spot_input_ids() {
+    let network = TradeLayerMainnet::Dogecoin;
+    let initial = SpotExchange::from_ledger_unverified(ledger(), permitted()).unwrap();
+    let mut old = NetworkBoundSpot::new_unverified(network, anchor(network), initial, 4).unwrap();
+    old.apply_unverified_block(&UnverifiedSpotBlock {
+        chain: network.chain_id(),
+        header: BlockHeader {
+            height: 1, parent: network.genesis(), id: BlockId([45;32])
+        },
+        operations: vec![UnverifiedSpotOperation::PlaceType5(UnverifiedSpotPlacement {
+            txid: tx(50), actor: a("seller"), height: 1,
+            intent: SpotIntent {
+                offered: p(7), desired: p(8), offered_atoms: 40,
+                expected_atoms: 80, stop: false, post: false
+            }
+        })],
+    }).unwrap();
+
+    let mut registry = Registry::new(a("admin"));
+    registry.apply(RegistryTx {
+        txid: tx(50), actor: a("admin"), height: 1,
+        action: RegistryAction::Activate {
+            types: vec![5,6], code_hash: [20;32]
+        },
+    }).unwrap();
+    assert!(matches!(
+        JointChainState::migrate_from_spot_unverified(&old, registry, 4),
+        Err(JointChainError::Joint(JointError::ReplayConflict))
+    ));
+}
