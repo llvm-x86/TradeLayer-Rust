@@ -61,6 +61,8 @@ jobs:
           grep -Fxq 'last_height=1' /tmp/bitcoin-work-report.txt
           grep -Fxq 'chainwork=0000000000000000000000000000000000000000000000000000000200020002' /tmp/bitcoin-work-report.txt
           grep -Fxq 'best_active_chain=UNVERIFIED' /tmp/bitcoin-work-report.txt
+      - name: Independent Node BigInt spot matching vectors
+        run: node scripts/audit_spot_vectors.cjs --check
       - name: TLPT state commitment cross-language audit
         run: python3 scripts/generate_tlpt_vectors.py --check
       - name: zkTL Cairo bridge Python checks

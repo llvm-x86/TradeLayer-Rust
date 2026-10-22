@@ -7,6 +7,8 @@
 pub enum PortStage {
     /// Only standalone accounting operations, not chain consensus rules.
     RustLedgerPrimitive,
+    /// Standalone offline spot matching/cancellation, without signed chain input.
+    RustSpotPrimitive,
     /// Standalone registry state transitions, without chain authentication.
     RustRegistryPrimitive,
     /// zkTL has a JavaScript transition prototype; full Cairo proof absent.
@@ -53,12 +55,12 @@ pub const TRANSACTION_CATALOG: [TransactionSpec; 36] = [
     TransactionSpec {
         number: 5,
         name: "On-chain Token for Token",
-        stage: PortStage::ZkTlJsPrototype,
+        stage: PortStage::RustSpotPrimitive,
     },
     TransactionSpec {
         number: 6,
         name: "Cancel Order",
-        stage: PortStage::ZkTlJsPrototype,
+        stage: PortStage::RustSpotPrimitive,
     },
     TransactionSpec {
         number: 7,
@@ -223,6 +225,18 @@ mod tests {
             assert!(!entry.name.is_empty());
         }
         assert!(lookup_transaction(36).is_none());
+        assert_eq!(
+            lookup_transaction(5).unwrap().stage,
+            PortStage::RustSpotPrimitive
+        );
+        assert_eq!(
+            lookup_transaction(6).unwrap().stage,
+            PortStage::RustSpotPrimitive
+        );
+        assert_eq!(
+            lookup_transaction(3).unwrap().stage,
+            PortStage::ZkTlJsPrototype
+        );
     }
 
     #[test]
