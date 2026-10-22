@@ -60,7 +60,7 @@ fn synthetic_rows() -> Vec<Vec<u8>> {
     include_str!("../fixtures/synthetic_transactions.tsv")
         .lines()
         .filter(|line| !line.starts_with('#') && !line.is_empty())
-        .map(|line| raw(line.split('\t').last().unwrap()))
+        .map(|line| raw(line.split('\t').next_back().unwrap()))
         .collect()
 }
 fn genesis_tx() -> Vec<u8> {
@@ -69,7 +69,7 @@ fn genesis_tx() -> Vec<u8> {
         .find(|line| line.starts_with("bitcoin-genesis\t"))
         .unwrap()
         .split('\t')
-        .last()
+        .next_back()
         .unwrap())
 }
 fn segwit_tx() -> Vec<u8> {
@@ -78,7 +78,7 @@ fn segwit_tx() -> Vec<u8> {
         .find(|line| line.starts_with("segwit-opreturn-example\t"))
         .unwrap()
         .split('\t')
-        .last()
+        .next_back()
         .unwrap())
 }
 fn sibling(hex: &str) -> [u8; 32] {
