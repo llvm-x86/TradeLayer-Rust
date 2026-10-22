@@ -8,7 +8,8 @@ use tradelayer_core::ledger::{
 };
 use tradelayer_core::registry::RegistryAction;
 use tradelayer_core::unified_chain::{
-    AuthenticatedProtocolOperation, TrustedProtocolAdapter, UnifiedChainState,
+    AuthenticatedProtocolOperation, SettlementEvidenceContext, TrustedProtocolAdapter,
+    UnifiedChainError, UnifiedChainState,
 };
 
 fn chain() -> ChainId {
@@ -339,6 +340,9 @@ fn zero_net_claims_are_not_economically_mutated() {
 #[derive(Default)]
 struct FakeAdapter {
     entries: BTreeMap<u8, AuthenticatedProtocolOperation>,
+    // Synthetic only: in a real adapter, economic proofs must be independently
+    // derived from actual authenticated trades and source transaction bytes.
+    verified_economics: BTreeMap<(u8, u64, BlockId), AuthenticatedProtocolOperation>,
 }
 impl FakeAdapter {
     fn add(&mut self, number: u8, actor: &str, operation: ProtocolOperation) {
@@ -350,6 +354,10 @@ impl FakeAdapter {
                 operation,
             },
         );
+    }
+    fn authorize_synthetic_economics(&mut self, number: u8, height: u64, marker: u8) {
+        let statement = self.entries.get(&number).expect("synthetic operation registered").clone();
+        self.verified_economics.insert((number, height, BlockId([marker; 32])), statement);
     }
 }
 impl TrustedProtocolAdapter for FakeAdapter {
@@ -370,6 +378,22 @@ impl TrustedProtocolAdapter for FakeAdapter {
             .cloned()
             .map(Some)
             .ok_or_else(|| "unknown synthetic input".to_owned())
+    }
+    fn authenticate_settlement_economics(
+        &self,
+        context: SettlementEvidenceContext<'_>,
+    ) -> Result<(), String> {
+        let number = *context.raw_transaction.first()
+            .ok_or_else(|| "empty synthetic settlement input".to_owned())?;
+        if context.chain != chain() || context.raw_transaction != [number] {
+            return Err("synthetic settlement network/source mismatch".to_owned());
+        }
+        if self.verified_economics.get(&(number, context.header.height, context.header.id))
+            != Some(context.decoded)
+        {
+            return Err("synthetic economic reference not authorized for exact block/operation".to_owned());
+        }
+        Ok(())
     }
 }
 fn anchor() -> Tip {
@@ -400,6 +424,8 @@ fn unified_chain_checkpoint_and_reorg_restore_sweep_and_consumed_claims() {
     fake.add(5, "bob", commit(ChannelSide::B, 100));
     fake.add(6, "chan", claim(ChannelSide::A, 30, 40, 200));
     fake.add(7, "chan", claim(ChannelSide::B, 10, 41, 200));
+    fake.authorize_synthetic_economics(6, 104, 104);
+    fake.authorize_synthetic_economics(7, 105, 105);
     state
         .apply_block(&block(state.tip(), 101, &[1]), &fake)
         .unwrap();
@@ -433,6 +459,8 @@ fn unified_chain_checkpoint_and_reorg_restore_sweep_and_consumed_claims() {
         .unwrap()
     );
     fake.add(8, "chan", king(&preview, 104, 105));
+    fake.authorize_synthetic_economics(8, 106, 106);
+    fake.authorize_synthetic_economics(8, 106, 107);
     let prior = state.clone();
     state
         .apply_block(&block(state.tip(), 106, &[8]), &fake)
