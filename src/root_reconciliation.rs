@@ -473,7 +473,6 @@ pub fn reconcile_checked_bitcoin_inclusions_unverified(
     })
 }
 
-
 /// A read-only commitment over Stage 16 inclusion checks PLUS independently
 /// checked mainnet difficulty/MTP/chainwork since an explicit anchor.
 /// Neither this hash nor a published-genesis ancestry tag certifies the
@@ -500,7 +499,11 @@ pub fn reconcile_mainnet_work_headers_unverified(
     expected: ExpectedChainRange,
 ) -> Result<MainnetWorkAlignment, BridgeError> {
     let inclusion = reconcile_checked_bitcoin_inclusions_unverified(
-        batch, statements, work_segment.checked_headers(), included, expected,
+        batch,
+        statements,
+        work_segment.checked_headers(),
+        included,
+        expected,
     )?;
     let mut bytes = Vec::with_capacity(MAINNET_WORK_ALIGNMENT_DOMAIN.len() + 32 * 4 + 1);
     bytes.extend_from_slice(MAINNET_WORK_ALIGNMENT_DOMAIN);
