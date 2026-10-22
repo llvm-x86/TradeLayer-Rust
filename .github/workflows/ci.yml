@@ -46,6 +46,8 @@ jobs:
         run: |
           cargo run --locked --bin tradelayer-legacy-fields -- fixtures/synthetic_transactions.tsv > /tmp/tradelayer-rust-fields.tsv
           grep -q 'send' /tmp/tradelayer-rust-fields.tsv
+      - name: Independent Bitcoin genesis and SHA256d inclusion vectors
+        run: python3 scripts/audit_bitcoin_spv_vectors.py
       - name: TLPT state commitment cross-language audit
         run: python3 scripts/generate_tlpt_vectors.py --check
       - name: zkTL Cairo bridge Python checks
