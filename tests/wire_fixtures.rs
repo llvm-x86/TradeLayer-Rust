@@ -1,5 +1,7 @@
 //! Check fixed legacy wire-format vectors from the companion Node script.
-use tradelayer_core::wire::{parse_frame, parse_typed, ParsedTransaction, WireError, ATOMS_PER_TOKEN};
+use tradelayer_core::wire::{
+    parse_frame, parse_typed, ParsedTransaction, WireError, ATOMS_PER_TOKEN,
+};
 
 #[test]
 fn source_derived_wire_fixtures() {
@@ -29,20 +31,34 @@ fn source_derived_wire_fixtures() {
         }
         count += 1;
     }
-    assert!(count >= 10, "expected enough fixtures to cover all wire cases");
+    assert!(
+        count >= 10,
+        "expected enough fixtures to cover all wire cases"
+    );
 }
 
 #[test]
 fn representative_transaction_values() {
     match parse_typed("tl00;2;11;12,73").unwrap() {
-        ParsedTransaction::Activate { types, code_hash_base36 } => {
-            assert_eq!(types.iter().map(|t| t.as_u8()).collect::<Vec<_>>(), [0, 2, 11, 12]);
+        ParsedTransaction::Activate {
+            types,
+            code_hash_base36,
+        } => {
+            assert_eq!(
+                types.iter().map(|t| t.as_u8()).collect::<Vec<_>>(),
+                [0, 2, 11, 12]
+            );
             assert_eq!(code_hash_base36, "73");
         }
         other => panic!("expected activation, got {other:?}"),
     }
     match parse_typed("tl1a,FOO,,1,,0,0,").unwrap() {
-        ParsedTransaction::Issue { initial_tokens, ticker, managed, .. } => {
+        ParsedTransaction::Issue {
+            initial_tokens,
+            ticker,
+            managed,
+            ..
+        } => {
             assert_eq!(initial_tokens, 10);
             assert_eq!(ticker, "FOO");
             assert!(managed);
@@ -50,14 +66,22 @@ fn representative_transaction_values() {
         other => panic!("expected issue, got {other:?}"),
     }
     match parse_typed("tl20;alice;5;2").unwrap() {
-        ParsedTransaction::Send { property_id, amount_atoms, .. } => {
+        ParsedTransaction::Send {
+            property_id,
+            amount_atoms,
+            ..
+        } => {
             assert_eq!(property_id, 5);
             assert_eq!(amount_atoms, 2 * ATOMS_PER_TOKEN);
         }
         other => panic!("expected send, got {other:?}"),
     }
     match parse_typed("tlb5,89oqgw,bob,,,,,").unwrap() {
-        ParsedTransaction::Grant { property_id, amount_atoms, .. } => {
+        ParsedTransaction::Grant {
+            property_id,
+            amount_atoms,
+            ..
+        } => {
             assert_eq!(property_id, 5);
             assert_eq!(amount_atoms, 5 * ATOMS_PER_TOKEN);
         }
