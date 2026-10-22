@@ -14,7 +14,7 @@ use crate::unified_chain::UnifiedChainState;
 const PROTOCOL_DOMAIN: &[u8] = b"TLR_PROTOCOL_STATE_V1\0";
 const HEAD_DOMAIN: &[u8] = b"TLR_CHAIN_HEAD_V1\0";
 const TRANSITION_MAGIC: &[u8; 5] = b"TLPT\x01";
-pub const TRANSITION_BYTES: usize = 245;
+pub const TRANSITION_BYTES: usize = 277;
 
 #[derive(Debug)]
 pub enum CommitmentError {
