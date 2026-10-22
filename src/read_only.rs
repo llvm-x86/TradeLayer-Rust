@@ -295,9 +295,7 @@ pub fn inspect_transaction(raw: &[u8]) -> Result<TransactionObservation, ScanErr
         let marker = reader.byte()?;
         let flag = reader.byte()?;
         if marker != 0 || flag != 1 {
-            return Err(ScanError::Invalid(
-                "unsupported SegWit marker/flag".into(),
-            ));
+            return Err(ScanError::Invalid("unsupported SegWit marker/flag".into()));
         }
     }
     let inputs_start = reader.offset;
