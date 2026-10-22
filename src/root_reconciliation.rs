@@ -282,7 +282,10 @@ fn canonical_u64(input: &str) -> Result<u64, BridgeError> {
 }
 
 fn lowercase_bytes(input: &str) -> Result<Vec<u8>, BridgeError> {
-    if !input.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit()) {
+    if !input
+        .bytes()
+        .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
+    {
         return Err(BridgeError::Invalid("nonlowercase hex"));
     }
     decode_hex(input).map_err(|_| BridgeError::Invalid("bad hexadecimal input"))
@@ -341,8 +344,8 @@ pub fn parse_observations_tsv_unverified(input: &str) -> Result<Vec<ObservedRece
         )
         .map_err(|_| BridgeError::Invalid("transaction type"))?;
         let position = canonical_u64(fields[5])?;
-        let order_in_block = u32::try_from(position)
-            .map_err(|_| BridgeError::Invalid("observation order"))?;
+        let order_in_block =
+            u32::try_from(position).map_err(|_| BridgeError::Invalid("observation order"))?;
         if result.len() >= MAX_RECEIPTS {
             return Err(BridgeError::Invalid("too many observations"));
         }
