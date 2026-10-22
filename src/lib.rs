@@ -14,9 +14,9 @@ pub mod protocol; // Audited legacy transaction catalog, not consensus execution
 pub mod read_only; // Offline transaction scanning; cannot authorize ledger state.
 pub mod registry; // Standalone tx0/7-9/13-15 registry state; authentication external.
 pub mod unified_chain; // Offline reversible registry+ledger block projection; adapter external.
-pub mod withdrawal_parity; // Read-only JS-like deferred queue oracle for differential tests.
 pub mod wire; // Read-only legacy ASCII format analysis; never auto-fallback.
 pub mod wire_v1;
+pub mod withdrawal_parity; // Read-only JS-like deferred queue oracle for differential tests.
 pub mod zk_batch; // zkTL/Cairo claim inspection; no proof verification or mutation. // Proposed versioned binary format.
 
 /// Highest transaction type dispatched by the historical JavaScript
