@@ -320,8 +320,11 @@ impl UnifiedChainState {
             if prior_state
                 .last_height()
                 .is_some_and(|height| height > previous_tip.height)
+                || prior_state
+                    .finalized_height()
+                    .is_some_and(|height| height != previous_tip.height)
             {
-                return Err(invalid("state ahead of history tip"));
+                return Err(invalid("history finalization mismatch"));
             }
             history.push_back(Prior {
                 tip: previous_tip,
@@ -339,6 +342,9 @@ impl UnifiedChainState {
             || state
                 .last_height()
                 .is_some_and(|height| height > tip.height)
+            || state
+                .finalized_height()
+                .is_some_and(|height| height != tip.height)
         {
             return Err(invalid("invalid checkpoint tip"));
         }
