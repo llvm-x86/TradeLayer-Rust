@@ -60,10 +60,7 @@ mod tests {
 
     #[test]
     fn rejects_unknown_transaction_types() {
-        assert_eq!(
-            TransactionType::try_from(36),
-            Err(UnknownTransactionType(36))
-        );
+        assert_eq!(TransactionType::try_from(36), Err(UnknownTransactionType(36)));
         assert_eq!(
             TransactionType::try_from(u8::MAX),
             Err(UnknownTransactionType(u8::MAX))
