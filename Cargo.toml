@@ -1,0 +1,13 @@
+[package]
+name = "tradelayer-core"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.90"
+description = "A deterministic Rust core for the TradeLayer protocol"
+publish = false
+
+[lib]
+name = "tradelayer_core"
+path = "src/lib.rs"
+
+[dependencies]
