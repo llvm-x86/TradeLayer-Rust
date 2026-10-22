@@ -211,10 +211,14 @@ impl fmt::Display for LedgerError {
             }
             Self::UnknownChannel(id) => write!(f, "unknown channel {}", id.as_str()),
             Self::ChannelSideOccupied(id) => write!(f, "channel {} column occupied", id.as_str()),
-            Self::ChannelSideMismatch(id) => write!(f, "channel {} participant mismatch", id.as_str()),
+            Self::ChannelSideMismatch(id) => {
+                write!(f, "channel {} participant mismatch", id.as_str())
+            }
             Self::SameChannel => write!(f, "channel transfer requires distinct channels"),
             Self::MalformedChannel(id) => write!(f, "malformed channel balance {}", id.get()),
-            Self::MalformedPendingWithdrawal(id) => write!(f, "malformed pending withdrawal {}", id.get()),
+            Self::MalformedPendingWithdrawal(id) => {
+                write!(f, "malformed pending withdrawal {}", id.get())
+            }
             Self::InvalidWithdrawalHeight => write!(f, "invalid withdrawal maturity height"),
         }
     }
@@ -416,12 +420,44 @@ impl Ledger {
                 self.put_balance(id, issuer, balance - amount_atoms);
                 Ok(())
             }
-            Operation::ChannelCommit { id, owner, channel, side, amount_atoms } =>
-                self.commit_channel(id, owner, channel, side, amount_atoms),
-            Operation::ChannelWithdraw { id, owner, channel, side, amount_atoms, unlock_height } =>
-                self.request_channel_withdrawal(txid, id, owner, channel, side, amount_atoms, unlock_height),
-            Operation::ChannelTransfer { id, from_channel, from_side, to_channel, to_side, amount_atoms } =>
-                self.transfer_channel(id, from_channel, from_side, to_channel, to_side, amount_atoms),
+            Operation::ChannelCommit {
+                id,
+                owner,
+                channel,
+                side,
+                amount_atoms,
+            } => self.commit_channel(id, owner, channel, side, amount_atoms),
+            Operation::ChannelWithdraw {
+                id,
+                owner,
+                channel,
+                side,
+                amount_atoms,
+                unlock_height,
+            } => self.request_channel_withdrawal(
+                txid,
+                id,
+                owner,
+                channel,
+                side,
+                amount_atoms,
+                unlock_height,
+            ),
+            Operation::ChannelTransfer {
+                id,
+                from_channel,
+                from_side,
+                to_channel,
+                to_side,
+                amount_atoms,
+            } => self.transfer_channel(
+                id,
+                from_channel,
+                from_side,
+                to_channel,
+                to_side,
+                amount_atoms,
+            ),
         }
     }
 
@@ -543,7 +579,11 @@ impl Ledger {
         }
         let mut bytes = Vec::new();
         let channel_version = !self.channels.is_empty() || !self.pending_withdrawals.is_empty();
-        bytes.extend_from_slice(if channel_version { b"TLL\x02" } else { b"TLL\x01" });
+        bytes.extend_from_slice(if channel_version {
+            b"TLL\x02"
+        } else {
+            b"TLL\x01"
+        });
         bytes.extend_from_slice(&(self.properties.len() as u32).to_be_bytes());
         for (id, property) in &self.properties {
             bytes.extend_from_slice(&id.get().to_be_bytes());
