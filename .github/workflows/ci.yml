@@ -50,6 +50,15 @@ jobs:
         run: python3 scripts/audit_bitcoin_spv_vectors.py
       - name: Bitcoin mainnet bigint chainwork and retarget audit
         run: python3 scripts/audit_bitcoin_chainwork.py
+      - name: Historical Bitcoin genesis-to-block1 CLI header work smoke test
+        run: |
+          cargo run --locked --bin tradelayer-bitcoin-work -- fixtures/bitcoin_mainnet_genesis_block1_headers.txt > /tmp/bitcoin-work-report.txt
+          grep -Fxq 'anchor=PUBLISHED_BITCOIN_MAINNET_GENESIS' /tmp/bitcoin-work-report.txt
+          grep -Fxq 'sha256d_pow=CHECKED' /tmp/bitcoin-work-report.txt
+          grep -Fxq 'difficulty_transitions=CHECKED' /tmp/bitcoin-work-report.txt
+          grep -Fxq 'last_height=1' /tmp/bitcoin-work-report.txt
+          grep -Fxq 'chainwork=0000000000000000000000000000000000000000000000000000000200020002' /tmp/bitcoin-work-report.txt
+          grep -Fxq 'best_active_chain=UNVERIFIED' /tmp/bitcoin-work-report.txt
       - name: TLPT state commitment cross-language audit
         run: python3 scripts/generate_tlpt_vectors.py --check
       - name: zkTL Cairo bridge Python checks
