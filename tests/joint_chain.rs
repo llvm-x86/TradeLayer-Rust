@@ -3,13 +3,15 @@
 //! All actors, blocks and txids in these fixtures are explicitly UNVERIFIED.
 
 use std::collections::BTreeSet;
-use tradelayer_core::chain::{BlockHeader, BlockId, Tip};
+use tradelayer_core::chain::{BlockHeader, BlockId, CandidateBlock, ChainId, Tip};
 use tradelayer_core::joint::{JointError, JointOperation, UnverifiedJointTx};
 use tradelayer_core::joint_chain::{JointChainError, JointChainState, UnverifiedJointBlock};
 use tradelayer_core::ledger::{AccountId, Ledger, Operation, PropertyId, PropertyKind, TxId};
-use tradelayer_core::network_bound::NetworkBoundSpot;
+use tradelayer_core::network_bound::{NetworkBoundSpot, NetworkBoundUnified};
 use tradelayer_core::network_profile::TradeLayerMainnet;
 use tradelayer_core::registry::{Registry, RegistryAction, RegistryTx};
+use tradelayer_core::execution::ProtocolOperation;
+use tradelayer_core::unified_chain::{AuthenticatedProtocolOperation, TrustedProtocolAdapter};
 use tradelayer_core::spot::{
     CancelSelector, SpotExchange, SpotIntent, SpotPair, UnverifiedSpotPlacement,
 };
