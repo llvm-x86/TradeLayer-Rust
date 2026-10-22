@@ -1,0 +1,17 @@
+# test-id	wire	type-decimal	body	typed-status
+activation	tl00;2;11;12,73	0	0;2;11;12,73	ok
+issue-empty-whitelist	tl1a,FOO,,1,,0,0,	1	a,FOO,,1,,0,0,	ok
+issue-one-whitelist	tl1a,FOO,1,1,,0,0,	1	a,FOO,1,1,,0,0,	ok
+issue-multi-whitelist-misaligned	tl1a,FOO,1,2,1,,0,0,	1	a,FOO,1,2,1,,0,0,	reject
+send-whole	tl20;alice;5;2	2	0;alice;5;2	ok
+send-fractional-missing-tilde	tl20;alice;5;1	2	0;alice;5;1	ok
+send-fractional-repaired-example	tl20;alice;5;1~	2	0;alice;5;1~	ok
+send-all-wrapped-example	tl21;alice	2	1;alice	ok
+managed-grant	tlb5,89oqgw,bob,,,,,	11	5,89oqgw,bob,,,,,	ok
+managed-redeem	tlc5,1njchs,,,	12	5,1njchs,,,	ok
+managed-grant-with-hash	tlb5,89oqgw,bob,,,,,abc	11	5,89oqgw,bob,,,,,abc	ok
+double-marker-send	tl2tl20;alice;5;2	2	tl20;alice;5;2	reject
+double-marker-issue	tl1tl1a,FOO,,1,,0,0,	1	tl1a,FOO,,1,,0,0,	reject
+recognized-unimplemented-type	tlzopaque	35	opaque	unsupported
+uppercase-base36-selector	tlAopaque	10	opaque	unsupported
+empty-activation	tl0	0		reject
