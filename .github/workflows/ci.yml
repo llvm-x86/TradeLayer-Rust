@@ -37,3 +37,7 @@ jobs:
         run: |
           cargo run --locked --bin tradelayer-legacy-fields -- fixtures/synthetic_transactions.tsv > /tmp/tradelayer-rust-fields.tsv
           grep -q 'send' /tmp/tradelayer-rust-fields.tsv
+      - name: zkTL Cairo bridge Python checks
+        run: python3 -m unittest discover -s tests -p test_tlzk_export.py -v
+      - name: zkTL Cairo checkpoint metadata fixture audit
+        run: cargo run --locked --bin tradelayer-zk-inspect -- fixtures/zkTL_sample_batch.tsv
