@@ -485,3 +485,88 @@ fn history_limit_evicts_old_reversals_but_preserves_tip_snapshots() {
         Err(SpotChainError::EmptyRollbackHistory)
     ));
 }
+
+
+#[test]
+fn queued_preblock_snapshot_roundtrip_retains_replay_ids() {
+    let mut spot = SpotExchange::from_ledger_unverified(bootstrap_ledger(), policy()).unwrap();
+    let UnverifiedSpotOperation::PlaceType5(pending) = place(15, true, 100, 100, 200) else {
+        panic!("placement fixture");
+    };
+    spot.enqueue_type5_unverified(pending.clone()).unwrap();
+    assert_eq!(spot.pending_count(), 1);
+    assert_eq!(spot.processed_through(), None);
+    let raw = spot.snapshot_bytes().unwrap();
+    let mut restored = SpotExchange::from_snapshot_bytes(&raw, &policy()).unwrap();
+    assert_eq!(restored, spot);
+    assert_eq!(restored.snapshot_bytes().unwrap(), raw);
+    assert!(matches!(
+        restored.enqueue_type5_unverified(pending),
+        Err(SpotError::Replay(_))
+    ));
+    restored.process_through_unverified(100).unwrap();
+    assert_eq!(restored.pending_count(), 0);
+    assert_eq!(restored.open_count(), 1);
+    restored.verify_reserves().unwrap();
+}
+
+#[test]
+fn forged_resting_reserve_with_valid_snapshot_crc_is_rejected() {
+    let mut chain = bootstrap();
+    chain
+        .apply_unverified_block(&block(
+            chain.tip(),
+            100,
+            vec![place(10, true, 100, 100, 200)],
+        ))
+        .unwrap();
+    let original = chain.state().snapshot_bytes().unwrap();
+    let mut forged = original.clone();
+    // The full order txid appears in the open-book section, followed by
+    // owner (one-byte size + bytes), height, offered/desired and amounts.
+    let needle = id(10).as_bytes();
+    let start = forged
+        .windows(32)
+        .position(|window| window == needle)
+        .expect("order stored with full txid");
+    let owner_bytes = usize::from(forged[start + 32]);
+    let reserve_offset = start + 32 + 1 + owner_bytes + 8 + 4 + 4 + 8 + 8;
+    assert_eq!(forged[reserve_offset + 7], 100);
+    forged[reserve_offset + 7] = 99;
+    swap_root_crc(&mut forged);
+    assert!(SpotExchange::from_snapshot_bytes(&forged, &policy()).is_err());
+    assert_eq!(chain.state().snapshot_bytes().unwrap(), original);
+}
+
+#[test]
+fn recovered_block_checkpoint_rejects_old_txid_and_duplicate_ancestor_hash() {
+    let mut chain = bootstrap();
+    chain
+        .apply_unverified_block(&block(
+            chain.tip(),
+            100,
+            vec![place(10, true, 100, 100, 200)],
+        ))
+        .unwrap();
+    let original = chain.checkpoint_bytes().unwrap();
+    let mut recovered = SpotChainState::from_checkpoint_bytes(
+        &original,
+        network(),
+        anchor(),
+        3,
+        &policy(),
+    )
+    .unwrap();
+    let saved = recovered.clone();
+    let replay = block(recovered.tip(), 101, vec![place(10, true, 101, 50, 100)]);
+    assert!(matches!(
+        recovered.apply_unverified_block(&replay),
+        Err(SpotChainError::Spot(SpotError::Replay(_)))
+    ));
+    let duplicate_ancestor = block(recovered.tip(), 0x44, vec![]);
+    assert!(matches!(
+        recovered.apply_unverified_block(&duplicate_ancestor),
+        Err(SpotChainError::DuplicateBlockId)
+    ));
+    assert_eq!(recovered, saved);
+}
