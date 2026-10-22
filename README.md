@@ -155,6 +155,28 @@ python3 scripts/audit_bitcoin_forks.py
 
 See [fork selection and trust boundary](docs/BITCOIN_FORK_SELECTION.md).
 
+## Stage 19: offline spot exchange (type 5 and 6 research subset)
+
+The new `spot` module models queued token-for-token orders, deterministic
+same-block ordering, per-order simulated escrow, rational bid/ask price
+comparison, checked atomic two-asset fills and owner-scoped cancellation.
+It verifies exact reserve balances against the existing `Ledger` conservation
+invariant and runs 8 independent Node BigInt reference scenarios.
+
+Legacy JavaScript **inverts the sell price's units** relative to the buy side.
+This model proposes a consistent integer quote/base convention, explicitly
+labelled a migration design change. Type 3 LTC-for-token transfers, post/stop
+triggers, restricted assets and unauthenticated order inputs remain blocked.
+The engine is isolated from the unified protocol replay and checkpoint
+serializer; it must not be connected to real funds.
+
+```sh
+cargo test --locked --test spot_exchange
+node scripts/audit_spot_vectors.cjs --check
+```
+
+See [Stage 19 source-parity findings](docs/SPOT_EXCHANGE.md).
+
 ## Unified chain replay with combined checkpoints (experimental)
 
 `tradelayer_core::unified_chain::UnifiedChainState` brings the atomic ledger
