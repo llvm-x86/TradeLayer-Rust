@@ -10,6 +10,7 @@
 //! in any higher-trust system. Matching this transcript alone proves nothing
 //! about that provenance. This API cannot mutate a ledger or authorize txs.
 
+use crate::bitcoin_chainwork::{AnchorStatus, MainnetWorkSegment, Work256};
 use crate::bitcoin_inclusion::{CheckedHeaderSegment, IncludedTransaction};
 use crate::chain::{BlockId, ChainId, Tip};
 use crate::hash256::sha256;
@@ -469,5 +470,56 @@ pub fn reconcile_checked_bitcoin_inclusions_unverified(
     Ok(CheckedInclusionReport {
         root_alignment,
         inclusion_audit_digest: sha256(&transcript),
+    })
+}
+
+
+/// A read-only commitment over Stage 16 inclusion checks PLUS independently
+/// checked mainnet difficulty/MTP/chainwork since an explicit anchor.
+/// Neither this hash nor a published-genesis ancestry tag certifies the
+/// Bitcoin active best chain, script authority, or zkTL economics.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MainnetWorkAlignment {
+    pub inclusion: CheckedInclusionReport,
+    pub anchor_status: AnchorStatus,
+    pub work_before: Work256,
+    pub work_after: Work256,
+    pub header_work_audit_digest: [u8; 32],
+}
+const MAINNET_WORK_ALIGNMENT_DOMAIN: &[u8] = b"TLR_BITCOIN_MAINNET_HEADER_WORK_AUDIT_V1\0";
+
+/// Stronger audit metadata than caller-observed transaction rows. It
+/// requires an opaque MainnetWorkSegment created only by the mainnet
+/// difficulty/MTP/chainwork checker. The Stage 13 trusted adapter and
+/// independent STWO economic prover remain unimplemented.
+pub fn reconcile_mainnet_work_headers_unverified(
+    batch: &AuditBatch,
+    statements: &[TransitionStatement],
+    work_segment: &MainnetWorkSegment,
+    included: &[IncludedTransaction],
+    expected: ExpectedChainRange,
+) -> Result<MainnetWorkAlignment, BridgeError> {
+    let inclusion = reconcile_checked_bitcoin_inclusions_unverified(
+        batch, statements, work_segment.checked_headers(), included, expected,
+    )?;
+    let mut bytes = Vec::with_capacity(MAINNET_WORK_ALIGNMENT_DOMAIN.len() + 32 * 4 + 1);
+    bytes.extend_from_slice(MAINNET_WORK_ALIGNMENT_DOMAIN);
+    bytes.extend_from_slice(&inclusion.inclusion_audit_digest);
+    let anchor_status = work_segment.anchor_status();
+    bytes.push(match anchor_status {
+        AnchorStatus::PublishedGenesis => 1,
+        AnchorStatus::ClaimedExternal => 0,
+    });
+    let work_before = work_segment.work_before();
+    let work_after = work_segment.work_after();
+    bytes.extend_from_slice(&work_before.to_be_bytes());
+    bytes.extend_from_slice(&work_after.to_be_bytes());
+    bytes.extend_from_slice(&expected.chain.0);
+    Ok(MainnetWorkAlignment {
+        inclusion,
+        anchor_status,
+        work_before,
+        work_after,
+        header_work_audit_digest: sha256(&bytes),
     })
 }
