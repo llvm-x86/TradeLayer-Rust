@@ -51,11 +51,7 @@ fn protocol_snapshot_root(snapshot: &[u8]) -> Result<[u8; 32], CommitmentError> 
 
 /// Hash a bound network, block tip, and canonical TLPS root. The chain ID
 /// must ultimately come from verified genesis configuration, not user input.
-pub fn chain_head_root_unverified(
-    chain: ChainId,
-    tip: Tip,
-    protocol_root: [u8; 32],
-) -> [u8; 32] {
+pub fn chain_head_root_unverified(chain: ChainId, tip: Tip, protocol_root: [u8; 32]) -> [u8; 32] {
     let mut payload = Vec::with_capacity(HEAD_DOMAIN.len() + 32 + 8 + 32 + 32);
     payload.extend_from_slice(HEAD_DOMAIN);
     payload.extend_from_slice(&chain.0);
@@ -191,15 +187,31 @@ impl TransitionStatement {
         {
             return Err(CommitmentError::Invalid("transition magic/version"));
         }
-        let chain = ChainId(reader.fixed::<32>().map_err(|_| CommitmentError::Invalid("chain"))?);
+        let chain = ChainId(
+            reader
+                .fixed::<32>()
+                .map_err(|_| CommitmentError::Invalid("chain"))?,
+        );
         let parent = read_tip(&mut reader)?;
         let child = read_tip(&mut reader)?;
-        let before = reader.fixed::<32>().map_err(|_| CommitmentError::Invalid("old root"))?;
-        let after = reader.fixed::<32>().map_err(|_| CommitmentError::Invalid("new root"))?;
-        let before_head = reader.fixed::<32>().map_err(|_| CommitmentError::Invalid("old head"))?;
-        let after_head = reader.fixed::<32>().map_err(|_| CommitmentError::Invalid("new head"))?;
-        let statement_id = reader.fixed::<32>().map_err(|_| CommitmentError::Invalid("statement id"))?;
-        reader.end().map_err(|_| CommitmentError::Invalid("trailing bytes"))?;
+        let before = reader
+            .fixed::<32>()
+            .map_err(|_| CommitmentError::Invalid("old root"))?;
+        let after = reader
+            .fixed::<32>()
+            .map_err(|_| CommitmentError::Invalid("new root"))?;
+        let before_head = reader
+            .fixed::<32>()
+            .map_err(|_| CommitmentError::Invalid("old head"))?;
+        let after_head = reader
+            .fixed::<32>()
+            .map_err(|_| CommitmentError::Invalid("new head"))?;
+        let statement_id = reader
+            .fixed::<32>()
+            .map_err(|_| CommitmentError::Invalid("statement id"))?;
+        reader
+            .end()
+            .map_err(|_| CommitmentError::Invalid("trailing bytes"))?;
 
         if parent.height.checked_add(1) != Some(child.height) || parent.id == child.id {
             return Err(CommitmentError::NotSuccessive);
@@ -214,8 +226,14 @@ impl TransitionStatement {
             return Err(CommitmentError::Invalid("statement digest mismatch"));
         }
         Ok(Self {
-            chain, parent, child, before, after,
-            before_head, after_head, statement_id,
+            chain,
+            parent,
+            child,
+            before,
+            after,
+            before_head,
+            after_head,
+            statement_id,
         })
     }
 
@@ -239,8 +257,14 @@ fn push_tip(out: &mut Vec<u8>, tip: Tip) {
 }
 
 fn read_tip(reader: &mut Cursor<'_>) -> Result<Tip, CommitmentError> {
-    let height = reader.u64().map_err(|_| CommitmentError::Invalid("tip height"))?;
-    let id = BlockId(reader.fixed::<32>().map_err(|_| CommitmentError::Invalid("tip hash"))?);
+    let height = reader
+        .u64()
+        .map_err(|_| CommitmentError::Invalid("tip height"))?;
+    let id = BlockId(
+        reader
+            .fixed::<32>()
+            .map_err(|_| CommitmentError::Invalid("tip hash"))?,
+    );
     Ok(Tip { height, id })
 }
 
@@ -251,17 +275,46 @@ mod tests {
     #[test]
     fn head_root_binds_chain_tip_and_state() {
         let p = [9; 32];
-        let root = chain_head_root_unverified(ChainId([1; 32]), Tip {
-            height: 123, id: BlockId([2; 32]),
-        }, p);
-        assert_ne!(root, chain_head_root_unverified(ChainId([3; 32]), Tip {
-            height: 123, id: BlockId([2; 32]),
-        }, p));
-        assert_ne!(root, chain_head_root_unverified(ChainId([1; 32]), Tip {
-            height: 124, id: BlockId([2; 32]),
-        }, p));
-        assert_ne!(root, chain_head_root_unverified(ChainId([1; 32]), Tip {
-            height: 123, id: BlockId([2; 32]),
-        }, [8; 32]));
+        let root = chain_head_root_unverified(
+            ChainId([1; 32]),
+            Tip {
+                height: 123,
+                id: BlockId([2; 32]),
+            },
+            p,
+        );
+        assert_ne!(
+            root,
+            chain_head_root_unverified(
+                ChainId([3; 32]),
+                Tip {
+                    height: 123,
+                    id: BlockId([2; 32]),
+                },
+                p
+            )
+        );
+        assert_ne!(
+            root,
+            chain_head_root_unverified(
+                ChainId([1; 32]),
+                Tip {
+                    height: 124,
+                    id: BlockId([2; 32]),
+                },
+                p
+            )
+        );
+        assert_ne!(
+            root,
+            chain_head_root_unverified(
+                ChainId([1; 32]),
+                Tip {
+                    height: 123,
+                    id: BlockId([2; 32]),
+                },
+                [8; 32]
+            )
+        );
     }
 }
