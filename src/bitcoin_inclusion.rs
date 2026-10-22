@@ -98,7 +98,10 @@ fn compact_target_unbounded(bits: u32) -> Result<[u8; 32], InclusionError> {
     // Avoid alternate encodings of the exact same target. Bitcoin Core
     // SetCompact permits some nonminimal forms, but this offline subset
     // intentionally rejects ambiguous representations.
-    let highest = target.iter().rposition(|byte| *byte != 0).expect("nonzero target");
+    let highest = target
+        .iter()
+        .rposition(|byte| *byte != 0)
+        .expect("nonzero target");
     let mut encoded_size = highest + 1;
     let mut encoded_mantissa = if encoded_size <= 3 {
         let value = u32::from_le_bytes(target[..4].try_into().expect("4-byte target prefix"));
@@ -167,19 +170,19 @@ impl CheckedHeader {
     /// can establish the published block hash but not independently prove
     /// membership of future headers in the active best-work chain.
     pub fn check_bitcoin_mainnet_genesis(raw_header: &[u8]) -> Result<Self, InclusionError> {
-        let header = Self::check_header_at_claimed_height(
-            0, raw_header, BitcoinPowProfile::MainnetLike,
-        )?;
-        if header.parent != BlockId([0; 32])
-            || header.id.0 != bitcoin_mainnet_genesis_hash()
-        {
+        let header =
+            Self::check_header_at_claimed_height(0, raw_header, BitcoinPowProfile::MainnetLike)?;
+        if header.parent != BlockId([0; 32]) || header.id.0 != bitcoin_mainnet_genesis_hash() {
             return Err(InclusionError::InvalidHeaderChain);
         }
         Ok(header)
     }
 
     pub const fn tip(self) -> Tip {
-        Tip { height: self.height, id: self.id }
+        Tip {
+            height: self.height,
+            id: self.id,
+        }
     }
     pub const fn parent(self) -> BlockId {
         self.parent
@@ -195,10 +198,9 @@ impl CheckedHeader {
 fn bitcoin_mainnet_genesis_hash() -> [u8; 32] {
     // Bitcoin Core's published mainnet genesis hash, in display order.
     [
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x19, 0xd6, 0x68,
-        0x9c, 0x08, 0x5a, 0xe1, 0x65, 0x83, 0x1e, 0x93,
-        0x4f, 0xf7, 0x63, 0xae, 0x46, 0xa2, 0xa6, 0xc1,
-        0x72, 0xb3, 0xf1, 0xb6, 0x0a, 0x8c, 0xe2, 0x6f,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x19, 0xd6, 0x68, 0x9c, 0x08, 0x5a, 0xe1, 0x65, 0x83, 0x1e,
+        0x93, 0x4f, 0xf7, 0x63, 0xae, 0x46, 0xa2, 0xa6, 0xc1, 0x72, 0xb3, 0xf1, 0xb6, 0x0a, 0x8c,
+        0xe2, 0x6f,
     ]
 }
 
@@ -223,7 +225,9 @@ impl CheckedHeaderSegment {
         let mut expected_parent = anchor;
         let mut headers = Vec::with_capacity(header_bytes.len());
         for raw in header_bytes {
-            let height = expected_parent.height.checked_add(1)
+            let height = expected_parent
+                .height
+                .checked_add(1)
                 .ok_or(InclusionError::InvalidHeaderChain)?;
             let checked = CheckedHeader::check_header_at_claimed_height(height, raw, profile)?;
             if checked.parent() != expected_parent.id {
@@ -252,11 +256,15 @@ impl CheckedHeaderSegment {
         raw_tx: &[u8],
         proof: &MerklePath,
     ) -> Result<IncludedTransaction, InclusionError> {
-        let offset = height.checked_sub(self.anchor.height)
+        let offset = height
+            .checked_sub(self.anchor.height)
             .and_then(|difference| difference.checked_sub(1))
             .and_then(|index| usize::try_from(index).ok())
             .ok_or(InclusionError::InvalidHeaderChain)?;
-        let header = self.headers.get(offset).ok_or(InclusionError::InvalidHeaderChain)?;
+        let header = self
+            .headers
+            .get(offset)
+            .ok_or(InclusionError::InvalidHeaderChain)?;
         header.check_transaction_inclusion(raw_tx, proof)
     }
 }
@@ -313,7 +321,8 @@ impl CheckedHeader {
         raw_tx: &[u8],
         proof: &MerklePath,
     ) -> Result<IncludedTransaction, InclusionError> {
-        if proof.tx_count == 0 || proof.tx_count > MAX_PROOF_TRANSACTIONS
+        if proof.tx_count == 0
+            || proof.tx_count > MAX_PROOF_TRANSACTIONS
             || proof.tx_index >= proof.tx_count
             || proof.siblings_raw.len() > MAX_PROOF_SIBLINGS
         {
@@ -325,7 +334,10 @@ impl CheckedHeader {
         let mut count = proof.tx_count;
         let mut level = 0;
         while count > 1 {
-            let sibling = *proof.siblings_raw.get(level).ok_or(InclusionError::InvalidProof)?;
+            let sibling = *proof
+                .siblings_raw
+                .get(level)
+                .ok_or(InclusionError::InvalidProof)?;
             let actual_sibling_exists = index % 2 == 1 || index + 1 < count;
             if !actual_sibling_exists {
                 if sibling != hash {
@@ -357,7 +369,9 @@ impl CheckedHeader {
                 if carrier.format == CarrierFormat::LegacyAscii
                     && carrier.status == "typed-syntax" =>
             {
-                carrier.transaction_type.and_then(|ty| TransactionType::try_from(ty).ok())
+                carrier
+                    .transaction_type
+                    .and_then(|ty| TransactionType::try_from(ty).ok())
             }
             _ => None,
         };
