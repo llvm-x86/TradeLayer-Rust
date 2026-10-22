@@ -58,3 +58,13 @@ A written protocol specification and independent consensus reference vectors mus
 - Atomic block application checks chain identity, contiguous height, parent hash, replay, and conservation. It retains bounded pre-block snapshots for rollback.
 - Deterministic, CRC-protected ledger + chain checkpoint encoding can persist and restore the tip, replay set, and rollback history. A save to a new immutable path must succeed before staged state is published.
 - Real UTXO/script/signature verification, block header validation, chain activation, state authentication, and full consensus replay remain future gates. See [docs/CHAIN_STATE.md](docs/CHAIN_STATE.md).
+
+## Step 5: Read-only Bitcoin-family transaction inspection (in progress)
+
+- Completed: bounded Bitcoin-style raw transaction parser, with canonical CompactSize checks and SegWit witness stripping for txid calculation.
+- Completed: offline OP_RETURN payload inspection, separating read-only legacy ASCII diagnostics from the proposed v1 binary decoder.
+- Completed: independently published raw Bitcoin transaction fixtures and explicitly labeled synthetic TL payloads; txids and SegWit wtxid checked byte-for-byte.
+- Completed: CLI for local TSV replay and deterministic fail-closed malformed-input tests.
+- Remaining: historically confirmed TradeLayer payloads from chain-indexed archival RPC, inclusion/UTXO ownership verification, consensus rules, and replay against the original JS node. The scanner does not satisfy the trusted-adapter contract.
+
+See [docs/READ_ONLY_REPLAY.md](docs/READ_ONLY_REPLAY.md).
