@@ -9,7 +9,7 @@
 //! Caller assertions alone must never count as authentication. Tests use an
 //! intentionally artificial adapter, which MUST NOT be used in production.
 
-use crate::codec::{with_crc, verify_crc, Cursor, MAX_CHECKPOINT_BYTES};
+use crate::codec::{verify_crc, with_crc, Cursor, MAX_CHECKPOINT_BYTES};
 use crate::ledger::{AccountId, Ledger, LedgerError, Operation, SnapshotError, TxId};
 use std::collections::VecDeque;
 use std::fs::{self, File, OpenOptions};
@@ -115,19 +115,27 @@ impl core::fmt::Display for CheckpointError {
 impl std::error::Error for CheckpointError {}
 
 impl From<LedgerError> for ChainError {
-    fn from(value: LedgerError) -> Self { Self::Ledger(value) }
+    fn from(value: LedgerError) -> Self {
+        Self::Ledger(value)
+    }
 }
 
 impl From<SnapshotError> for CheckpointError {
-    fn from(value: SnapshotError) -> Self { Self::Ledger(value) }
+    fn from(value: SnapshotError) -> Self {
+        Self::Ledger(value)
+    }
 }
 
 impl From<std::io::Error> for CheckpointError {
-    fn from(value: std::io::Error) -> Self { Self::Io(value) }
+    fn from(value: std::io::Error) -> Self {
+        Self::Io(value)
+    }
 }
 
 impl From<CheckpointError> for ChainError {
-    fn from(value: CheckpointError) -> Self { Self::Checkpoint(value) }
+    fn from(value: CheckpointError) -> Self {
+        Self::Checkpoint(value)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -155,15 +163,27 @@ impl ChainState {
             return Err(ChainError::InvalidHistoryLimit);
         }
         Ok(Self {
-            chain, anchor, tip: anchor, ledger: Ledger::new(),
-            history: VecDeque::new(), history_limit,
+            chain,
+            anchor,
+            tip: anchor,
+            ledger: Ledger::new(),
+            history: VecDeque::new(),
+            history_limit,
         })
     }
 
-    pub fn ledger(&self) -> &Ledger { &self.ledger }
-    pub fn tip(&self) -> Tip { self.tip }
-    pub fn chain_id(&self) -> ChainId { self.chain }
-    pub fn rollback_depth(&self) -> usize { self.history.len() }
+    pub fn ledger(&self) -> &Ledger {
+        &self.ledger
+    }
+    pub fn tip(&self) -> Tip {
+        self.tip
+    }
+    pub fn chain_id(&self) -> ChainId {
+        self.chain
+    }
+    pub fn rollback_depth(&self) -> usize {
+        self.history.len()
+    }
 
     /// Rejects unverified inputs, binds each operation actor to its origin,
     /// then commits a block atomically in transaction order.
@@ -172,22 +192,31 @@ impl ChainState {
         block: &CandidateBlock,
         adapter: &A,
     ) -> Result<(), ChainError> {
-        if block.chain != self.chain { return Err(ChainError::WrongChain); }
+        if block.chain != self.chain {
+            return Err(ChainError::WrongChain);
+        }
         if Some(block.header.height) != self.tip.height.checked_add(1) {
             return Err(ChainError::BadHeight);
         }
-        if block.header.parent != self.tip.id { return Err(ChainError::BadParent); }
-        if block.header.id == self.tip.id { return Err(ChainError::DuplicateBlockId); }
+        if block.header.parent != self.tip.id {
+            return Err(ChainError::BadParent);
+        }
+        if block.header.id == self.tip.id {
+            return Err(ChainError::DuplicateBlockId);
+        }
         if block.raw_transactions.len() > MAX_TRANSACTIONS_PER_BLOCK {
             return Err(ChainError::TransactionLimit);
         }
-        adapter.verify_block(block).map_err(ChainError::Authentication)?;
+        adapter
+            .verify_block(block)
+            .map_err(ChainError::Authentication)?;
         let mut transactions = Vec::with_capacity(block.raw_transactions.len());
         for raw in &block.raw_transactions {
             if raw.is_empty() || raw.len() > MAX_TRANSACTION_BYTES {
                 return Err(ChainError::TransactionSize);
             }
-            let authenticated = adapter.authenticate_and_decode(self.chain, &block.header, raw)
+            let authenticated = adapter
+                .authenticate_and_decode(self.chain, &block.header, raw)
                 .map_err(ChainError::Authentication)?;
             if !origin_matches_operation(&authenticated.origin, &authenticated.operation) {
                 return Err(ChainError::ActorMismatch);
@@ -196,13 +225,19 @@ impl ChainState {
         }
         let mut pending = self.ledger.clone();
         pending.apply_batch(transactions)?;
-        let previous = PriorState { tip: self.tip, ledger: self.ledger.clone() };
+        let previous = PriorState {
+            tip: self.tip,
+            ledger: self.ledger.clone(),
+        };
         self.history.push_back(previous);
         while self.history.len() > self.history_limit {
             self.history.pop_front();
         }
         self.ledger = pending;
-        self.tip = Tip { height: block.header.height, id: block.header.id };
+        self.tip = Tip {
+            height: block.header.height,
+            id: block.header.id,
+        };
         Ok(())
     }
 
@@ -210,8 +245,13 @@ impl ChainState {
     /// by that block. The expected tip prevents accidentally rolling back a
     /// different branch. Retention bounds the maximum supported reorg.
     pub fn rollback_tip(&mut self, expected: Tip) -> Result<(), ChainError> {
-        if self.tip != expected { return Err(ChainError::WrongRollbackTip); }
-        let previous = self.history.pop_back().ok_or(ChainError::EmptyRollbackHistory)?;
+        if self.tip != expected {
+            return Err(ChainError::WrongRollbackTip);
+        }
+        let previous = self
+            .history
+            .pop_back()
+            .ok_or(ChainError::EmptyRollbackHistory)?;
         self.tip = previous.tip;
         self.ledger = previous.ledger;
         Ok(())
@@ -220,7 +260,10 @@ impl ChainState {
     /// Apply, durably save a NEW checkpoint, then publish the in-memory state.
     /// Checkpoint paths are immutable: a pre-existing destination is rejected.
     pub fn apply_block_and_checkpoint<A: TrustedChainAdapter>(
-        &mut self, block: &CandidateBlock, adapter: &A, path: &Path,
+        &mut self,
+        block: &CandidateBlock,
+        adapter: &A,
+        path: &Path,
     ) -> Result<(), ChainError> {
         let mut proposed = self.clone();
         proposed.apply_block(block, adapter)?;
@@ -250,46 +293,76 @@ impl ChainState {
     /// On restore, the expected chain, anchor, and rollback policy MUST be
     /// supplied independently of checkpoint bytes.
     pub fn from_checkpoint_bytes(
-        bytes: &[u8], expected_chain: ChainId, expected_anchor: Tip,
+        bytes: &[u8],
+        expected_chain: ChainId,
+        expected_anchor: Tip,
         expected_history_limit: usize,
     ) -> Result<Self, CheckpointError> {
         if !(1..=MAX_REORG_HISTORY).contains(&expected_history_limit) {
             return Err(CheckpointError::Invalid("invalid history limit"));
         }
-        let payload = verify_crc(bytes).map_err(|_| CheckpointError::Invalid("checkpoint CRC/size"))?;
+        let payload =
+            verify_crc(bytes).map_err(|_| CheckpointError::Invalid("checkpoint CRC/size"))?;
         let mut cursor = Cursor::new(payload);
-        if cursor.fixed::<5>().map_err(|_| CheckpointError::Invalid("checkpoint truncated"))?
-            != *b"TLCS\x01" {
+        if cursor
+            .fixed::<5>()
+            .map_err(|_| CheckpointError::Invalid("checkpoint truncated"))?
+            != *b"TLCS\x01"
+        {
             return Err(CheckpointError::Invalid("checkpoint magic/version"));
         }
-        let chain = ChainId(cursor.fixed::<32>().map_err(|_| CheckpointError::Invalid("chain id"))?);
+        let chain = ChainId(
+            cursor
+                .fixed::<32>()
+                .map_err(|_| CheckpointError::Invalid("chain id"))?,
+        );
         let anchor = read_tip(&mut cursor)?;
         let tip = read_tip(&mut cursor)?;
         if chain != expected_chain || anchor != expected_anchor {
-            return Err(CheckpointError::Invalid("checkpoint belongs to different chain/anchor"));
+            return Err(CheckpointError::Invalid(
+                "checkpoint belongs to different chain/anchor",
+            ));
         }
-        let history_limit = usize::from(cursor.u8().map_err(|_| CheckpointError::Invalid("history limit"))?);
+        let history_limit = usize::from(
+            cursor
+                .u8()
+                .map_err(|_| CheckpointError::Invalid("history limit"))?,
+        );
         if history_limit != expected_history_limit {
-            return Err(CheckpointError::Invalid("checkpoint history policy changed"));
+            return Err(CheckpointError::Invalid(
+                "checkpoint history policy changed",
+            ));
         }
-        let count = usize::from(cursor.u8().map_err(|_| CheckpointError::Invalid("history count"))?);
-        if count > history_limit { return Err(CheckpointError::Invalid("too many rollback entries")); }
+        let count = usize::from(
+            cursor
+                .u8()
+                .map_err(|_| CheckpointError::Invalid("history count"))?,
+        );
+        if count > history_limit {
+            return Err(CheckpointError::Invalid("too many rollback entries"));
+        }
         let mut history: VecDeque<PriorState> = VecDeque::new();
         let mut last_height = None;
         for _ in 0..count {
             let preceding_tip = read_tip(&mut cursor)?;
-            if preceding_tip.height < anchor.height ||
-                last_height.is_some_and(|height: u64| height.checked_add(1) != Some(preceding_tip.height)) {
+            if preceding_tip.height < anchor.height
+                || last_height
+                    .is_some_and(|height: u64| height.checked_add(1) != Some(preceding_tip.height))
+            {
                 return Err(CheckpointError::Invalid("noncontiguous rollback history"));
             }
             last_height = Some(preceding_tip.height);
             let preceding_ledger = read_ledger(&mut cursor)?;
-            history.push_back(PriorState { tip: preceding_tip, ledger: preceding_ledger });
+            history.push_back(PriorState {
+                tip: preceding_tip,
+                ledger: preceding_ledger,
+            });
         }
-        if tip.height < anchor.height ||
-            (tip.height == anchor.height && tip.id != anchor.id) ||
-            (tip.height == anchor.height && count != 0) ||
-            (tip.height > anchor.height && count == 0) {
+        if tip.height < anchor.height
+            || (tip.height == anchor.height && tip.id != anchor.id)
+            || (tip.height == anchor.height && count != 0)
+            || (tip.height > anchor.height && count == 0)
+        {
             return Err(CheckpointError::Invalid("invalid tip"));
         }
         if let Some(last) = history.back() {
@@ -298,8 +371,17 @@ impl ChainState {
             }
         }
         let ledger = read_ledger(&mut cursor)?;
-        cursor.end().map_err(|_| CheckpointError::Invalid("trailing checkpoint bytes"))?;
-        Ok(Self { chain, anchor, tip, ledger, history, history_limit })
+        cursor
+            .end()
+            .map_err(|_| CheckpointError::Invalid("trailing checkpoint bytes"))?;
+        Ok(Self {
+            chain,
+            anchor,
+            tip,
+            ledger,
+            history,
+            history_limit,
+        })
     }
 
     /// Save an immutable checkpoint using create_new + sync_all. Keeping prior
@@ -318,18 +400,26 @@ impl ChainState {
     }
 
     pub fn load_checkpoint(
-        path: &Path, expected_chain: ChainId, expected_anchor: Tip,
+        path: &Path,
+        expected_chain: ChainId,
+        expected_anchor: Tip,
         expected_history_limit: usize,
     ) -> Result<Self, CheckpointError> {
-        let mut f = File::open(path)?;
+        let f = File::open(path)?;
         let len = usize::try_from(f.metadata()?.len())
             .map_err(|_| CheckpointError::Invalid("checkpoint file too large"))?;
         if len > MAX_CHECKPOINT_BYTES {
             return Err(CheckpointError::Invalid("checkpoint file too large"));
         }
         let mut bytes = Vec::with_capacity(len);
-        f.take((MAX_CHECKPOINT_BYTES + 1) as u64).read_to_end(&mut bytes)?;
-        Self::from_checkpoint_bytes(&bytes, expected_chain, expected_anchor, expected_history_limit)
+        f.take((MAX_CHECKPOINT_BYTES + 1) as u64)
+            .read_to_end(&mut bytes)?;
+        Self::from_checkpoint_bytes(
+            &bytes,
+            expected_chain,
+            expected_anchor,
+            expected_history_limit,
+        )
     }
 }
 
@@ -349,22 +439,35 @@ fn write_tip(dst: &mut Vec<u8>, tip: Tip) {
 
 fn read_tip(cursor: &mut Cursor<'_>) -> Result<Tip, CheckpointError> {
     Ok(Tip {
-        height: cursor.u64().map_err(|_| CheckpointError::Invalid("tip height"))?,
-        id: BlockId(cursor.fixed::<32>().map_err(|_| CheckpointError::Invalid("tip hash"))?),
+        height: cursor
+            .u64()
+            .map_err(|_| CheckpointError::Invalid("tip height"))?,
+        id: BlockId(
+            cursor
+                .fixed::<32>()
+                .map_err(|_| CheckpointError::Invalid("tip hash"))?,
+        ),
     })
 }
 
 fn write_ledger(dst: &mut Vec<u8>, ledger: &Ledger) -> Result<(), CheckpointError> {
     let bytes = ledger.snapshot_bytes()?;
-    let len = u32::try_from(bytes.len()).map_err(|_| CheckpointError::Invalid("ledger too large"))?;
+    let len =
+        u32::try_from(bytes.len()).map_err(|_| CheckpointError::Invalid("ledger too large"))?;
     dst.extend_from_slice(&len.to_be_bytes());
     dst.extend_from_slice(&bytes);
     Ok(())
 }
 
 fn read_ledger(cursor: &mut Cursor<'_>) -> Result<Ledger, CheckpointError> {
-    let len = cursor.u32().map_err(|_| CheckpointError::Invalid("ledger length"))? as usize;
-    if len > MAX_CHECKPOINT_BYTES { return Err(CheckpointError::Invalid("ledger too large")); }
-    let bytes = cursor.take(len).map_err(|_| CheckpointError::Invalid("ledger truncated"))?;
+    let len = cursor
+        .u32()
+        .map_err(|_| CheckpointError::Invalid("ledger length"))? as usize;
+    if len > MAX_CHECKPOINT_BYTES {
+        return Err(CheckpointError::Invalid("ledger too large"));
+    }
+    let bytes = cursor
+        .take(len)
+        .map_err(|_| CheckpointError::Invalid("ledger truncated"))?;
     Ledger::from_snapshot_bytes(bytes).map_err(CheckpointError::Ledger)
 }
