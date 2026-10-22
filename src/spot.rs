@@ -241,20 +241,15 @@ impl SpotExchange {
         operation: Operation,
     ) -> Result<(), SpotError> {
         let allowed = match &operation {
-            Operation::CreateProperty { issuer, .. } => {
-                !issuer.as_str().starts_with(ESCROW_PREFIX)
-            }
+            Operation::CreateProperty { issuer, .. } => !issuer.as_str().starts_with(ESCROW_PREFIX),
             Operation::Transfer { from, to, .. } => {
-                !from.as_str().starts_with(ESCROW_PREFIX)
-                    && !to.as_str().starts_with(ESCROW_PREFIX)
+                !from.as_str().starts_with(ESCROW_PREFIX) && !to.as_str().starts_with(ESCROW_PREFIX)
             }
             Operation::Mint { issuer, to, .. } => {
                 !issuer.as_str().starts_with(ESCROW_PREFIX)
                     && !to.as_str().starts_with(ESCROW_PREFIX)
             }
-            Operation::Burn { issuer, .. } => {
-                !issuer.as_str().starts_with(ESCROW_PREFIX)
-            }
+            Operation::Burn { issuer, .. } => !issuer.as_str().starts_with(ESCROW_PREFIX),
             _ => return Err(SpotError::UnsupportedProtocolOperation),
         };
         if !allowed {
