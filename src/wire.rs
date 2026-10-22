@@ -124,7 +124,7 @@ pub fn parse_send_amount(raw: &str) -> Result<u128, WireError> {
     }
 }
 
-fn fields<'a>(raw: &'a str, delimiter: char, count: usize) -> Result<Vec<&'a str>, WireError> {
+fn fields(raw: &str, delimiter: char, count: usize) -> Result<Vec<&str>, WireError> {
     let parts: Vec<_> = raw.split(delimiter).collect();
     if parts.len() != count {
         return Err(WireError::InvalidField("field count"));
