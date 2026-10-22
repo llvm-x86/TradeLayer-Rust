@@ -24,6 +24,8 @@ jobs:
         run: cargo fmt --all -- --check
       - name: Check included snapshot file formatting
         run: rustfmt --check --edition 2021 src/registry_snapshot_impl.rs src/execution_snapshot_impl.rs src/ledger_channels_impl.rs src/ledger_settlement_impl.rs
+      - name: Check included spot snapshot file formatting
+        run: rustfmt --check --edition 2021 src/spot_snapshot_impl.rs
       - name: Lint
         run: cargo clippy --all-targets --locked -- -D warnings
       - name: Run tests
