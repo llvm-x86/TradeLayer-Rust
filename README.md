@@ -16,6 +16,33 @@ cargo clippy --all-targets --locked -- -D warnings
 
 The toolchain is pinned in `rust-toolchain.toml` and the crate has **zero third-party dependencies**. `Cargo.lock` is committed.
 
+## Independent network profiles (Stage 21)
+
+Bitcoin, Litecoin, and Dogecoin run **three separate TradeLayers**.
+Shared Rust protocol code serves independent registries, ledgers, replay
+domains, genesis identities and checkpoint histories. A property ID on one
+chain never represents an asset or balance on another chain.
+
+`network_profile::TradeLayerMainnet` pins each published mainnet genesis
+and exposes per-chain proof capabilities. Only **Bitcoin SHA256d** has a
+Raito/Cairo L1 research path. Litecoin's Scrypt and Dogecoin's Scrypt/AuxPoW
+have no corresponding in-crate proving backend, and must rely on separately
+trusted full nodes for authenticated chain inputs. No economic Cairo/STWO
+proof verifier is implemented for any chain.
+
+`NetworkBoundUnified` and `NetworkBoundSpot` provide optional
+mainnet-identified replay wrappers and `TLNP\x01` profile-bound checkpoint
+envelopes around existing TLUC or TLSC bytes. Wrong network, genesis,
+checkpoint lane, anchor, admin or token-policy restores fail closed. A
+non-genesis checkpoint anchor remains untrusted until independently verified.
+
+The unified ledger and isolated experimental spot ledger **within each
+TradeLayer** are not yet merged; neither is authorized for real funds.
+
+See [independent TradeLayer mainnet profiles](docs/INDEPENDENT_MAINNETS.md).
+Validate with `cargo test --locked --test network_profiles` and
+`python3 scripts/audit_network_profiles.py`.
+
 ## Wire parser (current step)
 
 The legacy `tradelayer_core::wire` module remains a **read-only diagnostic parser** for historical `tl` ASCII payloads. It must never silently dispatch transactions to the new consensus engine.
