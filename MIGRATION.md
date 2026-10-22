@@ -326,6 +326,12 @@ See [docs/BITCOIN_SPV_INCLUSION.md](docs/BITCOIN_SPV_INCLUSION.md).
   provenance-labelled work checkpoint atomically per bounded segment.
 - Pin genuine historical Bitcoin mainnet genesis and height-1 headers.
   Confirm exact work 0x100010001 and cumulative work 0x200020002.
+  Independently verify the real block-1 coinbase Merkle root.
+- Add a 25-case Python-vs-Rust U256 long-division corpus and a read-only
+  genesis-to-block1 header CLI.
+- Add opaque mainnet-work evidence to the TLPT/zkTL audit digest while
+  demonstrating that valid Bitcoin coinbase inclusion never supplies
+  TradeLayer payment or economic authorization.
 - Keep caller-declared high-height checkpoints visibly untrusted.
   Allow local stronger-work comparisons only from an identical anchor,
   not as proof of the global active best chain.
