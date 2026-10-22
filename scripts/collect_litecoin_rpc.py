@@ -324,6 +324,14 @@ def atomic_write(path: Path, data: str) -> None:
             os.unlink(temp)
 
 
+def default_cookie_file(network: str, home: Path | None = None) -> Path:
+    """Litecoin Core's network-specific default RPC cookie location."""
+    if network not in NETWORK_PORTS:
+        raise EvidenceError("unsupported Litecoin network")
+    directory = {"main": "", "test": "testnet3", "regtest": "regtest"}[network]
+    return (home if home is not None else Path.home()) / ".litecoin" / directory / ".cookie"
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--network", choices=tuple(NETWORK_PORTS), required=True)
@@ -342,7 +350,7 @@ def main(argv=None) -> int:
         if user is not None and password is not None:
             credential = f"{user}:{password}"
         else:
-            cookie = args.cookie_file or Path.home() / ".litecoin" / ("testnet4" if args.network == "test" else "regtest" if args.network == "regtest" else "") / ".cookie"
+            cookie = args.cookie_file or default_cookie_file(args.network)
             credential = cookie.read_text(encoding="utf-8").strip()
             if credential.count(":") < 1:
                 raise EvidenceError("RPC cookie has no username/password separator")
