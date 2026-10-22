@@ -31,7 +31,9 @@ fn spot_u32(out: &mut Vec<u8>, count: usize) -> Result<(), SpotSnapshotError> {
     Ok(())
 }
 fn spot_length(reader: &mut Cursor<'_>, limit: usize) -> Result<usize, SpotSnapshotError> {
-    let size = reader.u32().map_err(|_| spot_invalid("truncated spot count"))? as usize;
+    let size = reader
+        .u32()
+        .map_err(|_| spot_invalid("truncated spot count"))? as usize;
     if size > limit {
         return Err(spot_invalid("spot count exceeds policy"));
     }
@@ -46,17 +48,23 @@ fn spot_read_account(reader: &mut Cursor<'_>) -> Result<AccountId, SpotSnapshotE
     if len == 0 || len > crate::ledger::MAX_ACCOUNT_BYTES {
         return Err(spot_invalid("account size"));
     }
-    let raw = reader.take(len).map_err(|_| spot_invalid("account bytes"))?;
+    let raw = reader
+        .take(len)
+        .map_err(|_| spot_invalid("account bytes"))?;
     let text = core::str::from_utf8(raw).map_err(|_| spot_invalid("account utf8"))?;
     AccountId::try_from(text).map_err(|_| spot_invalid("account characters"))
 }
 fn spot_read_property(reader: &mut Cursor<'_>) -> Result<PropertyId, SpotSnapshotError> {
-    let id = reader.u32().map_err(|_| spot_invalid("property truncated"))?;
+    let id = reader
+        .u32()
+        .map_err(|_| spot_invalid("property truncated"))?;
     PropertyId::try_from(id).map_err(|_| spot_invalid("invalid property id"))
 }
 fn spot_read_txid(reader: &mut Cursor<'_>) -> Result<TxId, SpotSnapshotError> {
     Ok(TxId::from_bytes(
-        reader.fixed::<32>().map_err(|_| spot_invalid("txid truncated"))?,
+        reader
+            .fixed::<32>()
+            .map_err(|_| spot_invalid("txid truncated"))?,
     ))
 }
 fn spot_put_pair(out: &mut Vec<u8>, pair: SpotPair) {
@@ -77,7 +85,11 @@ impl SpotExchange {
     /// Re-run independently checkable invariants for each serialized state
     /// before encoding or publishing a recovered checkpoint.
     fn validate_spot_snapshot(&self) -> Result<(), SpotSnapshotError> {
-        if self.permitted.iter().any(|p| p.get() <= 4 || self.ledger.property(*p).is_none()) {
+        if self
+            .permitted
+            .iter()
+            .any(|p| p.get() <= 4 || self.ledger.property(*p).is_none())
+        {
             return Err(spot_invalid("invalid permitted token policy"));
         }
         if self.seen.len() > MAX_SPOT_INPUT_EVENTS
@@ -93,9 +105,12 @@ impl SpotExchange {
         let mut active_ids = BTreeSet::new();
         let mut sequences = BTreeSet::new();
         for queued in &self.queued {
-            if queued.height <= height || queued.actor.as_str().starts_with(ESCROW_PREFIX)
-                || queued.intent.post || queued.intent.stop
-                || queued.intent.offered_atoms == 0 || queued.intent.expected_atoms == 0
+            if queued.height <= height
+                || queued.actor.as_str().starts_with(ESCROW_PREFIX)
+                || queued.intent.post
+                || queued.intent.stop
+                || queued.intent.offered_atoms == 0
+                || queued.intent.expected_atoms == 0
             {
                 return Err(spot_invalid("invalid queued order"));
             }
@@ -106,12 +121,17 @@ impl SpotExchange {
             }
         }
         if self.processed_through.is_none() {
-            if !self.books.is_empty() || !self.fills.is_empty()
-                || self.next_sequence != 0 || active_ids.len() != self.seen.len()
+            if !self.books.is_empty()
+                || !self.fills.is_empty()
+                || self.next_sequence != 0
+                || active_ids.len() != self.seen.len()
             {
                 return Err(spot_invalid("nonempty unprocessed book or replay"));
             }
-            self.ledger.verify_conservation().map_err(SpotError::Ledger).map_err(SpotSnapshotError::Spot)?;
+            self.ledger
+                .verify_conservation()
+                .map_err(SpotError::Ledger)
+                .map_err(SpotSnapshotError::Spot)?;
             self.verify_reserves().map_err(SpotSnapshotError::Spot)?;
             return Ok(());
         }
@@ -119,15 +139,20 @@ impl SpotExchange {
             if *pair != SpotPair::new(pair.base, pair.quote).map_err(SpotSnapshotError::Spot)? {
                 return Err(spot_invalid("noncanonical book"));
             }
-            self.check_pair(pair.base, pair.quote).map_err(SpotSnapshotError::Spot)?;
+            self.check_pair(pair.base, pair.quote)
+                .map_err(SpotSnapshotError::Spot)?;
             let mut previous_sequence = None;
             for order in orders {
                 if SpotPair::new(order.offered, order.desired) != Ok(*pair)
-                    || order.height == 0 || order.height > height
+                    || order.height == 0
+                    || order.height > height
                     || order.owner.as_str().starts_with(ESCROW_PREFIX)
-                    || order.offered_atoms == 0 || order.expected_atoms == 0
-                    || order.remaining_offered == 0 || order.remaining_offered > order.offered_atoms
-                    || order.remaining_desired == 0 || order.remaining_desired > order.expected_atoms
+                    || order.offered_atoms == 0
+                    || order.expected_atoms == 0
+                    || order.remaining_offered == 0
+                    || order.remaining_offered > order.offered_atoms
+                    || order.remaining_desired == 0
+                    || order.remaining_desired > order.expected_atoms
                     || order.sequence >= self.next_sequence
                     || previous_sequence.is_some_and(|old| old >= order.sequence)
                     || !self.seen.contains(&order.txid)
@@ -140,17 +165,23 @@ impl SpotExchange {
             }
         }
         for fill in &self.fills {
-            if fill.at_height == 0 || fill.at_height > height
-                || fill.base_atoms == 0 || fill.quote_atoms == 0
+            if fill.at_height == 0
+                || fill.at_height > height
+                || fill.base_atoms == 0
+                || fill.quote_atoms == 0
                 || !self.seen.contains(&fill.sell_txid)
                 || !self.seen.contains(&fill.buy_txid)
                 || !self.seen.contains(&fill.trigger_txid)
             {
                 return Err(spot_invalid("invalid fill history"));
             }
-            self.check_pair(fill.pair.base, fill.pair.quote).map_err(SpotSnapshotError::Spot)?;
+            self.check_pair(fill.pair.base, fill.pair.quote)
+                .map_err(SpotSnapshotError::Spot)?;
         }
-        self.ledger.verify_conservation().map_err(SpotError::Ledger).map_err(SpotSnapshotError::Spot)?;
+        self.ledger
+            .verify_conservation()
+            .map_err(SpotError::Ledger)
+            .map_err(SpotSnapshotError::Spot)?;
         self.verify_reserves().map_err(SpotSnapshotError::Spot)?;
         Ok(())
     }
@@ -165,7 +196,10 @@ impl SpotExchange {
         for p in &self.permitted {
             out.extend_from_slice(&p.get().to_be_bytes());
         }
-        let ledger = self.ledger.snapshot_bytes().map_err(SpotSnapshotError::Ledger)?;
+        let ledger = self
+            .ledger
+            .snapshot_bytes()
+            .map_err(SpotSnapshotError::Ledger)?;
         spot_u32(&mut out, ledger.len())?;
         out.extend_from_slice(&ledger);
         spot_u32(&mut out, self.queued.len())?;
@@ -231,7 +265,11 @@ impl SpotExchange {
     ) -> Result<Self, SpotSnapshotError> {
         let payload = verify_crc(bytes).map_err(|_| spot_invalid("spot CRC or size"))?;
         let mut reader = Cursor::new(payload);
-        if reader.fixed::<5>().map_err(|_| spot_invalid("spot magic"))? != *SPOT_MAGIC {
+        if reader
+            .fixed::<5>()
+            .map_err(|_| spot_invalid("spot magic"))?
+            != *SPOT_MAGIC
+        {
             return Err(spot_invalid("spot magic/version"));
         }
         let count = spot_length(&mut reader, MAX_SPOT_INPUT_EVENTS)?;
@@ -250,8 +288,11 @@ impl SpotExchange {
         }
         let ledger_size = spot_length(&mut reader, MAX_CHECKPOINT_BYTES)?;
         let ledger = Ledger::from_snapshot_bytes(
-            reader.take(ledger_size).map_err(|_| spot_invalid("ledger truncated"))?,
-        ).map_err(SpotSnapshotError::Ledger)?;
+            reader
+                .take(ledger_size)
+                .map_err(|_| spot_invalid("ledger truncated"))?,
+        )
+        .map_err(SpotSnapshotError::Ledger)?;
         let queued_count = spot_length(&mut reader, MAX_SPOT_OPEN_AND_QUEUED)?;
         let mut queued = Vec::with_capacity(queued_count);
         for _ in 0..queued_count {
@@ -338,7 +379,9 @@ impl SpotExchange {
             1 => Some(reader.u64().map_err(|_| spot_invalid("processed height"))?),
             _ => return Err(spot_invalid("noncanonical height flag")),
         };
-        reader.end().map_err(|_| spot_invalid("trailing spot data"))?;
+        reader
+            .end()
+            .map_err(|_| spot_invalid("trailing spot data"))?;
         let result = Self {
             ledger,
             permitted,
