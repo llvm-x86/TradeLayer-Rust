@@ -132,3 +132,22 @@ checkpoint format yet.
 [Implementation and trust boundaries](docs/UNIFIED_EXECUTION.md).
 Run `cargo test --locked --test protocol_execution` for cross-module
 rollback and global replay checks.
+
+## Unified chain replay with combined checkpoints (experimental)
+
+`tradelayer_core::unified_chain::UnifiedChainState` brings the atomic ledger
+and registry prototype under a single reversible block-tip coordinator. It
+retains transaction replay IDs, oracle/whitelist/activation state and balances
+together during rollback and checkpoint recovery.
+
+The checkpoint formats are versioned binary TLUC/TLPS/TLRG, with canonical
+re-encoding checks and CRC32 for accident detection. Loading requires an
+independently configured chain ID, anchor, protocol administrator and retention
+policy.
+
+A `TrustedProtocolAdapter` interface accepts raw L1 bytes and supplies
+authenticated protocol operations. **No real adapter is implemented here.**
+Do not use the synthetic tests or supplied IDs as evidence of signer ownership,
+a valid block, or a ZK proof. This is still offline prototype code.
+
+[Architecture, security boundaries and test plan](docs/UNIFIED_CHAIN_CHECKPOINTS.md).
