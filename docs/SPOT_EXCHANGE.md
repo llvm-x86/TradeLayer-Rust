@@ -38,7 +38,7 @@ A complete block queue is staged on a clone and applied only after all
 ready orders succeed. A later invalid order rejects the entire attempted
 processing call without losing earlier queued entries or consuming any
 additional escrow balance. Entry bounds are 4,096 queued plus open orders
-and 16,384 recorded fills.
+and 16,384 recorded fills. Input replay history is also capped at 65,536 entries.
 
 ## Price unit discrepancy
 
