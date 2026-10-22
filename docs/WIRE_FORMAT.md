@@ -1,5 +1,7 @@
 # Legacy TradeLayer wire-format reconnaissance
 
+**Legacy-only diagnostics.** The one-character base-36 selector and double-marker behavior are bugs rather than rules for new transactions. The corrected, separate binary format proposal is documented in [WIRE_V1.md](WIRE_V1.md). No new consensus engine should automatically fall back to this historical parser.
+
 Scope: the `tl` ASCII envelope and syntactic decoding of transaction types **0, 1, 2, 11, 12**. The Rust implementation deliberately stops before consensus rules, wallet/network code, or funds handling.
 
 ## Source revision
