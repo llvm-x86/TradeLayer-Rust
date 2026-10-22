@@ -4,8 +4,8 @@
 //! valid scripts, authenticated spend authority or TradeLayer economics.
 
 use tradelayer_core::bitcoin_inclusion::{
-    BitcoinPowProfile, CheckedHeader, CheckedHeaderSegment, InclusionError,
-    MerklePath, MAX_HEADER_SEGMENT,
+    BitcoinPowProfile, CheckedHeader, CheckedHeaderSegment, InclusionError, MerklePath,
+    MAX_HEADER_SEGMENT,
 };
 use tradelayer_core::chain::{BlockHeader, BlockId, CandidateBlock, ChainId, Tip};
 use tradelayer_core::ledger::AccountId;
@@ -50,36 +50,63 @@ const SEGWIT_FAKE: &str = concat!(
     "02f15365ffff7f2000000000",
 );
 
-fn raw(hex: &str) -> Vec<u8> { decode_hex(hex).unwrap() }
-fn header(hex: &str) -> [u8; 80] { raw(hex).try_into().unwrap() }
+fn raw(hex: &str) -> Vec<u8> {
+    decode_hex(hex).unwrap()
+}
+fn header(hex: &str) -> [u8; 80] {
+    raw(hex).try_into().unwrap()
+}
 fn synthetic_rows() -> Vec<Vec<u8>> {
     include_str!("../fixtures/synthetic_transactions.tsv")
-        .lines().filter(|line| !line.starts_with('#') && !line.is_empty())
-        .map(|line| raw(line.split('\t').last().unwrap())).collect()
+        .lines()
+        .filter(|line| !line.starts_with('#') && !line.is_empty())
+        .map(|line| raw(line.split('\t').last().unwrap()))
+        .collect()
 }
 fn genesis_tx() -> Vec<u8> {
     raw(include_str!("../fixtures/real_transactions.tsv")
-        .lines().find(|line| line.starts_with("bitcoin-genesis\t"))
-        .unwrap().split('\t').last().unwrap())
+        .lines()
+        .find(|line| line.starts_with("bitcoin-genesis\t"))
+        .unwrap()
+        .split('\t')
+        .last()
+        .unwrap())
 }
 fn segwit_tx() -> Vec<u8> {
     raw(include_str!("../fixtures/real_transactions.tsv")
-        .lines().find(|line| line.starts_with("segwit-opreturn-example\t"))
-        .unwrap().split('\t').last().unwrap())
+        .lines()
+        .find(|line| line.starts_with("segwit-opreturn-example\t"))
+        .unwrap()
+        .split('\t')
+        .last()
+        .unwrap())
 }
-fn sibling(hex: &str) -> [u8; 32] { raw(hex).try_into().unwrap() }
-fn anchor() -> Tip { Tip { height: 100, id: BlockId([0x12; 32]) } }
+fn sibling(hex: &str) -> [u8; 32] {
+    raw(hex).try_into().unwrap()
+}
+fn anchor() -> Tip {
+    Tip {
+        height: 100,
+        id: BlockId([0x12; 32]),
+    }
+}
 fn fake_segment() -> CheckedHeaderSegment {
     CheckedHeaderSegment::check_against_claimed_anchor(
-        anchor(), &[header(SYNTHETIC_101), header(SYNTHETIC_102)],
+        anchor(),
+        &[header(SYNTHETIC_101), header(SYNTHETIC_102)],
         BitcoinPowProfile::RegtestLike,
-    ).unwrap()
+    )
+    .unwrap()
 }
 fn digest(byte: u8) -> Digest {
     Digest::parse(&format!("{byte:02x}").repeat(32)).unwrap()
 }
-fn chain() -> ChainId { ChainId([0x11; 32]) }
-fn account(name: &str) -> AccountId { AccountId::try_from(name).unwrap() }
+fn chain() -> ChainId {
+    ChainId([0x11; 32])
+}
+fn account(name: &str) -> AccountId {
+    AccountId::try_from(name).unwrap()
+}
 
 #[test]
 fn published_bitcoin_genesis_pow_header_and_coinbase_merkle_proof() {
@@ -88,25 +115,38 @@ fn published_bitcoin_genesis_pow_header_and_coinbase_merkle_proof() {
     assert_eq!(genesis.n_bits(), 0x1d00ffff);
     assert_eq!(genesis.parent(), BlockId([0; 32]));
     assert_eq!(
-        genesis.tip().id.0.iter().map(|b| format!("{b:02x}")).collect::<String>(),
+        genesis
+            .tip()
+            .id
+            .0
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<String>(),
         "000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f",
     );
-    let tx = genesis.check_transaction_inclusion(
-        &genesis_tx(),
-        &MerklePath { tx_index: 0, tx_count: 1, siblings_raw: vec![] },
-    ).unwrap();
+    let tx = genesis
+        .check_transaction_inclusion(
+            &genesis_tx(),
+            &MerklePath {
+                tx_index: 0,
+                tx_count: 1,
+                siblings_raw: vec![],
+            },
+        )
+        .unwrap();
     assert_eq!(tx.height(), 0);
     assert_eq!(tx.tx_index(), 0);
     assert_eq!(tx.tx_count(), 1);
     assert_eq!(tx.block_id(), genesis.tip().id);
     assert_eq!(tx.legacy_type_hint(), None); // no TradeLayer claims in genesis.
     assert_eq!(
-        tx.txid_display().iter().map(|b| format!("{b:02x}")).collect::<String>(),
+        tx.txid_display()
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<String>(),
         "4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b",
     );
-    assert!(CheckedHeader::check_bitcoin_mainnet_genesis(
-        &header(SYNTHETIC_101),
-    ).is_err());
+    assert!(CheckedHeader::check_bitcoin_mainnet_genesis(&header(SYNTHETIC_101),).is_err());
 }
 
 #[test]
@@ -118,30 +158,47 @@ fn fabricated_regtest_like_headers_bind_parent_hash_and_merkle_roots() {
     assert_eq!(seg.headers()[1].parent(), seg.headers()[0].tip().id);
     assert_eq!(seg.tip().height, 102);
     assert_eq!(
-        seg.tip().id.0.iter().map(|b| format!("{b:02x}")).collect::<String>(),
+        seg.tip()
+            .id
+            .0
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<String>(),
         "32b5e3e509902ab61ce6e0d96e1e53c5721be388eee22a836cd55ac4c0d5ac23"
     );
     assert!(matches!(
         CheckedHeaderSegment::check_against_claimed_anchor(
-            anchor(), &[header(SYNTHETIC_101)], BitcoinPowProfile::MainnetLike),
+            anchor(),
+            &[header(SYNTHETIC_101)],
+            BitcoinPowProfile::MainnetLike
+        ),
         Err(InclusionError::HeaderTooEasy)
     ));
     assert!(matches!(
         CheckedHeaderSegment::check_against_claimed_anchor(
-            anchor(), &[header(SYNTHETIC_102)], BitcoinPowProfile::RegtestLike),
+            anchor(),
+            &[header(SYNTHETIC_102)],
+            BitcoinPowProfile::RegtestLike
+        ),
         Err(InclusionError::InvalidHeaderChain)
     ));
     assert!(matches!(
         CheckedHeaderSegment::check_against_claimed_anchor(
-            anchor(), &[], BitcoinPowProfile::RegtestLike),
+            anchor(),
+            &[],
+            BitcoinPowProfile::RegtestLike
+        ),
         Err(InclusionError::TooManyHeaders)
     ));
     assert_eq!(MAX_HEADER_SEGMENT, 500);
     let mut bad_bits = header(SYNTHETIC_101);
     bad_bits[75] = 0x21; // above the regtest pow limit
     assert!(CheckedHeader::check_header_at_claimed_height(
-        101, &bad_bits, BitcoinPowProfile::RegtestLike,
-    ).is_err());
+        101,
+        &bad_bits,
+        BitcoinPowProfile::RegtestLike,
+    )
+    .is_err());
 }
 
 #[test]
@@ -151,23 +208,32 @@ fn exact_three_transaction_merkle_paths_and_odd_padding_are_checked() {
     assert_eq!(rows.len(), 3);
     // Transaction zero: sibling 1, then odd-leaf duplicate pair 2||2.
     let proof0 = MerklePath {
-        tx_index: 0, tx_count: 3,
+        tx_index: 0,
+        tx_count: 3,
         siblings_raw: vec![
             sibling("2e83799f01553f9ba87efb9493c667ea2fbf82062a521c1779f18d07607ae543"),
             sibling("5f041350e9b5584f60c507acbcfe609e8cac8c2eb509609d611b470c2fce6b42"),
         ],
     };
-    let zero = seg.check_transaction_inclusion(102, &rows[0], &proof0).unwrap();
-    assert_eq!(zero.legacy_type_hint(), Some(TransactionType::try_from(2).unwrap()));
+    let zero = seg
+        .check_transaction_inclusion(102, &rows[0], &proof0)
+        .unwrap();
+    assert_eq!(
+        zero.legacy_type_hint(),
+        Some(TransactionType::try_from(2).unwrap())
+    );
     assert_eq!(zero.tx_index(), 0);
     let proof2 = MerklePath {
-        tx_index: 2, tx_count: 3,
+        tx_index: 2,
+        tx_count: 3,
         siblings_raw: vec![
             sibling("309bbc86d0ea1378afa55e2fee37fa257cc3e33953ef528412684f6787b67381"),
             sibling("34f4083fb6ef5e99a1477db6160cc4153bf329fb91f7313f2c5c76c077c99c7a"),
         ],
     };
-    let third = seg.check_transaction_inclusion(102, &rows[2], &proof2).unwrap();
+    let third = seg
+        .check_transaction_inclusion(102, &rows[2], &proof2)
+        .unwrap();
     assert_eq!(third.tx_index(), 2);
     assert_eq!(third.legacy_type_hint(), None); // nested legacy frame; invalid syntax.
 
@@ -187,7 +253,9 @@ fn exact_three_transaction_merkle_paths_and_odd_padding_are_checked() {
     ));
     broken = proof2.clone();
     broken.siblings_raw[0][0] ^= 1;
-    assert!(seg.check_transaction_inclusion(102, &rows[2], &broken).is_err());
+    assert!(seg
+        .check_transaction_inclusion(102, &rows[2], &broken)
+        .is_err());
     broken = proof2.clone();
     broken.tx_index = 3;
     assert!(matches!(
@@ -200,58 +268,76 @@ fn exact_three_transaction_merkle_paths_and_odd_padding_are_checked() {
         seg.check_transaction_inclusion(102, &rows[2], &broken),
         Err(InclusionError::InvalidProof)
     ));
-    assert!(seg.check_transaction_inclusion(103, &rows[0], &proof0).is_err());
+    assert!(seg
+        .check_transaction_inclusion(103, &rows[0], &proof0)
+        .is_err());
 }
 
 #[test]
 fn segwit_merkle_leaf_uses_nonwitness_txid_not_wtxid() {
     let header = CheckedHeader::check_header_at_claimed_height(
-        500, &header(SEGWIT_FAKE), BitcoinPowProfile::RegtestLike,
-    ).unwrap();
+        500,
+        &header(SEGWIT_FAKE),
+        BitcoinPowProfile::RegtestLike,
+    )
+    .unwrap();
     let raw_tx = segwit_tx();
     let inspected = inspect_transaction(&raw_tx).unwrap();
     assert!(inspected.has_witness);
     assert_ne!(inspected.txid, inspected.wtxid);
-    let proof = MerklePath { tx_index: 0, tx_count: 1, siblings_raw: vec![] };
+    let proof = MerklePath {
+        tx_index: 0,
+        tx_count: 1,
+        siblings_raw: vec![],
+    };
     let included = header.check_transaction_inclusion(&raw_tx, &proof).unwrap();
     assert_eq!(
-        included.txid_display().iter().map(|b| format!("{b:02x}")).collect::<String>(),
+        included
+            .txid_display()
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<String>(),
         "00fddd900b735a88ab0ef5eeaa3efbc869d4e52493da8a9467ec782355cb39ff",
     );
 }
 
 struct SyntheticTipOnly;
 impl TrustedProtocolAdapter for SyntheticTipOnly {
-    fn verify_block(&self, _: &CandidateBlock) -> Result<(), String> { Ok(()) }
+    fn verify_block(&self, _: &CandidateBlock) -> Result<(), String> {
+        Ok(())
+    }
     fn authenticate_and_decode(
-        &self, _: ChainId, _: &BlockHeader, _: &[u8]
+        &self,
+        _: ChainId,
+        _: &BlockHeader,
+        _: &[u8],
     ) -> Result<Option<AuthenticatedProtocolOperation>, String> {
         Err("no chain-authenticated transactions in synthetic TLPT test".to_owned())
     }
 }
 
 fn synthetic_tlpt(seg: &CheckedHeaderSegment) -> Vec<TransitionStatement> {
-    let mut state = UnifiedChainState::new_unverified(
-        chain(), anchor(), account("admin"), 4,
-    ).unwrap();
+    let mut state =
+        UnifiedChainState::new_unverified(chain(), anchor(), account("admin"), 4).unwrap();
     let mut result = Vec::new();
     for header in seg.headers() {
         let prior = state.clone();
-        state.apply_block(
-            &CandidateBlock {
-                chain: chain(),
-                header: BlockHeader {
-                    height: header.tip().height,
-                    id: header.tip().id,
-                    parent: header.parent(),
+        state
+            .apply_block(
+                &CandidateBlock {
+                    chain: chain(),
+                    header: BlockHeader {
+                        height: header.tip().height,
+                        id: header.tip().id,
+                        parent: header.parent(),
+                    },
+                    raw_transactions: Vec::new(),
                 },
-                raw_transactions: Vec::new(),
-            },
-            &SyntheticTipOnly,
-        ).unwrap();
-        result.push(TransitionStatement::from_reversible_states_unverified(
-            &prior, &state,
-        ).unwrap());
+                &SyntheticTipOnly,
+            )
+            .unwrap();
+        result
+            .push(TransitionStatement::from_reversible_states_unverified(&prior, &state).unwrap());
     }
     result
 }
@@ -289,12 +375,26 @@ fn one_receipt_batch(txid: Digest) -> AuditBatch {
 fn zk_receipts_require_checked_merkle_evidence_instead_of_freeform_observations() {
     let seg = fake_segment();
     let rows = synthetic_rows();
-    let included = seg.check_transaction_inclusion(101, &rows[0], &MerklePath {
-        tx_index: 0, tx_count: 1, siblings_raw: Vec::new(),
-    }).unwrap();
+    let included = seg
+        .check_transaction_inclusion(
+            101,
+            &rows[0],
+            &MerklePath {
+                tx_index: 0,
+                tx_count: 1,
+                siblings_raw: Vec::new(),
+            },
+        )
+        .unwrap();
     assert_eq!(included.legacy_type_hint().unwrap().as_u8(), 2);
-    let txid = Digest::parse(&included.txid_display()
-        .iter().map(|b| format!("{b:02x}")).collect::<String>()).unwrap();
+    let txid = Digest::parse(
+        &included
+            .txid_display()
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<String>(),
+    )
+    .unwrap();
     let batch = one_receipt_batch(txid);
     let tlpt = synthetic_tlpt(&seg);
     let expected = ExpectedChainRange {
@@ -302,9 +402,9 @@ fn zk_receipts_require_checked_merkle_evidence_instead_of_freeform_observations(
         anchor: seg.anchor(),
         final_tip: seg.tip(),
     };
-    let report = reconcile_checked_bitcoin_inclusions_unverified(
-        &batch, &tlpt, &seg, &[included], expected,
-    ).unwrap();
+    let report =
+        reconcile_checked_bitcoin_inclusions_unverified(&batch, &tlpt, &seg, &[included], expected)
+            .unwrap();
     assert_eq!(report.root_alignment.blocks.len(), 2);
     assert_eq!(report.root_alignment.receipt_count, 1);
     assert_eq!(report.root_alignment.blocks[0].receipt_count, 1);
@@ -324,35 +424,42 @@ fn zk_receipts_require_checked_merkle_evidence_instead_of_freeform_observations(
     altered.batch_id = altered.calculate_batch_id();
     assert!(matches!(
         reconcile_checked_bitcoin_inclusions_unverified(
-            &altered, &tlpt, &seg, &[included], expected,
+            &altered,
+            &tlpt,
+            &seg,
+            &[included],
+            expected,
         ),
         Err(BridgeError::ReceiptMismatch)
     ));
     assert!(matches!(
-        reconcile_checked_bitcoin_inclusions_unverified(
-            &batch, &tlpt, &seg, &[], expected,
-        ),
+        reconcile_checked_bitcoin_inclusions_unverified(&batch, &tlpt, &seg, &[], expected,),
         Err(BridgeError::ReceiptMismatch)
     ));
-    let foreign = ExpectedChainRange { chain: ChainId([1; 32]), ..expected };
+    let foreign = ExpectedChainRange {
+        chain: ChainId([1; 32]),
+        ..expected
+    };
     assert!(matches!(
-        reconcile_checked_bitcoin_inclusions_unverified(
-            &batch, &tlpt, &seg, &[included], foreign,
-        ),
+        reconcile_checked_bitcoin_inclusions_unverified(&batch, &tlpt, &seg, &[included], foreign,),
         Err(BridgeError::WrongChain)
     ));
     // The known Bitcoin genesis coinbase can prove Merkle membership but
     // cannot be promoted to a TradeLayer receipt due to no TL carrier.
     let genesis = CheckedHeader::check_bitcoin_mainnet_genesis(&header(GENESIS_HEADER)).unwrap();
-    let coinbase = genesis.check_transaction_inclusion(
-        &genesis_tx(),
-        &MerklePath { tx_index: 0, tx_count: 1, siblings_raw: vec![] },
-    ).unwrap();
+    let coinbase = genesis
+        .check_transaction_inclusion(
+            &genesis_tx(),
+            &MerklePath {
+                tx_index: 0,
+                tx_count: 1,
+                siblings_raw: vec![],
+            },
+        )
+        .unwrap();
     assert_eq!(coinbase.legacy_type_hint(), None);
     assert!(matches!(
-        reconcile_checked_bitcoin_inclusions_unverified(
-            &batch, &tlpt, &seg, &[coinbase], expected,
-        ),
+        reconcile_checked_bitcoin_inclusions_unverified(&batch, &tlpt, &seg, &[coinbase], expected,),
         Err(BridgeError::MissingBlock)
     ));
 }
