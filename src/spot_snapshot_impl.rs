@@ -156,7 +156,9 @@ impl SpotExchange {
                     || order.sequence >= self.next_sequence
                     || previous_sequence.is_some_and(|old| old >= order.sequence)
                     || !self.seen.contains(&order.txid)
-                    || !self.ledger.is_processed(internal_txid(order.txid, b"reserve", 0))
+                    || !self
+                        .ledger
+                        .is_processed(internal_txid(order.txid, b"reserve", 0))
                     || !active_ids.insert(order.txid)
                     || !sequences.insert(order.sequence)
                 {
@@ -174,8 +176,12 @@ impl SpotExchange {
                 || !self.seen.contains(&fill.sell_txid)
                 || !self.seen.contains(&fill.buy_txid)
                 || !self.seen.contains(&fill.trigger_txid)
-                || !self.ledger.is_processed(internal_txid(fill.trigger_txid, b"fill-base", nonce))
-                || !self.ledger.is_processed(internal_txid(fill.trigger_txid, b"fill-quote", nonce))
+                || !self
+                    .ledger
+                    .is_processed(internal_txid(fill.trigger_txid, b"fill-base", nonce))
+                || !self
+                    .ledger
+                    .is_processed(internal_txid(fill.trigger_txid, b"fill-quote", nonce))
             {
                 return Err(spot_invalid("invalid fill history"));
             }
