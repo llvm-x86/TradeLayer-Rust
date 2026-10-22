@@ -246,16 +246,10 @@ impl Ledger {
     }
 
     fn existing_property(&self, id: PropertyId) -> Result<&Property, LedgerError> {
-        self.properties
-            .get(&id)
-            .ok_or(LedgerError::UnknownProperty(id))
+        self.properties.get(&id).ok_or(LedgerError::UnknownProperty(id))
     }
 
-    fn check_managed_issuer(
-        &self,
-        id: PropertyId,
-        actor: &AccountId,
-    ) -> Result<&Property, LedgerError> {
+    fn check_managed_issuer(&self, id: PropertyId, actor: &AccountId) -> Result<&Property, LedgerError> {
         let property = self.existing_property(id)?;
         if property.kind != PropertyKind::Managed {
             return Err(LedgerError::FixedSupply(id));
@@ -423,10 +417,7 @@ mod tests {
     fn checked_account_and_property_ids() {
         assert_eq!(PropertyId::try_from(0), Err(LedgerError::InvalidPropertyId));
         for invalid in ["", "alice bob", "\n", "🚀"] {
-            assert_eq!(
-                AccountId::try_from(invalid),
-                Err(LedgerError::InvalidAccount)
-            );
+            assert_eq!(AccountId::try_from(invalid), Err(LedgerError::InvalidAccount));
         }
         assert_eq!(
             AccountId::try_from("a".repeat(MAX_ACCOUNT_BYTES + 1).as_str()),
@@ -438,36 +429,211 @@ mod tests {
     #[test]
     fn rejects_supply_mismatch() {
         let mut ledger = Ledger::new();
-        ledger
-            .apply(
-                tx(1),
-                Operation::CreateProperty {
-                    id: p(7),
-                    issuer: a("alice"),
-                    kind: PropertyKind::Fixed,
-                    initial_atoms: 10,
-                },
-            )
-            .unwrap();
+        ledger.apply(tx(1), Operation::CreateProperty {
+            id: p(7), issuer: a("alice"), kind: PropertyKind::Fixed, initial_atoms: 10,
+        }).unwrap();
         ledger.available.insert((p(7), a("alice")), 11);
-        assert_eq!(
-            ledger.verify_conservation(),
-            Err(LedgerError::SupplyMismatch(p(7)))
-        );
+        assert_eq!(ledger.verify_conservation(), Err(LedgerError::SupplyMismatch(p(7))));
     }
 
     #[test]
     fn rejects_orphan_balances_and_zero_entries() {
         let mut ledger = Ledger::new();
         ledger.available.insert((p(7), a("alice")), 1);
-        assert_eq!(
-            ledger.verify_conservation(),
-            Err(LedgerError::BalanceWithoutProperty(p(7)))
-        );
+        assert_eq!(ledger.verify_conservation(), Err(LedgerError::BalanceWithoutProperty(p(7))));
         ledger.available.insert((p(7), a("alice")), 0);
-        assert_eq!(
-            ledger.verify_conservation(),
-            Err(LedgerError::NonCanonicalZeroBalance(p(7)))
-        );
+        assert_eq!(ledger.verify_conservation(), Err(LedgerError::NonCanonicalZeroBalance(p(7))));
+    }
+}
+
+/// Canonical, checksummed checkpoint encoding for the prototype ledger.
+/// A checksum detects accidental corruption, not malicious modification.
+/// These bytes are NOT an independently verified consensus state commitment.
+impl Ledger {
+    pub fn snapshot_bytes(&self) -> Result<Vec<u8>, SnapshotError> {
+        use crate::codec::{with_crc, MAX_CHECKPOINT_BYTES};
+        self.verify_conservation().map_err(SnapshotError::InvalidLedger)?;
+        if [self.properties.len(), self.available.len(), self.processed.len()]
+            .iter()
+            .any(|&count| count > MAX_SNAPSHOT_ENTRIES)
+        {
+            return Err(SnapshotError::InvalidFormat("too many ledger records"));
+        }
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(b"TLL\x01");
+        bytes.extend_from_slice(&(self.properties.len() as u32).to_be_bytes());
+        for (id, property) in &self.properties {
+            bytes.extend_from_slice(&id.get().to_be_bytes());
+            push_account(&mut bytes, &property.issuer);
+            bytes.push(match property.kind {
+                PropertyKind::Fixed => 1,
+                PropertyKind::Managed => 2,
+            });
+            bytes.extend_from_slice(&property.total_supply_atoms.to_be_bytes());
+        }
+        bytes.extend_from_slice(&(self.available.len() as u32).to_be_bytes());
+        for ((id, account), amount) in &self.available {
+            bytes.extend_from_slice(&id.get().to_be_bytes());
+            push_account(&mut bytes, account);
+            bytes.extend_from_slice(&amount.to_be_bytes());
+        }
+        bytes.extend_from_slice(&(self.processed.len() as u32).to_be_bytes());
+        for txid in &self.processed {
+            bytes.extend_from_slice(&txid.as_bytes());
+        }
+        if bytes.len() > MAX_CHECKPOINT_BYTES - 4 {
+            return Err(SnapshotError::InvalidFormat("ledger checkpoint too large"));
+        }
+        with_crc(bytes).map_err(|_| SnapshotError::InvalidFormat("ledger checkpoint too large"))
+    }
+
+    /// Decode only canonical ascending records. Unknown format versions,
+    /// duplicates, trailing bytes, and broken conservation fail closed.
+    pub fn from_snapshot_bytes(input: &[u8]) -> Result<Self, SnapshotError> {
+        use crate::codec::{verify_crc, Cursor};
+        let payload = verify_crc(input).map_err(snapshot_codec_error)?;
+        let mut reader = Cursor::new(payload);
+        if &reader.fixed::<4>().map_err(snapshot_codec_error)? != b"TLL\x01" {
+            return Err(SnapshotError::InvalidFormat("ledger checkpoint version"));
+        }
+        let mut state = Self::new();
+        let count = snapshot_count(&mut reader)?;
+        let mut last = None;
+        for _ in 0..count {
+            let id = PropertyId::try_from(reader.u32().map_err(snapshot_codec_error)?)
+                .map_err(SnapshotError::InvalidLedger)?;
+            if last.is_some_and(|previous| id <= previous) {
+                return Err(SnapshotError::InvalidFormat("unsorted property records"));
+            }
+            last = Some(id);
+            let issuer = read_account(&mut reader)?;
+            let kind = match reader.u8().map_err(snapshot_codec_error)? {
+                1 => PropertyKind::Fixed,
+                2 => PropertyKind::Managed,
+                _ => return Err(SnapshotError::InvalidFormat("property kind")),
+            };
+            let supply = reader.u128().map_err(snapshot_codec_error)?;
+            state.properties.insert(id, Property { issuer, kind, total_supply_atoms: supply });
+        }
+        let count = snapshot_count(&mut reader)?;
+        let mut last: Option<(PropertyId, AccountId)> = None;
+        for _ in 0..count {
+            let id = PropertyId::try_from(reader.u32().map_err(snapshot_codec_error)?)
+                .map_err(SnapshotError::InvalidLedger)?;
+            let account = read_account(&mut reader)?;
+            let key = (id, account);
+            if last.as_ref().is_some_and(|previous| &key <= previous) {
+                return Err(SnapshotError::InvalidFormat("unsorted balance records"));
+            }
+            let amount = reader.u128().map_err(snapshot_codec_error)?;
+            if amount == 0 {
+                return Err(SnapshotError::InvalidFormat("zero balance"));
+            }
+            last = Some(key.clone());
+            state.available.insert(key, amount);
+        }
+        let count = snapshot_count(&mut reader)?;
+        let mut last: Option<TxId> = None;
+        for _ in 0..count {
+            let id = TxId::from_bytes(reader.fixed::<32>().map_err(snapshot_codec_error)?);
+            if last.is_some_and(|previous| id <= previous) {
+                return Err(SnapshotError::InvalidFormat("unsorted replay markers"));
+            }
+            last = Some(id);
+            state.processed.insert(id);
+        }
+        reader.end().map_err(snapshot_codec_error)?;
+        state.verify_conservation().map_err(SnapshotError::InvalidLedger)?;
+        Ok(state)
+    }
+}
+
+const MAX_SNAPSHOT_ENTRIES: usize = 100_000;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SnapshotError {
+    InvalidFormat(&'static str),
+    InvalidLedger(LedgerError),
+}
+
+impl core::fmt::Display for SnapshotError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{self:?}")
+    }
+}
+
+impl std::error::Error for SnapshotError {}
+
+fn snapshot_codec_error(err: crate::codec::CodecError) -> SnapshotError {
+    use crate::codec::CodecError;
+    match err {
+        CodecError::BadChecksum => SnapshotError::InvalidFormat("ledger checksum"),
+        CodecError::TooLarge => SnapshotError::InvalidFormat("ledger oversized"),
+        _ => SnapshotError::InvalidFormat("ledger malformed"),
+    }
+}
+
+fn snapshot_count(reader: &mut crate::codec::Cursor<'_>) -> Result<usize, SnapshotError> {
+    let count = reader.u32().map_err(snapshot_codec_error)? as usize;
+    if count > MAX_SNAPSHOT_ENTRIES {
+        Err(SnapshotError::InvalidFormat("too many ledger records"))
+    } else {
+        Ok(count)
+    }
+}
+
+fn push_account(bytes: &mut Vec<u8>, account: &AccountId) {
+    let raw = account.as_str().as_bytes();
+    // AccountId can only be constructed after checking MAX_ACCOUNT_BYTES.
+    bytes.push(raw.len() as u8);
+    bytes.extend_from_slice(raw);
+}
+
+fn read_account(reader: &mut crate::codec::Cursor<'_>) -> Result<AccountId, SnapshotError> {
+    let len = reader.u8().map_err(snapshot_codec_error)? as usize;
+    if len == 0 || len > MAX_ACCOUNT_BYTES {
+        return Err(SnapshotError::InvalidFormat("account length"));
+    }
+    let raw = reader.take(len).map_err(snapshot_codec_error)?;
+    let value = core::str::from_utf8(raw)
+        .map_err(|_| SnapshotError::InvalidFormat("account encoding"))?;
+    AccountId::try_from(value).map_err(SnapshotError::InvalidLedger)
+}
+
+#[cfg(test)]
+mod snapshot_tests {
+    use super::*;
+    fn account(value: &str) -> AccountId { AccountId::try_from(value).unwrap() }
+    fn prop(value: u32) -> PropertyId { PropertyId::try_from(value).unwrap() }
+    fn tx(v: u8) -> TxId { TxId::from_bytes([v; 32]) }
+
+    #[test]
+    fn round_trip_and_byte_stability() {
+        let mut state = Ledger::new();
+        state.apply(tx(1), Operation::CreateProperty {
+            id: prop(7), issuer: account("issuer"), kind: PropertyKind::Managed,
+            initial_atoms: 100_000_000,
+        }).unwrap();
+        state.apply(tx(2), Operation::Transfer {
+            id: prop(7), from: account("issuer"), to: account("recipient"), amount_atoms: 43,
+        }).unwrap();
+        let bytes = state.snapshot_bytes().unwrap();
+        let recovered = Ledger::from_snapshot_bytes(&bytes).unwrap();
+        assert_eq!(state, recovered);
+        assert_eq!(bytes, recovered.snapshot_bytes().unwrap());
+        let mut damaged = bytes;
+        damaged[10] ^= 1;
+        assert!(Ledger::from_snapshot_bytes(&damaged).is_err());
+    }
+
+    #[test]
+    fn cannot_load_truncation_or_trailing_bytes() {
+        let bytes = Ledger::new().snapshot_bytes().unwrap();
+        for len in 0..bytes.len() {
+            assert!(Ledger::from_snapshot_bytes(&bytes[..len]).is_err());
+        }
+        let mut extra = bytes;
+        extra.push(0);
+        assert!(Ledger::from_snapshot_bytes(&extra).is_err());
     }
 }
