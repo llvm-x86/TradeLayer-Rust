@@ -312,3 +312,30 @@ anchors, real Litecoin/Dogecoin Scrypt PoW, independent SHA256 audit,
 confirmed TradeLayer archive traces and real Cairo/STWO economics.
 
 See [docs/BITCOIN_SPV_INCLUSION.md](docs/BITCOIN_SPV_INCLUSION.md).
+
+
+## Stage 17: Bitcoin-mainnet difficulty, MTP and cumulative header work
+
+- Implement exact mainnet nBits rules between difficulty epochs and at
+  heights divisible by 2016, using bounded Bitcoin Core retarget
+  arithmetic and the preceding epoch's first/last timestamps.
+- Add a private checked u256, high-limb ordering and chainwork calculation
+  equivalent to Bitcoin Core GetBlockProof: floor(2^256/(target+1)).
+- Check header median time past from the preceding 11 timestamps,
+  require Bitcoin SHA256d PoW and linked parents, and update a
+  provenance-labelled work checkpoint atomically per bounded segment.
+- Pin genuine historical Bitcoin mainnet genesis and height-1 headers.
+  Confirm exact work 0x100010001 and cumulative work 0x200020002.
+- Keep caller-declared high-height checkpoints visibly untrusted.
+  Allow local stronger-work comparisons only from an identical anchor,
+  not as proof of the global active best chain.
+- Add independent Python bigint retarget/chainwork validation and
+  adversarial Rust regression tests. No Rust crate dependencies added.
+
+**Still blocked:** authenticated external checkpoints and active
+best-chain selection, trusted future-time bound, full block/UTXO/signature
+consensus verification, Litecoin/Dogecoin Scrypt, testnet special
+difficulty rules, independently audited cryptography, and actual
+Cairo/STWO economic transition proofs.
+
+See [docs/BITCOIN_CHAINWORK.md](docs/BITCOIN_CHAINWORK.md).
