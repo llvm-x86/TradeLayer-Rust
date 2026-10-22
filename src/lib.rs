@@ -8,8 +8,8 @@
 pub mod chain; // Trust-boundary and reversible block progression, prototype only.
 mod codec; // Bounded, checksummed snapshot codec.
 mod hash256; // Offline SHA-256d txid fingerprints; not trusted consensus.
-pub mod read_only; // Offline transaction scanning; cannot authorize ledger state.
 pub mod ledger; // In-memory atomic accounting primitives; not chain consensus.
+pub mod read_only; // Offline transaction scanning; cannot authorize ledger state.
 pub mod wire; // Read-only legacy ASCII format analysis; never auto-fallback.
 pub mod wire_v1; // Proposed versioned binary format.
 
