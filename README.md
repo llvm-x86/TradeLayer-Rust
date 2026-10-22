@@ -90,3 +90,14 @@ environment and reports field-level disagreements. The cited testnet heights
 are a **search lead from documentation**, not confirmed on-chain TradeLayer
 transactions. This repository does not yet contain validated Litecoin TradeLayer
 chain-history fixtures.
+
+## zkTL Cairo / STWO compatibility (read-only)
+
+The `zk_batch` module now independently verifies the **JSON SHA-256 metadata commitments** from [zkTL](https://github.com/patrickdugan/zkTL), using a fixture derived from its 26-receipt checkpoint. It checks ordered receipt hashes, transition roots, batch hashes and state-root chaining. `src/protocol.rs` inventories all 36 historical transaction IDs and records the unresolved type-34 collision. **Metadata consistency does not verify any Cairo/STWO proof or economic transition.**
+
+```sh
+python3 scripts/export_tlzk_batch.py ../zkTL/artifacts/cairo_inputs/batch_checkpoint_latest.json --out /tmp/tlzk.tsv
+cargo run --locked --bin tradelayer-zk-inspect -- /tmp/tlzk.tsv
+```
+
+See [Cairo integration and blocked trust boundaries](docs/ZK_CAIRO_INTEGRATION.md).

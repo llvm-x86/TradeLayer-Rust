@@ -87,3 +87,12 @@ See [docs/READ_ONLY_REPLAY.md](docs/READ_ONLY_REPLAY.md).
   have been collected in this branch.
 
 See [docs/ARCHIVE_REPLAY.md](docs/ARCHIVE_REPLAY.md).
+
+## Step 7: zkTL Cairo commitment bridge (read-only)
+
+- Pinned the 26-receipt [zkTL](https://github.com/patrickdugan/zkTL) sample at commit `edff311d7bfc71cd8b33bf6e2cf2bb2f282bec2d`.
+- Python exports verified canonical JSON checkpoint metadata; Rust independently recomputes receipt IDs, ordered transition root and batch ID with SHA-256, tests state-root continuity and fail-closed receipt metadata.
+- Added all-36-type migration catalog and explicitly rejected the ZK batch tx34 / legacy cross-layer-bridge tx34 semantic collision.
+- **Not yet:** Cairo per-transition computation, cryptographic STWO proof verification, authenticated L1 inclusion, a shared Rust/zkTL state-root scheme or permission to mutate the ledger from the checkpoint.
+
+See [docs/ZK_CAIRO_INTEGRATION.md](docs/ZK_CAIRO_INTEGRATION.md).
