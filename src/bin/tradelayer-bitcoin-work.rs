@@ -18,7 +18,9 @@ const MAX_FILE_BYTES: usize = MAX_TOTAL_LINES * 161;
 
 fn canonical_header(text: &str) -> Result<[u8; 80], String> {
     if text.len() != 160
-        || !text.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        || !text
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
     {
         return Err("expected lowercase 160-character header hex".into());
     }
@@ -62,7 +64,8 @@ fn run() -> Result<(), String> {
         headers.push(canonical_header(line)?);
     }
     if !headers.is_empty() {
-        chain.extend_checked(&headers)
+        chain
+            .extend_checked(&headers)
             .map_err(|err| format!("header segment rejected: {err}"))?;
     }
     println!("header_validation=PARTIAL_BITCOIN_MAINNET");
@@ -77,7 +80,10 @@ fn run() -> Result<(), String> {
     println!("last_height={}", chain.tip().height);
     println!("last_block_hash={}", to_hex(&chain.tip().id.0));
     println!("last_nbits={:08x}", chain.checkpoint().bits);
-    println!("chainwork={}", to_hex(&chain.checkpoint().cumulative_work.to_be_bytes()));
+    println!(
+        "chainwork={}",
+        to_hex(&chain.checkpoint().cumulative_work.to_be_bytes())
+    );
     Ok(())
 }
 fn main() {
