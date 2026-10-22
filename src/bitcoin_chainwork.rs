@@ -78,7 +78,9 @@ impl U256 {
             *slot = value as u64;
             carry = value >> 64;
         }
-        if carry != 0 { return Err(WorkError::WorkOverflow); }
+        if carry != 0 {
+            return Err(WorkError::WorkOverflow);
+        }
         Ok(Self(out))
     }
     fn multiply_u32(self, factor: u32) -> Result<Self, WorkError> {
@@ -89,11 +91,15 @@ impl U256 {
             *slot = value as u64;
             carry = value >> 64;
         }
-        if carry != 0 { return Err(WorkError::WorkOverflow); }
+        if carry != 0 {
+            return Err(WorkError::WorkOverflow);
+        }
         Ok(Self(out))
     }
     fn divide_u32(self, divisor: u32) -> Result<Self, WorkError> {
-        if divisor == 0 { return Err(WorkError::InvalidTarget); }
+        if divisor == 0 {
+            return Err(WorkError::InvalidTarget);
+        }
         let mut rem = 0u128;
         let mut out = [0u64; 4];
         for i in (0..4).rev() {
@@ -104,7 +110,9 @@ impl U256 {
         Ok(Self(out))
     }
     fn divide(self, divisor: Self) -> Result<Self, WorkError> {
-        if divisor == Self::ZERO { return Err(WorkError::InvalidTarget); }
+        if divisor == Self::ZERO {
+            return Err(WorkError::InvalidTarget);
+        }
         // Generic restoring binary long division, with a *257-bit* remainder
         // so the high-bit carry cannot be silently lost for huge divisors.
         let mut quotient = [0u64; 4];
@@ -137,13 +145,17 @@ impl U256 {
     }
     /// Bitcoin Core's GetCompact rounds a 256-bit target toward zero.
     fn compact(self) -> Result<u32, WorkError> {
-        if self == Self::ZERO { return Err(WorkError::InvalidTarget); }
+        if self == Self::ZERO {
+            return Err(WorkError::InvalidTarget);
+        }
         let bytes = self.as_be_bytes();
         let first = bytes.iter().position(|b| *b != 0).expect("nonzero");
         let mut size = 32 - first;
         let mut mantissa = if size <= 3 {
             let mut value = 0u32;
-            for byte in &bytes[first..] { value = (value << 8) | u32::from(*byte); }
+            for byte in &bytes[first..] {
+                value = (value << 8) | u32::from(*byte);
+            }
             value << (8 * (3 - size))
         } else {
             (u32::from(bytes[first]) << 16)
@@ -154,13 +166,17 @@ impl U256 {
             mantissa >>= 8;
             size += 1;
         }
-        if size > 32 { return Err(WorkError::InvalidTarget); }
+        if size > 32 {
+            return Err(WorkError::InvalidTarget);
+        }
         Ok(((size as u32) << 24) | mantissa)
     }
 }
 fn cmp_five(a: &[u64; 5], b: &[u64; 5]) -> Ordering {
     for i in (0..5).rev() {
-        if a[i] != b[i] { return a[i].cmp(&b[i]); }
+        if a[i] != b[i] {
+            return a[i].cmp(&b[i]);
+        }
     }
     Ordering::Equal
 }
@@ -171,10 +187,18 @@ fn cmp_five(a: &[u64; 5], b: &[u64; 5]) -> Ordering {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Work256([u8; 32]);
 impl Work256 {
-    pub const fn to_be_bytes(self) -> [u8; 32] { self.0 }
-    pub fn from_be_bytes(bytes: [u8; 32]) -> Self { Self(bytes) }
-    fn as_u256(self) -> U256 { U256::from_be_bytes(self.0) }
-    fn from_u256(value: U256) -> Self { Self(value.as_be_bytes()) }
+    pub const fn to_be_bytes(self) -> [u8; 32] {
+        self.0
+    }
+    pub fn from_be_bytes(bytes: [u8; 32]) -> Self {
+        Self(bytes)
+    }
+    fn as_u256(self) -> U256 {
+        U256::from_be_bytes(self.0)
+    }
+    fn from_u256(value: U256) -> Self {
+        Self(value.as_be_bytes())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -188,11 +212,15 @@ pub enum WorkError {
     NotCommonCheckpoint,
 }
 impl std::fmt::Display for WorkError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { write!(f, "{self:?}") }
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{self:?}")
+    }
 }
 impl std::error::Error for WorkError {}
 impl From<InclusionError> for WorkError {
-    fn from(value: InclusionError) -> Self { Self::Bitcoin(value) }
+    fn from(value: InclusionError) -> Self {
+        Self::Bitcoin(value)
+    }
 }
 
 /// Exactly Bitcoin Core GetBlockProof for a valid positive nBits target:
@@ -202,8 +230,7 @@ pub fn mainnet_block_proof_work(bits: u32) -> Result<Work256, WorkError> {
     if target > U256::from_bits(MAINNET_POW_LIMIT_BITS)? {
         return Err(WorkError::InvalidTarget);
     }
-    let quotient = U256(target.0.map(|x| !x))
-        .divide(target.add(U256::ONE)?)?;
+    let quotient = U256(target.0.map(|x| !x)).divide(target.add(U256::ONE)?)?;
     Ok(Work256::from_u256(quotient.add(U256::ONE)?))
 }
 
@@ -218,7 +245,9 @@ pub fn mainnet_retarget_bits(
 ) -> Result<u32, WorkError> {
     let limit = U256::from_bits(MAINNET_POW_LIMIT_BITS)?;
     let target = U256::from_bits(last_bits)?;
-    if target > limit { return Err(WorkError::InvalidTarget); }
+    if target > limit {
+        return Err(WorkError::InvalidTarget);
+    }
     let span = i64::from(last_period_time) - i64::from(first_period_time);
     let bounded = span.clamp(
         i64::from(MAINNET_TARGET_TIMESPAN / 4),
@@ -227,7 +256,9 @@ pub fn mainnet_retarget_bits(
     let retarget = target
         .multiply_u32(bounded)?
         .divide_u32(MAINNET_TARGET_TIMESPAN)?;
-    if retarget > limit { return limit.compact(); }
+    if retarget > limit {
+        return limit.compact();
+    }
     retarget.compact()
 }
 
@@ -266,11 +297,12 @@ impl MainnetWorkChain {
     /// Only subsequent headers actually checked by this instance have
     /// mainnet-origin ancestry, and best-chain status remains unproved.
     pub fn from_published_genesis(raw_genesis: &[u8]) -> Result<Self, WorkError> {
-        let genesis = crate::bitcoin_inclusion::CheckedHeader::check_bitcoin_mainnet_genesis(
-            raw_genesis,
-        )?;
+        let genesis =
+            crate::bitcoin_inclusion::CheckedHeader::check_bitcoin_mainnet_genesis(raw_genesis)?;
         let timestamp = u32::from_le_bytes(
-            raw_genesis[68..72].try_into().expect("80-byte checked header"),
+            raw_genesis[68..72]
+                .try_into()
+                .expect("80-byte checked header"),
         );
         let initial = ClaimedMainnetCheckpoint {
             tip: genesis.tip(),
@@ -280,15 +312,17 @@ impl MainnetWorkChain {
             prior_timestamps: vec![timestamp],
             cumulative_work: mainnet_block_proof_work(genesis.n_bits())?,
         };
-        Ok(Self { source: AnchorStatus::PublishedGenesis, initial: initial.clone(), current: initial })
+        Ok(Self {
+            source: AnchorStatus::PublishedGenesis,
+            initial: initial.clone(),
+            current: initial,
+        })
     }
 
     /// Offline continuation of an externally ASSERTED checkpoint.
     /// No signature, checkpoint pinning, best-chain, or other history
     /// authentication is performed here.
-    pub fn from_claimed_checkpoint(
-        declared: ClaimedMainnetCheckpoint,
-    ) -> Result<Self, WorkError> {
+    pub fn from_claimed_checkpoint(declared: ClaimedMainnetCheckpoint) -> Result<Self, WorkError> {
         validate_checkpoint(&declared)?;
         Ok(Self {
             source: AnchorStatus::ClaimedExternal,
@@ -297,14 +331,26 @@ impl MainnetWorkChain {
         })
     }
 
-    pub fn checkpoint(&self) -> &ClaimedMainnetCheckpoint { &self.current }
-    pub fn anchor_status(&self) -> AnchorStatus { self.source }
-    pub fn tip(&self) -> Tip { self.current.tip }
+    pub fn checkpoint(&self) -> &ClaimedMainnetCheckpoint {
+        &self.current
+    }
+    pub fn anchor_status(&self) -> AnchorStatus {
+        self.source
+    }
+    pub fn tip(&self) -> Tip {
+        self.current.tip
+    }
     pub fn expected_next_bits(&self) -> Result<u32, WorkError> {
-        let next = self.current.tip.height.checked_add(1).ok_or(WorkError::InvalidCheckpoint)?;
+        let next = self
+            .current
+            .tip
+            .height
+            .checked_add(1)
+            .ok_or(WorkError::InvalidCheckpoint)?;
         if next.is_multiple_of(MAINNET_ADJUSTMENT_INTERVAL) {
             mainnet_retarget_bits(
-                self.current.bits, self.current.first_period_timestamp,
+                self.current.bits,
+                self.current.first_period_timestamp,
                 self.current.timestamp,
             )
         } else {
@@ -312,14 +358,14 @@ impl MainnetWorkChain {
         }
     }
 
-    pub fn compare_work_since_same_anchor(
-        &self,
-        other: &Self,
-    ) -> Result<Ordering, WorkError> {
+    pub fn compare_work_since_same_anchor(&self, other: &Self) -> Result<Ordering, WorkError> {
         if self.source != other.source || self.initial != other.initial {
             return Err(WorkError::NotCommonCheckpoint);
         }
-        Ok(self.current.cumulative_work.cmp(&other.current.cumulative_work))
+        Ok(self
+            .current
+            .cumulative_work
+            .cmp(&other.current.cumulative_work))
     }
 
     /// Checks header PoW/links AND mainnet nBits transitions, MTP and
@@ -333,7 +379,9 @@ impl MainnetWorkChain {
             return Err(WorkError::Bitcoin(InclusionError::TooManyHeaders));
         }
         let checked = CheckedHeaderSegment::check_against_claimed_anchor(
-            self.current.tip, raw_headers, BitcoinPowProfile::MainnetLike,
+            self.current.tip,
+            raw_headers,
+            BitcoinPowProfile::MainnetLike,
         )?;
         let mut candidate = self.current.clone();
         for (raw, header) in raw_headers.iter().zip(checked.headers()) {
@@ -360,9 +408,8 @@ impl MainnetWorkChain {
                 return Err(WorkError::MedianTimePast);
             }
             let added = mainnet_block_proof_work(header.n_bits())?.as_u256();
-            candidate.cumulative_work = Work256::from_u256(
-                candidate.cumulative_work.as_u256().add(added)?,
-            );
+            candidate.cumulative_work =
+                Work256::from_u256(candidate.cumulative_work.as_u256().add(added)?);
             candidate.tip = header.tip();
             candidate.bits = header.n_bits();
             candidate.timestamp = timestamp;
@@ -384,8 +431,8 @@ fn validate_checkpoint(c: &ClaimedMainnetCheckpoint) -> Result<(), WorkError> {
     if target > U256::from_bits(MAINNET_POW_LIMIT_BITS)? {
         return Err(WorkError::InvalidCheckpoint);
     }
-    let count = usize::try_from(c.tip.height.min(10) + 1)
-        .map_err(|_| WorkError::InvalidCheckpoint)?;
+    let count =
+        usize::try_from(c.tip.height.min(10) + 1).map_err(|_| WorkError::InvalidCheckpoint)?;
     if c.prior_timestamps.len() != count
         || c.prior_timestamps.last() != Some(&c.timestamp)
         || c.first_period_timestamp == 0
@@ -410,17 +457,33 @@ mod tests {
             (0x207fffff, 3),
         ] {
             if bits == 0x207fffff {
-                assert_eq!(U256::from_bits(bits).unwrap().divide(
-                    U256::from_bits(bits).unwrap()).unwrap(), U256::ONE);
+                assert_eq!(
+                    U256::from_bits(bits)
+                        .unwrap()
+                        .divide(U256::from_bits(bits).unwrap())
+                        .unwrap(),
+                    U256::ONE
+                );
                 continue; // regtest target is above mainnet powLimit
             }
-            assert_eq!(mainnet_block_proof_work(bits).unwrap().as_be_bytes()[24..],
-                work.to_be_bytes());
+            assert_eq!(
+                mainnet_block_proof_work(bits).unwrap().as_be_bytes()[24..],
+                work.to_be_bytes()
+            );
         }
         assert_eq!(mainnet_retarget_bits(0x1d00ffff, 0, 0).unwrap(), 0x1c3fffc0);
-        assert_eq!(mainnet_retarget_bits(0x1d00ffff, 0, 604800).unwrap(), 0x1c7fff80);
-        assert_eq!(mainnet_retarget_bits(0x1d00ffff, 0, 1209600).unwrap(), 0x1d00ffff);
-        assert_eq!(mainnet_retarget_bits(0x1d00ffff, 0, 6048000).unwrap(), 0x1d00ffff);
+        assert_eq!(
+            mainnet_retarget_bits(0x1d00ffff, 0, 604800).unwrap(),
+            0x1c7fff80
+        );
+        assert_eq!(
+            mainnet_retarget_bits(0x1d00ffff, 0, 1209600).unwrap(),
+            0x1d00ffff
+        );
+        assert_eq!(
+            mainnet_retarget_bits(0x1d00ffff, 0, 6048000).unwrap(),
+            0x1d00ffff
+        );
         assert_eq!(U256::ONE.as_be_bytes()[31], 1);
     }
 
@@ -444,6 +507,6 @@ mod tests {
         }
         assert!(U256::ZERO.divide(U256::ZERO).is_err());
         assert_eq!(U256::ONE.divide(U256::ONE).unwrap(), U256::ONE);
-        assert!(U256([u64::MAX;4]).add(U256::ONE).is_err());
+        assert!(U256([u64::MAX; 4]).add(U256::ONE).is_err());
     }
 }
