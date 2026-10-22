@@ -376,9 +376,10 @@ impl ProtocolState {
         if self.last_height.is_some_and(|previous| height < previous) {
             return Err(ExecutionError::HeightRegression);
         }
-        if self.finalized_height.is_some_and(|previous| {
-            previous.checked_add(1) != Some(height)
-        }) {
+        if self
+            .finalized_height
+            .is_some_and(|previous| previous.checked_add(1) != Some(height))
+        {
             return Err(ExecutionError::FinalizationOutOfSequence);
         }
         // On the first finalization, an older TLPS v1 checkpoint may have
