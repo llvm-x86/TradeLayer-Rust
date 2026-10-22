@@ -285,6 +285,23 @@ pub struct ClaimedMainnetCheckpoint {
     pub cumulative_work: Work256,
 }
 
+/// Opaque *header-only* work receipt: the underlying headers passed Bitcoin
+/// SHA256d, exact mainnet nBits retargeting and rolling median-time-past.
+/// The claimed anchor and active-best-chain status may still be untrusted.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MainnetWorkSegment {
+    checked_headers: CheckedHeaderSegment,
+    source: AnchorStatus,
+    before_work: Work256,
+    after_work: Work256,
+}
+impl MainnetWorkSegment {
+    pub fn checked_headers(&self) -> &CheckedHeaderSegment { &self.checked_headers }
+    pub fn anchor_status(&self) -> AnchorStatus { self.source }
+    pub fn work_before(&self) -> Work256 { self.before_work }
+    pub fn work_after(&self) -> Work256 { self.after_work }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MainnetWorkChain {
     source: AnchorStatus,
@@ -366,6 +383,21 @@ impl MainnetWorkChain {
             .current
             .cumulative_work
             .cmp(&other.current.cumulative_work))
+    }
+
+    /// Builds an opaque receipt carrying explicit work/provenance metadata.
+    /// This remains header-only audit evidence, never settlement permission.
+    pub fn extend_with_work_receipt(
+        &mut self, raw_headers: &[[u8; 80]],
+    ) -> Result<MainnetWorkSegment, WorkError> {
+        let before_work = self.current.cumulative_work;
+        let checked_headers = self.extend_checked(raw_headers)?;
+        Ok(MainnetWorkSegment {
+            checked_headers,
+            source: self.source,
+            before_work,
+            after_work: self.current.cumulative_work,
+        })
     }
 
     /// Checks header PoW/links AND mainnet nBits transitions, MTP and
