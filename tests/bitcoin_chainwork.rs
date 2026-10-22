@@ -399,3 +399,39 @@ fn genuine_mainnet_merkle_inclusion_cannot_impersonate_a_trade_layer_receipt() {
         Err(BridgeError::ReceiptMismatch)
     ));
 }
+
+
+#[test]
+fn fraudulent_checkpoint_context_cannot_bypass_mtp_or_nbits_checks() {
+    let genesis = MainnetWorkChain::from_published_genesis(&header(GENESIS)).unwrap();
+    let mut declared = genesis.checkpoint().clone();
+    // Claimed timestamp is later than the genuine block-1 timestamp.
+    // The real block-1 PoW and parent still check out, but the separately
+    // declared MTP checkpoint context is inconsistent with its time.
+    declared.timestamp = 1_231_469_666;
+    declared.first_period_timestamp = declared.timestamp;
+    declared.prior_timestamps = vec![declared.timestamp];
+    let mut chain = MainnetWorkChain::from_claimed_checkpoint(declared).unwrap();
+    let before = chain.clone();
+    assert!(matches!(
+        chain.extend_checked(&[header(BLOCK_ONE)]),
+        Err(WorkError::MedianTimePast)
+    ));
+    assert_eq!(chain, before);
+
+    // A bogus checkpoint pretending Genesis was mined at *harder* bits
+    // cannot accept the genuine block-1 easier target as the next nBits.
+    let mut declared = genesis.checkpoint().clone();
+    declared.bits = 0x1c00ffff;
+    declared.cumulative_work = mainnet_block_proof_work(declared.bits).unwrap();
+    let mut chain = MainnetWorkChain::from_claimed_checkpoint(declared).unwrap();
+    let before = chain.clone();
+    assert!(matches!(
+        chain.extend_checked(&[header(BLOCK_ONE)]),
+        Err(WorkError::IncorrectDifficulty {
+            expected: 0x1c00ffff,
+            actual: 0x1d00ffff,
+        })
+    ));
+    assert_eq!(chain, before);
+}
