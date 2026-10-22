@@ -231,6 +231,11 @@ impl Registry {
         self.processed.len()
     }
 
+    /// Read-only replay markers for Stage 22's global input-ID invariant.
+    pub fn input_txids_unverified(&self) -> &BTreeSet<TxId> {
+        &self.processed
+    }
+
     pub fn last_height(&self) -> Option<u64> {
         self.last_height
     }
