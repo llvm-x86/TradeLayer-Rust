@@ -5,6 +5,8 @@
 
 #![forbid(unsafe_code)]
 
+pub mod wire;
+
 /// Highest transaction type dispatched by the historical JavaScript
 /// implementation when this scaffold was created.
 pub const MAX_LEGACY_TX_TYPE: u8 = 35;
