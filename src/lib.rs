@@ -5,7 +5,8 @@
 
 #![forbid(unsafe_code)]
 
-pub mod wire;
+pub mod wire; // Read-only legacy ASCII format analysis; never auto-fallback.
+pub mod wire_v1; // Proposed versioned binary format.
 
 /// Highest transaction type dispatched by the historical JavaScript
 /// implementation when this scaffold was created.
@@ -62,13 +63,7 @@ mod tests {
 
     #[test]
     fn rejects_unknown_transaction_types() {
-        assert_eq!(
-            TransactionType::try_from(36),
-            Err(UnknownTransactionType(36))
-        );
-        assert_eq!(
-            TransactionType::try_from(u8::MAX),
-            Err(UnknownTransactionType(u8::MAX))
-        );
+        assert_eq!(TransactionType::try_from(36), Err(UnknownTransactionType(36)));
+        assert_eq!(TransactionType::try_from(u8::MAX), Err(UnknownTransactionType(u8::MAX)));
     }
 }
