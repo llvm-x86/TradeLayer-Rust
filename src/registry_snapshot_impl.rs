@@ -1,5 +1,5 @@
-//! Checkpoint support compiled *inside* registry.rs so private state stays private.
-//! CRC32 is an accidental-corruption check, never a signature or proof.
+// Checkpoint support compiled *inside* registry.rs so private state stays private.
+// CRC32 is an accidental-corruption check, never a signature or proof.
 use crate::codec::{verify_crc, with_crc, Cursor};
 
 const MAX_ENTRIES: usize = 100_000;
@@ -50,8 +50,16 @@ fn read_count(reader: &mut Cursor<'_>) -> Result<usize, RegistrySnapshotError> {
     }
     Ok(n)
 }
-fn read_text(reader: &mut Cursor<'_>, max: usize, allow_empty: bool) -> Result<String, RegistrySnapshotError> {
-    let size = u16::from_be_bytes(reader.fixed::<2>().map_err(|_| err("text length truncated"))?) as usize;
+fn read_text(
+    reader: &mut Cursor<'_>,
+    max: usize,
+    allow_empty: bool,
+) -> Result<String, RegistrySnapshotError> {
+    let size = u16::from_be_bytes(
+        reader
+            .fixed::<2>()
+            .map_err(|_| err("text length truncated"))?,
+    ) as usize;
     if size > max || (!allow_empty && size == 0) {
         return Err(err("text length out of bounds"));
     }
@@ -59,7 +67,9 @@ fn read_text(reader: &mut Cursor<'_>, max: usize, allow_empty: bool) -> Result<S
     if !value.iter().all(|b| (0x20..=0x7e).contains(b)) {
         return Err(err("nonprintable registry text"));
     }
-    Ok(core::str::from_utf8(value).map_err(|_| err("utf8 registry text"))?.to_owned())
+    Ok(core::str::from_utf8(value)
+        .map_err(|_| err("utf8 registry text"))?
+        .to_owned())
 }
 fn read_account(reader: &mut Cursor<'_>) -> Result<AccountId, RegistrySnapshotError> {
     let value = read_text(reader, crate::ledger::MAX_ACCOUNT_BYTES, false)?;
@@ -95,9 +105,17 @@ fn read_quote(reader: &mut Cursor<'_>) -> Result<Option<OracleQuote>, RegistrySn
         return Err(err("invalid quote"));
     }
     if let (Some(high), Some(low)) = (prices[0], prices[1]) {
-        if high < low { return Err(err("inverted quote range")); }
+        if high < low {
+            return Err(err("inverted quote range"));
+        }
     }
-    Ok(Some(OracleQuote { price_1e4, high_1e4: prices[0], low_1e4: prices[1], close_1e4: prices[2], height }))
+    Ok(Some(OracleQuote {
+        price_1e4,
+        high_1e4: prices[0],
+        low_1e4: prices[1],
+        close_1e4: prices[2],
+        height,
+    }))
 }
 fn put_quote(dst: &mut Vec<u8>, quote: &Option<OracleQuote>) {
     match quote {
@@ -108,7 +126,10 @@ fn put_quote(dst: &mut Vec<u8>, quote: &Option<OracleQuote>) {
             for price in [q.high_1e4, q.low_1e4, q.close_1e4] {
                 match price {
                     None => dst.push(0),
-                    Some(p) => { dst.push(1); dst.extend_from_slice(&p.to_be_bytes()); },
+                    Some(p) => {
+                        dst.push(1);
+                        dst.extend_from_slice(&p.to_be_bytes());
+                    }
                 }
             }
             dst.extend_from_slice(&q.height.to_be_bytes());
@@ -172,25 +193,39 @@ impl Registry {
         }
         put_optional_height(&mut out, self.last_height);
         put_u32(&mut out, self.processed.len())?;
-        for id in &self.processed { out.extend_from_slice(&id.as_bytes()); }
+        for id in &self.processed {
+            out.extend_from_slice(&id.as_bytes());
+        }
         with_crc(out).map_err(|_| err("registry snapshot too large"))
     }
 
     /// Restore only from data bound to the independently configured admin.
     /// Full canonical re-serialization rejects duplicate keys and altered encodings.
-    pub fn from_snapshot_bytes(bytes: &[u8], expected_admin: &AccountId) -> Result<Self, RegistrySnapshotError> {
+    pub fn from_snapshot_bytes(
+        bytes: &[u8],
+        expected_admin: &AccountId,
+    ) -> Result<Self, RegistrySnapshotError> {
         let data = verify_crc(bytes).map_err(|_| err("registry checksum or size"))?;
         let mut r = Cursor::new(data);
-        if r.fixed::<5>().map_err(|_| err("registry magic truncated"))? != *REGISTRY_MAGIC {
+        if r.fixed::<5>()
+            .map_err(|_| err("registry magic truncated"))?
+            != *REGISTRY_MAGIC
+        {
             return Err(err("wrong registry magic"));
         }
-        if &read_account(&mut r)? != expected_admin { return Err(err("registry admin mismatch")); }
+        if &read_account(&mut r)? != expected_admin {
+            return Err(err("registry admin mismatch"));
+        }
         let mut state = Self::new(expected_admin.clone());
         for idx in 0..36 {
             if read_flag(&mut r)? {
                 let height = r.u64().map_err(|_| err("activation height truncated"))?;
-                let code_hash = r.fixed::<32>().map_err(|_| err("activation hash truncated"))?;
-                if height == 0 || idx == 34 { return Err(err("invalid activation")); }
+                let code_hash = r
+                    .fixed::<32>()
+                    .map_err(|_| err("activation hash truncated"))?;
+                if height == 0 || idx == 34 {
+                    return Err(err("invalid activation"));
+                }
                 state.activations[idx] = Some(Activation { height, code_hash });
             }
         }
@@ -199,31 +234,54 @@ impl Registry {
         for _ in 0..read_count(&mut r)? {
             let id = r.u32().map_err(|_| err("whitelist id truncated"))?;
             let item = Whitelist {
-                admin: read_account(&mut r)?, backup: read_account(&mut r)?,
+                admin: read_account(&mut r)?,
+                backup: read_account(&mut r)?,
                 name: read_text(&mut r, MAX_NAME_BYTES, false)?,
                 url: read_text(&mut r, MAX_URL_BYTES, true)?,
                 description: read_text(&mut r, MAX_METADATA_BYTES, true)?,
             };
-            if id == 0 || state.whitelists.insert(id, item).is_some() { return Err(err("invalid whitelist id")); }
+            if id == 0 || state.whitelists.insert(id, item).is_some() {
+                return Err(err("invalid whitelist id"));
+            }
         }
         for _ in 0..read_count(&mut r)? {
             let list_id = r.u32().map_err(|_| err("attestation list truncated"))?;
             let subject = read_account(&mut r)?;
             let metadata = read_text(&mut r, MAX_METADATA_BYTES, true)?;
-            let issued_height = r.u64().map_err(|_| err("attestation issue height truncated"))?;
-            let updated_height = r.u64().map_err(|_| err("attestation update height truncated"))?;
+            let issued_height = r
+                .u64()
+                .map_err(|_| err("attestation issue height truncated"))?;
+            let updated_height = r
+                .u64()
+                .map_err(|_| err("attestation update height truncated"))?;
             let active = read_flag(&mut r)?;
-            if !state.whitelists.contains_key(&list_id) || issued_height == 0 || updated_height < issued_height {
+            if !state.whitelists.contains_key(&list_id)
+                || issued_height == 0
+                || updated_height < issued_height
+            {
                 return Err(err("invalid attestation"));
             }
-            if state.attestations.insert((list_id, subject), Attestation { metadata, issued_height, updated_height, active }).is_some() {
+            if state
+                .attestations
+                .insert(
+                    (list_id, subject),
+                    Attestation {
+                        metadata,
+                        issued_height,
+                        updated_height,
+                        active,
+                    },
+                )
+                .is_some()
+            {
                 return Err(err("duplicate attestation"));
             }
         }
         for _ in 0..read_count(&mut r)? {
             let id = r.u32().map_err(|_| err("oracle id truncated"))?;
             let item = Oracle {
-                admin: read_account(&mut r)?, backup: read_account(&mut r)?,
+                admin: read_account(&mut r)?,
+                backup: read_account(&mut r)?,
                 ticker: read_text(&mut r, MAX_NAME_BYTES, false)?,
                 url: read_text(&mut r, MAX_URL_BYTES, true)?,
                 lag: r.u32().map_err(|_| err("oracle lag truncated"))?,
@@ -236,24 +294,46 @@ impl Registry {
         }
         state.last_height = read_optional_height(&mut r)?;
         for _ in 0..read_count(&mut r)? {
-            let txid = TxId::from_bytes(r.fixed::<32>().map_err(|_| err("processed txid truncated"))?);
-            if !state.processed.insert(txid) { return Err(err("duplicate processed id")); }
+            let txid = TxId::from_bytes(
+                r.fixed::<32>()
+                    .map_err(|_| err("processed txid truncated"))?,
+            );
+            if !state.processed.insert(txid) {
+                return Err(err("duplicate processed id"));
+            }
         }
         r.end().map_err(|_| err("trailing registry data"))?;
         let max_whitelist = state.whitelists.keys().next_back().copied().unwrap_or(0);
         let max_oracle = state.oracles.keys().next_back().copied().unwrap_or(0);
-        if state.next_whitelist_id <= max_whitelist || state.next_oracle_id <= max_oracle
-            || state.next_whitelist_id == 0 || state.next_oracle_id == 0 {
+        if state.next_whitelist_id <= max_whitelist
+            || state.next_oracle_id <= max_oracle
+            || state.next_whitelist_id == 0
+            || state.next_oracle_id == 0
+        {
             return Err(err("noncanonical next id"));
         }
         let latest = state.last_height.unwrap_or(0);
         if (state.processed_count() > 0 && latest == 0)
-            || state.activations.iter().flatten().any(|a| a.height > latest)
-            || state.attestations.values().any(|a| a.updated_height > latest)
-            || state.oracles.values().filter_map(|o| o.latest.as_ref()).any(|q| q.height > latest) {
+            || state
+                .activations
+                .iter()
+                .flatten()
+                .any(|a| a.height > latest)
+            || state
+                .attestations
+                .values()
+                .any(|a| a.updated_height > latest)
+            || state
+                .oracles
+                .values()
+                .filter_map(|o| o.latest.as_ref())
+                .any(|q| q.height > latest)
+        {
             return Err(err("registry history extends beyond tip"));
         }
-        if state.snapshot_bytes()? != bytes { return Err(err("noncanonical registry encoding")); }
+        if state.snapshot_bytes()? != bytes {
+            return Err(err("noncanonical registry encoding"));
+        }
         Ok(state)
     }
 }
