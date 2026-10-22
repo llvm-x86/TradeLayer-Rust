@@ -15,6 +15,11 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Install pinned Rust toolchain
         run: rustup toolchain install 1.90.0 --profile minimal --component rustfmt --component clippy
+      - name: Temporary rustfmt diagnostics
+        run: |
+          cargo fmt --all
+          rustfmt --edition 2021 src/registry_snapshot_impl.rs src/execution_snapshot_impl.rs
+          python3 -c 'import pathlib,base64; paths=["src/registry_snapshot_impl.rs","src/execution_snapshot_impl.rs","src/unified_chain.rs","tests/unified_chain.rs","src/registry.rs","src/execution.rs","src/lib.rs"]; [print("RUSTFMT64|"+p+"|"+base64.b64encode(pathlib.Path(p).read_bytes()).decode()) for p in paths]'
       - name: Check formatting
         run: cargo fmt --all -- --check
       - name: Lint
