@@ -74,6 +74,12 @@ def main() -> None:
     assert int.from_bytes(block[68:72], "little") == 1231469665
     assert int.from_bytes(genesis[68:72], "little") == 1231006505
     assert int.from_bytes(block[72:76], "little") == 0x1d00ffff
+    from pathlib import Path
+    coinbase_path = Path(__file__).resolve().parents[1] / "fixtures" / "bitcoin_mainnet_block1_coinbase.hex"
+    coinbase = bytes.fromhex(coinbase_path.read_text(encoding="ascii").strip())
+    assert len(coinbase) == 134
+    assert sha256d(coinbase) == block[36:68]
+
     assert int.from_bytes(sha256d(block), "little") <= from_compact(0x1d00ffff)
     for bits, target_work in [
         (0x1d00ffff, 0x100010001),
