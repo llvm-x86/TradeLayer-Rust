@@ -353,3 +353,55 @@ fn protocol_snapshot_roundtrip_from_unverified_fixture() {
     corrupt[12] ^= 1;
     assert!(ProtocolState::from_snapshot_bytes(&corrupt, chain(), &account("admin")).is_err());
 }
+
+
+/// Recompute checksums to test semantic rejection, rather than a CRC failure.
+fn test_crc32(data: &[u8]) -> u32 {
+    let mut crc: u32 = !0;
+    for &byte in data {
+        crc ^= u32::from(byte);
+        for _ in 0..8 {
+            crc = (crc >> 1) ^ (0xedb8_8320 & (0u32.wrapping_sub(crc & 1)));
+        }
+    }
+    !crc
+}
+
+#[test]
+fn canonical_but_wrong_finalized_tip_is_rejected_and_reorg_reopens_block() {
+    let (mut state, auth) = setup();
+    assert_eq!(state.tip().height, 101);
+    assert_eq!(state.state().finalized_height(), Some(101));
+    state.apply_block(&block(state.tip(), 102, &[]), &auth).unwrap();
+    assert_eq!(state.state().finalized_height(), Some(102));
+    let bytes = state.checkpoint_bytes().unwrap();
+    let restored = UnifiedChainState::from_checkpoint_bytes(
+        &bytes, chain(), anchor(), &account("admin"), 8,
+    ).unwrap();
+    assert_eq!(restored, state);
+
+    // Last TLPS v2 is the current protocol snapshot at the tail of TLUC.
+    // Replace finalized H=102 with H=101, which is internally consistent
+    // with the last transaction's height yet inconsistent with chain tip.
+    let mut forged = bytes;
+    let start = forged.windows(5).rposition(|w| w == b"TLPS\x02").unwrap();
+    let outer_crc = forged.len() - 4;
+    let inner_crc = outer_crc - 4;
+    let height_position = inner_crc - 8;
+    assert_eq!(&forged[height_position..inner_crc], &102u64.to_be_bytes());
+    forged[height_position..inner_crc].copy_from_slice(&101u64.to_be_bytes());
+    let inner_sum = test_crc32(&forged[start..inner_crc]);
+    forged[inner_crc..outer_crc].copy_from_slice(&inner_sum.to_be_bytes());
+    let outer_sum = test_crc32(&forged[..outer_crc]);
+    forged[outer_crc..].copy_from_slice(&outer_sum.to_be_bytes());
+    assert!(UnifiedChainState::from_checkpoint_bytes(
+        &forged, chain(), anchor(), &account("admin"), 8
+    ).is_err());
+
+    state.rollback_tip(state.tip()).unwrap();
+    assert_eq!(state.tip().height, 101);
+    assert_eq!(state.state().finalized_height(), Some(101));
+    state.apply_block(&block(state.tip(), 103, &[]), &auth).unwrap();
+    assert_eq!(state.tip().height, 102);
+    assert_eq!(state.state().finalized_height(), Some(102));
+}
