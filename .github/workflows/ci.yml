@@ -29,3 +29,11 @@ jobs:
         run: cargo run --locked --bin tradelayer-scan -- fixtures/real_transactions.tsv
       - name: Offline synthetic marker fixture audit
         run: cargo run --locked --bin tradelayer-scan -- fixtures/synthetic_transactions.tsv
+      - name: Offline Litecoin RPC collector tests
+        run: python3 -m unittest discover -s tests -p test_collect_litecoin_rpc.py -v
+      - name: Legacy comparison integration tests (fake decoder only)
+        run: node tests/test_compare_legacy.cjs
+      - name: Rust diagnostic export smoke test
+        run: |
+          cargo run --locked --bin tradelayer-legacy-fields -- fixtures/synthetic_transactions.tsv > /tmp/tradelayer-rust-fields.tsv
+          grep -q 'send' /tmp/tradelayer-rust-fields.tsv

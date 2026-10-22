@@ -66,3 +66,27 @@ cargo run --locked --bin tradelayer-scan -- fixtures/synthetic_transactions.tsv
 ```
 
 The real-byte corpus includes the Bitcoin genesis transaction, a published non-SegWit Bitcoin transaction, and a Bitcoin regtest SegWit OP_RETURN example. Only the last carries OP_RETURN, and none is established as a TradeLayer transaction. Synthetic fixtures explicitly exercise the TradeLayer markers. See [READ_ONLY_REPLAY.md](docs/READ_ONLY_REPLAY.md) for sources, limitations, and the eventual authenticated chain-replay requirements.
+
+## Litecoin archival collection and differential replay (research)
+
+The standard-library-only Python collector reads confirmed transactions from an
+**unpruned local Litecoin Core node**. It verifies transaction fingerprints,
+full-block transaction Merkle roots, parent linkage, raw OP_RETURN scripts,
+and active-chain membership at the end of a bounded scan. The node supplies
+chain consensus verification; the collector itself cannot authenticate
+signature ownership or approve a TradeLayer transaction.
+
+```sh
+python3 scripts/collect_litecoin_rpc.py --network test \
+  --start-height 3348377 --end-height 3348528 \
+  --output archive/testnet.tsv --manifest archive/testnet.json
+cargo run --locked --bin tradelayer-scan -- archive/testnet.tsv
+cargo run --locked --bin tradelayer-legacy-fields -- archive/testnet.tsv > archive/rust-fields.tsv
+```
+
+The optional [legacy JavaScript comparison](docs/ARCHIVE_REPLAY.md) executes
+`src/txDecoder.js` from a trusted, pinned checkout in a separate networkless
+environment and reports field-level disagreements. The cited testnet heights
+are a **search lead from documentation**, not confirmed on-chain TradeLayer
+transactions. This repository does not yet contain validated Litecoin TradeLayer
+chain-history fixtures.
