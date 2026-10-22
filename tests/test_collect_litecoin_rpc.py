@@ -125,6 +125,17 @@ class CollectorTests(unittest.TestCase):
                 collector.LitecoinRPC(url, 'user:password')
         self.assertIsInstance(collector.LitecoinRPC('http://127.0.0.1:9332', 'user:password'), collector.LitecoinRPC)
 
+    def test_core_cookie_paths(self):
+        home = Path('/example/home')
+        self.assertEqual(collector.default_cookie_file('test', home),
+                         home / '.litecoin' / 'testnet3' / '.cookie')
+        self.assertEqual(collector.default_cookie_file('main', home),
+                         home / '.litecoin' / '.cookie')
+        self.assertEqual(collector.default_cookie_file('regtest', home),
+                         home / '.litecoin' / 'regtest' / '.cookie')
+        with self.assertRaises(collector.EvidenceError):
+            collector.default_cookie_file('unknown', home)
+
     def test_transaction_hashes_for_published_bitcoin_examples(self):
         for row in fixture(PUBLIC):
             derived, outputs = collector.inspect_raw_transaction(row[-1])
