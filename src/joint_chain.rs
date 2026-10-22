@@ -9,8 +9,7 @@
 use crate::chain::{BlockHeader, BlockId, Tip, MAX_REORG_HISTORY};
 use crate::codec::{verify_crc, with_crc, Cursor, MAX_CHECKPOINT_BYTES};
 use crate::joint::{
-    JointError, JointProtocolState, JointSnapshotError, UnverifiedJointTx,
-    MAX_JOINT_BLOCK_INPUTS,
+    JointError, JointProtocolState, JointSnapshotError, UnverifiedJointTx, MAX_JOINT_BLOCK_INPUTS,
 };
 use crate::ledger::{AccountId, Ledger, PropertyId};
 use crate::network_bound::NetworkBoundSpot;
@@ -202,7 +201,10 @@ impl JointChainState {
             return Err(JointChainError::ParentMismatch);
         }
         if block.header.id == self.tip.id
-            || self.history.iter().any(|prior| prior.tip.id == block.header.id)
+            || self
+                .history
+                .iter()
+                .any(|prior| prior.tip.id == block.header.id)
         {
             return Err(JointChainError::DuplicateBlockId);
         }
@@ -292,12 +294,13 @@ impl JointChainState {
         if reader.fixed::<5>().map_err(|_| bad("joint magic"))? != *MAGIC {
             return Err(bad("joint checkpoint version"));
         }
-        let network = TradeLayerMainnet::from_tag(
-            reader.u8().map_err(|_| bad("network tag missing"))?,
-        )
-        .map_err(JointCheckpointError::Profile)?;
+        let network =
+            TradeLayerMainnet::from_tag(reader.u8().map_err(|_| bad("network tag missing"))?)
+                .map_err(JointCheckpointError::Profile)?;
         let genesis = reader.fixed::<32>().map_err(|_| bad("genesis truncated"))?;
-        let chain_id = reader.fixed::<32>().map_err(|_| bad("chain ID truncated"))?;
+        let chain_id = reader
+            .fixed::<32>()
+            .map_err(|_| bad("chain ID truncated"))?;
         if network != expected_network
             || genesis != expected_network.genesis().0
             || chain_id != expected_network.chain_id().0
@@ -318,9 +321,9 @@ impl JointChainState {
         for _ in 0..count {
             let prev_tip = read_tip(&mut reader)?;
             if prev_tip.height < anchor.height
-                || history.back().is_some_and(|prev| {
-                    prev.tip.height.checked_add(1) != Some(prev_tip.height)
-                })
+                || history
+                    .back()
+                    .is_some_and(|prev| prev.tip.height.checked_add(1) != Some(prev_tip.height))
             {
                 return Err(bad("discontinuous rollback history"));
             }
@@ -344,13 +347,14 @@ impl JointChainState {
             expected_admin,
             expected_permitted,
         )?;
-        reader.end().map_err(|_| bad("trailing joint checkpoint bytes"))?;
+        reader
+            .end()
+            .map_err(|_| bad("trailing joint checkpoint bytes"))?;
         if tip.height < anchor.height
             || (tip.height == anchor.height && (tip != anchor || count != 0))
             || (tip.height > anchor.height && count == 0)
             || history.back().is_some_and(|prior| {
-                prior.tip.height.checked_add(1) != Some(tip.height)
-                    || prior.tip.id == tip.id
+                prior.tip.height.checked_add(1) != Some(tip.height) || prior.tip.id == tip.id
             })
             || !state_height_compatible(&state, tip, anchor)
         {
@@ -390,8 +394,8 @@ impl JointChainState {
         history_limit: usize,
     ) -> Result<Self, JointCheckpointError> {
         let file = File::open(path)?;
-        let size = usize::try_from(file.metadata()?.len())
-            .map_err(|_| bad("checkpoint file size"))?;
+        let size =
+            usize::try_from(file.metadata()?.len()).map_err(|_| bad("checkpoint file size"))?;
         if size > MAX_CHECKPOINT_BYTES {
             return Err(bad("checkpoint file excessive"));
         }
@@ -401,21 +405,13 @@ impl JointChainState {
         if bytes.len() > MAX_CHECKPOINT_BYTES {
             return Err(bad("checkpoint read excessive"));
         }
-        Self::from_checkpoint_bytes(
-            &bytes,
-            network,
-            anchor,
-            admin,
-            permitted,
-            history_limit,
-        )
+        Self::from_checkpoint_bytes(&bytes, network, anchor, admin, permitted, history_limit)
     }
 }
 
 fn state_height_compatible(state: &JointProtocolState, tip: Tip, anchor: Tip) -> bool {
     if tip == anchor {
-        state.finalized_height().is_none()
-            || state.finalized_height() == Some(anchor.height)
+        state.finalized_height().is_none() || state.finalized_height() == Some(anchor.height)
     } else {
         state.finalized_height() == Some(tip.height)
     }
@@ -429,10 +425,7 @@ fn read_tip(reader: &mut Cursor<'_>) -> Result<Tip, JointCheckpointError> {
     let id = BlockId(reader.fixed::<32>().map_err(|_| bad("tip id"))?);
     Ok(Tip { height, id })
 }
-fn write_state(
-    out: &mut Vec<u8>,
-    state: &JointProtocolState,
-) -> Result<(), JointCheckpointError> {
+fn write_state(out: &mut Vec<u8>, state: &JointProtocolState) -> Result<(), JointCheckpointError> {
     let snapshot = state.snapshot_bytes()?;
     out.extend_from_slice(
         &u32::try_from(snapshot.len())
@@ -453,7 +446,9 @@ fn read_state(
         return Err(bad("invalid embedded TLJP length"));
     }
     JointProtocolState::from_snapshot_bytes(
-        reader.take(size).map_err(|_| bad("embedded TLJP truncated"))?,
+        reader
+            .take(size)
+            .map_err(|_| bad("embedded TLJP truncated"))?,
         network,
         admin,
         permitted,
