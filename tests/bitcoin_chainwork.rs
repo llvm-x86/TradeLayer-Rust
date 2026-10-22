@@ -400,7 +400,6 @@ fn genuine_mainnet_merkle_inclusion_cannot_impersonate_a_trade_layer_receipt() {
     ));
 }
 
-
 #[test]
 fn fraudulent_checkpoint_context_cannot_bypass_mtp_or_nbits_checks() {
     let genesis = MainnetWorkChain::from_published_genesis(&header(GENESIS)).unwrap();
