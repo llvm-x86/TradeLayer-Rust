@@ -170,7 +170,10 @@ impl ProtocolState {
     }
 
     fn assert_activated(&self, ty: u8, height: u64) -> Result<(), ExecutionError> {
-        let activation = self.registry.activation(ty).ok_or(ExecutionError::NotActivated(ty))?;
+        let activation = self
+            .registry
+            .activation(ty)
+            .ok_or(ExecutionError::NotActivated(ty))?;
         if height <= activation.height {
             return Err(ExecutionError::SameBlockActivation(ty));
         }
@@ -185,32 +188,70 @@ impl ProtocolState {
         match tx.operation {
             ProtocolOperation::Registry(action) => {
                 self.registry.apply(RegistryTx {
-                    txid, actor, height, action,
+                    txid,
+                    actor,
+                    height,
+                    action,
                 })?;
             }
-            ProtocolOperation::Issue { id, kind, initial_atoms } => {
+            ProtocolOperation::Issue {
+                id,
+                kind,
+                initial_atoms,
+            } => {
                 self.assert_activated(ty, height)?;
-                self.ledger.apply(txid, Operation::CreateProperty {
-                    id, issuer: actor, kind, initial_atoms,
-                })?;
+                self.ledger.apply(
+                    txid,
+                    Operation::CreateProperty {
+                        id,
+                        issuer: actor,
+                        kind,
+                        initial_atoms,
+                    },
+                )?;
             }
-            ProtocolOperation::Send { id, recipient, amount_atoms } => {
+            ProtocolOperation::Send {
+                id,
+                recipient,
+                amount_atoms,
+            } => {
                 self.assert_activated(ty, height)?;
-                self.ledger.apply(txid, Operation::Transfer {
-                    id, from: actor, to: recipient, amount_atoms,
-                })?;
+                self.ledger.apply(
+                    txid,
+                    Operation::Transfer {
+                        id,
+                        from: actor,
+                        to: recipient,
+                        amount_atoms,
+                    },
+                )?;
             }
-            ProtocolOperation::Grant { id, recipient, amount_atoms } => {
+            ProtocolOperation::Grant {
+                id,
+                recipient,
+                amount_atoms,
+            } => {
                 self.assert_activated(ty, height)?;
-                self.ledger.apply(txid, Operation::Mint {
-                    id, issuer: actor, to: recipient, amount_atoms,
-                })?;
+                self.ledger.apply(
+                    txid,
+                    Operation::Mint {
+                        id,
+                        issuer: actor,
+                        to: recipient,
+                        amount_atoms,
+                    },
+                )?;
             }
             ProtocolOperation::Redeem { id, amount_atoms } => {
                 self.assert_activated(ty, height)?;
-                self.ledger.apply(txid, Operation::Burn {
-                    id, issuer: actor, amount_atoms,
-                })?;
+                self.ledger.apply(
+                    txid,
+                    Operation::Burn {
+                        id,
+                        issuer: actor,
+                        amount_atoms,
+                    },
+                )?;
             }
         }
         self.last_height = Some(height);
