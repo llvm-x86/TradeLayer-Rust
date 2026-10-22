@@ -104,6 +104,13 @@ failures for missing heights, foreign chains, wrong anchors,
 discontinuous Rust states, forged observations, swapped transaction
 order, malformed TSV, and corrupted zkTL metadata.
 
+Stage 16 adds a [separate partial Bitcoin SHA256d header and transaction
+Merkle checker](BITCOIN_SPV_INCLUSION.md). A new reconciliation entry
+point can consume its opaque checked transaction-inclusion objects
+instead of freely supplied IDs or ordering. The header anchor, network
+selection, consensus difficulty, best chain, scripts and economic
+validity are not established by that checker.
+
 ## Production path still required
 
 The next step is an externally authenticated per-block observation

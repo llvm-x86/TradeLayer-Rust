@@ -107,6 +107,12 @@ to test comparison plumbing; it deliberately does not install or run the old
 
 Stage 15 adds a [cross-root audit inspector](TLPT_ZKTL_ALIGNMENT.md) that can consume declared per-block transaction observations. The existing archival collector has not yet been adapted into an authenticated observation provider, and no collector output is promoted to consensus evidence by the inspector.
 
+Stage 16 adds a [Bitcoin SHA256d header/Merkle proof experiment](BITCOIN_SPV_INCLUSION.md)
+for independently checking transaction inclusion relative to supplied
+headers. The historical Litecoin archive collector does NOT prove Scrypt
+PoW and cannot be treated as a trusted input to this Bitcoin-only
+experiment.
+
 ## Remaining checks
 
 - Acquire actual chain-backed `tl` payloads and commit only reviewed excerpts
