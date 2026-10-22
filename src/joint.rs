@@ -11,6 +11,7 @@
 //! promoted to this experimental combined executor.
 
 use crate::chain::ChainId;
+use crate::execution::ProtocolState;
 use crate::ledger::{AccountId, Ledger, Operation, PropertyId, PropertyKind, TxId};
 use crate::network_profile::TradeLayerMainnet;
 use crate::registry::{Registry, RegistryAction, RegistryError, RegistryTx};
@@ -102,6 +103,7 @@ pub enum JointError {
     ReplayConflict,
     ReplayLimit,
     UnsupportedOperation(u8),
+    UnsupportedLegacyLiabilities,
     SettlementAuthorizationRequired,
     UtxoAuthenticationRequired,
     InconsistentComponents,
@@ -148,6 +150,9 @@ impl JointProtocolState {
         bootstrap_ledger: Ledger,
         permitted: BTreeSet<PropertyId>,
     ) -> Result<Self, JointError> {
+        if !bootstrap_ledger.has_no_channel_or_settlement_liabilities_unverified() {
+            return Err(JointError::UnsupportedLegacyLiabilities);
+        }
         let spot = SpotExchange::from_ledger_unverified(bootstrap_ledger, permitted)?;
         let state = Self {
             network,
@@ -178,6 +183,9 @@ impl JointProtocolState {
         {
             return Err(JointError::InconsistentComponents);
         }
+        if !spot.ledger().has_no_channel_or_settlement_liabilities_unverified() {
+            return Err(JointError::UnsupportedLegacyLiabilities);
+        }
         let mut global_input_ids = spot.spot_input_ids_unverified().clone();
         for id in registry.input_txids_unverified() {
             if !global_input_ids.insert(*id) {
@@ -194,6 +202,37 @@ impl JointProtocolState {
         };
         state.verify_components_unverified()?;
         Ok(state)
+    }
+
+    /// A read-only import from a previously validated TLUC protocol snapshot.
+    /// Its original global transaction markers become ordinary/registry
+    /// input buckets in TLJP, and the registry and ledger are moved into one
+    /// SpotExchange. Existing pending channels or settlement journals reject
+    /// this migration because this joint executor cannot advance them.
+    pub fn migrate_unified_components_unverified(
+        network: TradeLayerMainnet,
+        old: &ProtocolState,
+        tip_height: u64,
+        permitted: BTreeSet<PropertyId>,
+    ) -> Result<Self, JointError> {
+        if tip_height == 0 || old.finalized_height() != Some(tip_height) {
+            return Err(JointError::InconsistentComponents);
+        }
+        if !old.ledger().has_no_channel_or_settlement_liabilities_unverified() {
+            return Err(JointError::UnsupportedLegacyLiabilities);
+        }
+        let mut spot = SpotExchange::from_ledger_unverified(old.ledger().clone(), permitted)?;
+        spot.process_through_unverified(tip_height)?;
+        let result = Self {
+            network,
+            registry: old.registry().clone(),
+            spot,
+            global_input_ids: old.input_txids_unverified().clone(),
+            ledger_input_ids: old.ledger().input_txids_unverified().clone(),
+            finalized_height: Some(tip_height),
+        };
+        result.verify_components_unverified()?;
+        Ok(result)
     }
 
     pub const fn network(&self) -> TradeLayerMainnet {
