@@ -89,18 +89,31 @@ fn available_escrow_pending_supply_is_conserved_through_maturity() {
     s.apply_unverified(tx(3, "alice", 102, commit("chan1", ChannelSide::A, 60)))
         .unwrap();
     assert_eq!(s.ledger().available_atoms(p(), &a("alice")), 40);
-    assert_eq!(s.ledger().channel_atoms(p(), &a("chan1"), ChannelSide::A), 60);
+    assert_eq!(
+        s.ledger().channel_atoms(p(), &a("chan1"), ChannelSide::A),
+        60
+    );
     s.apply_unverified(tx(4, "alice", 103, withdraw("chan1", ChannelSide::A, 20)))
         .unwrap();
-    assert_eq!(s.ledger().channel_atoms(p(), &a("chan1"), ChannelSide::A), 40);
+    assert_eq!(
+        s.ledger().channel_atoms(p(), &a("chan1"), ChannelSide::A),
+        40
+    );
     assert_eq!(s.ledger().pending_withdrawal_atoms(p(), &a("alice")), 20);
     s.ledger().verify_conservation().unwrap();
 
     // Reserved withdrawal cannot be transferred before maturity.
     let original = s.clone();
     assert!(matches!(
-        s.apply_unverified(tx(5, "chan1", 104, move_channel("chan2", ChannelSide::A, ChannelSide::A, 41))),
-        Err(ExecutionError::Ledger(LedgerError::InsufficientAvailable { .. }))
+        s.apply_unverified(tx(
+            5,
+            "chan1",
+            104,
+            move_channel("chan2", ChannelSide::A, ChannelSide::A, 41)
+        )),
+        Err(ExecutionError::Ledger(
+            LedgerError::InsufficientAvailable { .. }
+        ))
     ));
     assert_eq!(s, original);
     assert_eq!(s.finalize_block_unverified(109).unwrap(), 0);
@@ -108,7 +121,10 @@ fn available_escrow_pending_supply_is_conserved_through_maturity() {
     assert_eq!(s.finalize_block_unverified(110).unwrap(), 1);
     assert_eq!(s.finalize_block_unverified(110).unwrap(), 0);
     assert_eq!(s.ledger().available_atoms(p(), &a("alice")), 60);
-    assert_eq!(s.ledger().channel_atoms(p(), &a("chan1"), ChannelSide::A), 40);
+    assert_eq!(
+        s.ledger().channel_atoms(p(), &a("chan1"), ChannelSide::A),
+        40
+    );
     assert_eq!(s.ledger().pending_withdrawal_count(), 0);
     s.ledger().verify_conservation().unwrap();
 }
@@ -118,21 +134,47 @@ fn channel_transfer_preserves_column_owner_and_requires_source_channel_actor() {
     let mut s = bootstrap(200);
     s.apply_unverified(tx(3, "alice", 102, commit("chan1", ChannelSide::A, 100)))
         .unwrap();
-    s.apply_unverified(tx(4, "chan1", 103, move_channel("chan2", ChannelSide::B, ChannelSide::A, 15)))
-        .unwrap_err(); // Empty B side cannot be moved.
-    s.apply_unverified(tx(4, "chan1", 103, move_channel("chan2", ChannelSide::A, ChannelSide::B, 35)))
-        .unwrap();
-    assert_eq!(s.ledger().channel_atoms(p(), &a("chan1"), ChannelSide::A), 65);
-    assert_eq!(s.ledger().channel_atoms(p(), &a("chan2"), ChannelSide::B), 35);
-    assert_eq!(s.ledger().channel_owner(&a("chan2"), ChannelSide::B), Some(&a("alice")));
+    s.apply_unverified(tx(
+        4,
+        "chan1",
+        103,
+        move_channel("chan2", ChannelSide::B, ChannelSide::A, 15),
+    ))
+    .unwrap_err(); // Empty B side cannot be moved.
+    s.apply_unverified(tx(
+        4,
+        "chan1",
+        103,
+        move_channel("chan2", ChannelSide::A, ChannelSide::B, 35),
+    ))
+    .unwrap();
+    assert_eq!(
+        s.ledger().channel_atoms(p(), &a("chan1"), ChannelSide::A),
+        65
+    );
+    assert_eq!(
+        s.ledger().channel_atoms(p(), &a("chan2"), ChannelSide::B),
+        35
+    );
+    assert_eq!(
+        s.ledger().channel_owner(&a("chan2"), ChannelSide::B),
+        Some(&a("alice"))
+    );
     let before = s.clone();
     assert_eq!(
         s.apply_unverified(tx(5, "mallory", 104, withdraw("chan2", ChannelSide::B, 10))),
-        Err(ExecutionError::Ledger(LedgerError::ChannelSideMismatch(a("chan2"))))
+        Err(ExecutionError::Ledger(LedgerError::ChannelSideMismatch(a(
+            "chan2"
+        ))))
     );
     assert_eq!(s, before);
     assert!(matches!(
-        s.apply_unverified(tx(5, "mallory", 104, move_channel("chan3", ChannelSide::B, ChannelSide::A, 5))),
+        s.apply_unverified(tx(
+            5,
+            "mallory",
+            104,
+            move_channel("chan3", ChannelSide::B, ChannelSide::A, 5)
+        )),
         Err(ExecutionError::Ledger(LedgerError::UnknownChannel(_)))
     ));
     assert_eq!(s, before);
@@ -150,22 +192,42 @@ fn takeover_and_duplicate_column_assignment_are_atomic() {
     let before = s.clone();
     assert_eq!(
         s.apply_unverified(tx(4, "alice", 103, commit("chan1", ChannelSide::B, 5))),
-        Err(ExecutionError::Ledger(LedgerError::ChannelSideOccupied(a("chan1"))))
+        Err(ExecutionError::Ledger(LedgerError::ChannelSideOccupied(a(
+            "chan1"
+        ))))
     );
     assert_eq!(s, before);
-    s.apply_unverified(tx(4, "alice", 103, ProtocolOperation::Send {
-        id: p(), recipient: a("bob"), amount_atoms: 20,
-    })).unwrap();
+    s.apply_unverified(tx(
+        4,
+        "alice",
+        103,
+        ProtocolOperation::Send {
+            id: p(),
+            recipient: a("bob"),
+            amount_atoms: 20,
+        },
+    ))
+    .unwrap();
     assert_eq!(
         s.apply_unverified(tx(5, "bob", 104, commit("chan1", ChannelSide::A, 5))),
-        Err(ExecutionError::Ledger(LedgerError::ChannelSideOccupied(a("chan1"))))
+        Err(ExecutionError::Ledger(LedgerError::ChannelSideOccupied(a(
+            "chan1"
+        ))))
     );
     s.apply_unverified(tx(5, "bob", 104, commit("chan1", ChannelSide::B, 15)))
         .unwrap();
-    assert_eq!(s.ledger().channel_owner(&a("chan1"), ChannelSide::B), Some(&a("bob")));
+    assert_eq!(
+        s.ledger().channel_owner(&a("chan1"), ChannelSide::B),
+        Some(&a("bob"))
+    );
     let before = s.clone();
     assert!(matches!(
-        s.apply_unverified(tx(6, "chan1", 105, move_channel("chan1", ChannelSide::A, ChannelSide::B, 1))),
+        s.apply_unverified(tx(
+            6,
+            "chan1",
+            105,
+            move_channel("chan1", ChannelSide::A, ChannelSide::B, 1)
+        )),
         Err(ExecutionError::Ledger(LedgerError::SameChannel))
     ));
     assert_eq!(s, before);
@@ -182,10 +244,15 @@ fn invalid_mixed_batch_does_not_reserve_funds_or_consume_txids() {
     ];
     assert!(matches!(
         s.apply_batch_unverified(bad),
-        Err(ExecutionError::Ledger(LedgerError::InsufficientAvailable { .. }))
+        Err(ExecutionError::Ledger(
+            LedgerError::InsufficientAvailable { .. }
+        ))
     ));
     assert_eq!(s, before);
-    assert_eq!(s.ledger().channel_atoms(p(), &a("chan1"), ChannelSide::A), 0);
+    assert_eq!(
+        s.ledger().channel_atoms(p(), &a("chan1"), ChannelSide::A),
+        0
+    );
     s.apply_unverified(tx(3, "alice", 102, commit("chan1", ChannelSide::A, 60)))
         .unwrap();
 }
@@ -196,16 +263,42 @@ fn ledger_version_1_remains_readable_and_version_2_roundtrips() {
     let original = ledger.snapshot_bytes().unwrap();
     assert!(original.starts_with(b"TLL\x01"));
     assert_eq!(Ledger::from_snapshot_bytes(&original).unwrap(), ledger);
-    ledger.apply(txid(1), Operation::CreateProperty {
-        id: p(), issuer: a("alice"), kind: PropertyKind::Fixed, initial_atoms: 100,
-    }).unwrap();
-    ledger.apply(txid(2), Operation::ChannelCommit {
-        id: p(), owner: a("alice"), channel: a("chan1"), side: ChannelSide::A, amount_atoms: 50,
-    }).unwrap();
-    ledger.apply(txid(3), Operation::ChannelWithdraw {
-        id: p(), owner: a("alice"), channel: a("chan1"),
-        side: ChannelSide::A, amount_atoms: 20, unlock_height: 108,
-    }).unwrap();
+    ledger
+        .apply(
+            txid(1),
+            Operation::CreateProperty {
+                id: p(),
+                issuer: a("alice"),
+                kind: PropertyKind::Fixed,
+                initial_atoms: 100,
+            },
+        )
+        .unwrap();
+    ledger
+        .apply(
+            txid(2),
+            Operation::ChannelCommit {
+                id: p(),
+                owner: a("alice"),
+                channel: a("chan1"),
+                side: ChannelSide::A,
+                amount_atoms: 50,
+            },
+        )
+        .unwrap();
+    ledger
+        .apply(
+            txid(3),
+            Operation::ChannelWithdraw {
+                id: p(),
+                owner: a("alice"),
+                channel: a("chan1"),
+                side: ChannelSide::A,
+                amount_atoms: 20,
+                unlock_height: 108,
+            },
+        )
+        .unwrap();
     let bytes = ledger.snapshot_bytes().unwrap();
     assert!(bytes.starts_with(b"TLL\x02"));
     let restored = Ledger::from_snapshot_bytes(&bytes).unwrap();
@@ -217,8 +310,10 @@ fn ledger_version_1_remains_readable_and_version_2_roundtrips() {
     assert!(Ledger::from_snapshot_bytes(&bytes[..bytes.len() - 1]).is_err());
     let recovered_protocol = {
         let mut s = bootstrap(100);
-        s.apply_unverified(tx(3, "alice", 102, commit("chan1", ChannelSide::A, 60))).unwrap();
-        s.apply_unverified(tx(4, "alice", 103, withdraw("chan1", ChannelSide::A, 20))).unwrap();
+        s.apply_unverified(tx(3, "alice", 102, commit("chan1", ChannelSide::A, 60)))
+            .unwrap();
+        s.apply_unverified(tx(4, "alice", 103, withdraw("chan1", ChannelSide::A, 20)))
+            .unwrap();
         let snap = s.snapshot_bytes().unwrap();
         let recovered = ProtocolState::from_snapshot_bytes(&snap, chain(), &a("admin")).unwrap();
         assert_eq!(recovered.snapshot_bytes().unwrap(), snap);
@@ -233,9 +328,14 @@ struct SyntheticAdapter {
 }
 impl SyntheticAdapter {
     fn add(&mut self, n: u8, actor: &str, operation: ProtocolOperation) {
-        self.decoded.insert(n, AuthenticatedProtocolOperation {
-            txid: txid(n), actor: a(actor), operation,
-        });
+        self.decoded.insert(
+            n,
+            AuthenticatedProtocolOperation {
+                txid: txid(n),
+                actor: a(actor),
+                operation,
+            },
+        );
     }
 }
 impl TrustedProtocolAdapter for SyntheticAdapter {
@@ -243,20 +343,33 @@ impl TrustedProtocolAdapter for SyntheticAdapter {
         Ok(())
     }
     fn authenticate_and_decode(
-        &self, _: ChainId, _: &BlockHeader, raw: &[u8],
+        &self,
+        _: ChainId,
+        _: &BlockHeader,
+        raw: &[u8],
     ) -> Result<Option<AuthenticatedProtocolOperation>, String> {
         let id = *raw.first().ok_or_else(|| "missing fake id".to_string())?;
-        self.decoded.get(&id).cloned().map(Some)
+        self.decoded
+            .get(&id)
+            .cloned()
+            .map(Some)
             .ok_or_else(|| "unknown fake operation".to_string())
     }
 }
 fn anchor() -> Tip {
-    Tip { height: 100, id: BlockId([100; 32]) }
+    Tip {
+        height: 100,
+        id: BlockId([100; 32]),
+    }
 }
 fn block(tip: Tip, block_num: u8, operations: &[u8]) -> CandidateBlock {
     CandidateBlock {
         chain: chain(),
-        header: BlockHeader { height: tip.height + 1, id: BlockId([block_num; 32]), parent: tip.id },
+        header: BlockHeader {
+            height: tip.height + 1,
+            id: BlockId([block_num; 32]),
+            parent: tip.id,
+        },
         raw_transactions: operations.iter().map(|&op| vec![op]).collect(),
     }
 }
@@ -270,22 +383,28 @@ fn unified_checkpoints_and_tip_only_blocks_restore_pending_withdrawals_on_reorg(
     adapter.add(3, "alice", commit("chan1", ChannelSide::A, 60));
     adapter.add(4, "alice", withdraw("chan1", ChannelSide::A, 20));
     for height in 101..=104 {
-        state.apply_block(&block(state.tip(), height as u8, &[(height - 100) as u8]), &adapter)
+        state
+            .apply_block(
+                &block(state.tip(), height as u8, &[(height - 100) as u8]),
+                &adapter,
+            )
             .unwrap();
     }
     assert_eq!(state.state().ledger().pending_withdrawal_count(), 1);
     let bytes = state.checkpoint_bytes().unwrap();
-    let checkpoint = UnifiedChainState::from_checkpoint_bytes(
-        &bytes, chain(), anchor(), &a("admin"), 16,
-    ).unwrap();
+    let checkpoint =
+        UnifiedChainState::from_checkpoint_bytes(&bytes, chain(), anchor(), &a("admin"), 16)
+            .unwrap();
     assert_eq!(checkpoint, state);
     for height in 105..=110 {
-        state.apply_block(&block(state.tip(), height as u8, &[]), &adapter)
+        state
+            .apply_block(&block(state.tip(), height as u8, &[]), &adapter)
             .unwrap();
         assert_eq!(state.state().ledger().pending_withdrawal_count(), 1);
     }
     let before = state.clone();
-    state.apply_block(&block(state.tip(), 111, &[]), &adapter)
+    state
+        .apply_block(&block(state.tip(), 111, &[]), &adapter)
         .unwrap();
     assert_eq!(state.state().ledger().pending_withdrawal_count(), 0);
     assert_eq!(state.state().ledger().available_atoms(p(), &a("alice")), 60);
@@ -295,7 +414,8 @@ fn unified_checkpoints_and_tip_only_blocks_restore_pending_withdrawals_on_reorg(
     state.rollback_tip(expected).unwrap();
     assert_eq!(state, before);
     assert_eq!(state.state().ledger().pending_withdrawal_count(), 1);
-    state.apply_block(&block(state.tip(), 112, &[]), &adapter)
+    state
+        .apply_block(&block(state.tip(), 112, &[]), &adapter)
         .unwrap();
     assert_eq!(state.state().ledger().pending_withdrawal_count(), 0);
     assert_eq!(state.state().ledger().available_atoms(p(), &a("alice")), 60);
