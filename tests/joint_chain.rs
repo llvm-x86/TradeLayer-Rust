@@ -7,7 +7,9 @@ use tradelayer_core::chain::{BlockHeader, BlockId, CandidateBlock, ChainId, Tip}
 use tradelayer_core::execution::ProtocolOperation;
 use tradelayer_core::joint::{JointError, JointOperation, UnverifiedJointTx};
 use tradelayer_core::joint_chain::{JointChainError, JointChainState, UnverifiedJointBlock};
-use tradelayer_core::ledger::{AccountId, ChannelSide, Ledger, Operation, PropertyId, PropertyKind, TxId};
+use tradelayer_core::ledger::{
+    AccountId, ChannelSide, Ledger, Operation, PropertyId, PropertyKind, TxId,
+};
 use tradelayer_core::network_bound::{NetworkBoundSpot, NetworkBoundUnified};
 use tradelayer_core::network_profile::TradeLayerMainnet;
 use tradelayer_core::registry::{Registry, RegistryAction, RegistryTx};
