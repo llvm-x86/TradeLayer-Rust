@@ -25,3 +25,7 @@ jobs:
         run: node scripts/generate_vectors.mjs --check
       - name: Binary wire vector audit
         run: node scripts/generate_v1_vectors.mjs --check
+      - name: Offline real transaction fixture audit
+        run: cargo run --locked --bin tradelayer-scan -- fixtures/real_transactions.tsv
+      - name: Offline synthetic marker fixture audit
+        run: cargo run --locked --bin tradelayer-scan -- fixtures/synthetic_transactions.tsv
