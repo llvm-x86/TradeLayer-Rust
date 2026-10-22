@@ -361,7 +361,6 @@ pub fn parse_observations_tsv_unverified(input: &str) -> Result<Vec<ObservedRece
     Ok(result)
 }
 
-
 const SPV_ALIGNMENT_DOMAIN: &[u8] = b"TLR_SHA256D_MERKLE_AUDIT_V1\0";
 
 /// Internal consistency of hash/PoW/Merkle proofs, bound to separate zkTL
@@ -400,7 +399,8 @@ pub fn reconcile_checked_bitcoin_inclusions_unverified(
     let mut tx_count_this_block = None;
     let mut protocol_order = 0u32;
     for proof in included {
-        let header = header_segment.headers()
+        let header = header_segment
+            .headers()
             .iter()
             .find(|header| header.tip().height == proof.height())
             .ok_or(BridgeError::MissingBlock)?;
@@ -423,9 +423,14 @@ pub fn reconcile_checked_bitcoin_inclusions_unverified(
         }
         last_index = Some(proof.tx_index());
         tx_count_this_block = Some(proof.tx_count());
-        let hint = proof.legacy_type_hint().ok_or(BridgeError::ReceiptMismatch)?;
-        let txid_hex: String = proof.txid_display().iter()
-            .map(|b| format!("{b:02x}")).collect();
+        let hint = proof
+            .legacy_type_hint()
+            .ok_or(BridgeError::ReceiptMismatch)?;
+        let txid_hex: String = proof
+            .txid_display()
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
         let txid = Digest::parse(&txid_hex)?;
         observations.push(ObservedReceipt {
             height: proof.height(),
