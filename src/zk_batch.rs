@@ -27,7 +27,9 @@ impl Digest {
             return Err(ClaimError::Invalid("digest must use lowercase hex"));
         }
         let bytes = decode_hex(value).map_err(|_| ClaimError::Invalid("digest hex"))?;
-        let array: [u8; 32] = bytes.try_into().map_err(|_| ClaimError::Invalid("digest size"))?;
+        let array: [u8; 32] = bytes
+            .try_into()
+            .map_err(|_| ClaimError::Invalid("digest size"))?;
         Ok(Self(array))
     }
 
@@ -229,10 +231,15 @@ fn digest_json_array(digests: impl IntoIterator<Item = Digest>) -> String {
 }
 
 fn parse_u64(value: &str) -> Result<u64, ClaimError> {
-    if value.is_empty() || (value.len() > 1 && value.starts_with('0')) || !value.bytes().all(|c| c.is_ascii_digit()) {
+    if value.is_empty()
+        || (value.len() > 1 && value.starts_with('0'))
+        || !value.bytes().all(|c| c.is_ascii_digit())
+    {
         return Err(ClaimError::Invalid("unsigned integer"));
     }
-    value.parse().map_err(|_| ClaimError::Invalid("integer overflow"))
+    value
+        .parse()
+        .map_err(|_| ClaimError::Invalid("integer overflow"))
 }
 
 fn parse_bool(value: &str) -> Result<bool, ClaimError> {
@@ -277,7 +284,8 @@ pub fn parse_bridge_tsv(input: &str) -> Result<AuditBatch, ClaimError> {
         }
         let ty = parse_u64(f[3])?;
         let type_byte = u8::try_from(ty).map_err(|_| ClaimError::Invalid("transaction type"))?;
-        let tx_type = TransactionType::try_from(type_byte).map_err(|_| ClaimError::Invalid("unknown transaction type"))?;
+        let tx_type = TransactionType::try_from(type_byte)
+            .map_err(|_| ClaimError::Invalid("unknown transaction type"))?;
         batch.receipts.push(Receipt {
             receipt_id: Digest::parse(f[1])?,
             txid: Digest::parse(f[2])?,
