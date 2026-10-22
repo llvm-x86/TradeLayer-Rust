@@ -258,3 +258,6 @@ impl ProtocolState {
         Ok(())
     }
 }
+
+// Canonical full-registry+ledger snapshots with shared replay-set checks.
+include!("execution_snapshot_impl.rs");
