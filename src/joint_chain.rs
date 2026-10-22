@@ -12,7 +12,7 @@ use crate::joint::{
     JointError, JointProtocolState, JointSnapshotError, UnverifiedJointTx, MAX_JOINT_BLOCK_INPUTS,
 };
 use crate::ledger::{AccountId, Ledger, PropertyId};
-use crate::network_bound::NetworkBoundSpot;
+use crate::network_bound::{NetworkBoundSpot, NetworkBoundUnified};
 use crate::network_profile::{NetworkProfileError, TradeLayerMainnet};
 use crate::registry::Registry;
 use std::collections::{BTreeSet, VecDeque};
@@ -157,6 +157,40 @@ impl JointChainState {
             registry,
             old.state().state().clone(),
             tip.height,
+        )?;
+        Ok(Self {
+            network,
+            anchor: tip,
+            tip,
+            state,
+            history: VecDeque::new(),
+            history_limit,
+        })
+    }
+
+    /// Explicit migration from TLUC-backed unified registry/ledger replay.
+    /// The supplied source is a profile-bound research state. It must have a
+    /// finalized tip and no outstanding channel or settlement obligations.
+    /// This creates a fresh TLJC anchor without importing old TLUC rollback
+    /// frames or claiming proof of mainnet consensus.
+    pub fn migrate_from_unified_unverified(
+        old: &NetworkBoundUnified,
+        permitted: BTreeSet<PropertyId>,
+        history_limit: usize,
+    ) -> Result<Self, JointChainError> {
+        if !(1..=MAX_REORG_HISTORY).contains(&history_limit) {
+            return Err(JointChainError::InvalidHistoryLimit);
+        }
+        let network = old.network();
+        if old.chain_id() != network.chain_id() {
+            return Err(JointChainError::WrongNetwork);
+        }
+        let tip = old.tip();
+        let state = JointProtocolState::migrate_unified_components_unverified(
+            network,
+            old.state().state(),
+            tip.height,
+            permitted,
         )?;
         Ok(Self {
             network,
