@@ -169,7 +169,9 @@ impl SpotChainState {
         if block.header.parent != self.tip.id {
             return Err(SpotChainError::ParentMismatch);
         }
-        if block.header.id == self.tip.id {
+        if block.header.id == self.tip.id
+            || self.history.iter().any(|prior| prior.tip.id == block.header.id)
+        {
             return Err(SpotChainError::DuplicateBlockId);
         }
         if block.operations.len() > MAX_TRANSACTIONS_PER_BLOCK {
