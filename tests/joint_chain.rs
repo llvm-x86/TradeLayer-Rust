@@ -875,3 +875,30 @@ fn spot_migration_refuses_reused_registry_and_spot_input_ids() {
         Err(JointChainError::Joint(JointError::ReplayConflict))
     ));
 }
+
+
+struct HistoricalUnifiedMock;
+impl TrustedProtocolAdapter for HistoricalUnifiedMock {
+    fn verify_block(&self, _: &CandidateBlock) -> Result<(), String> {
+        Ok(())
+    }
+    fn authenticate_and_decode(
+        &self, _: ChainId, _: &BlockHeader, raw: &[u8],
+    ) -> Result<Option<AuthenticatedProtocolOperation>, String> {
+        let (n, actor, operation) = match raw {
+            [10] => (10, "admin", ProtocolOperation::Registry(RegistryAction::Activate {
+                types: vec![1, 2, 5, 6], code_hash: [13; 32]
+            })),
+            [11] => (11, "seller", ProtocolOperation::Issue {
+                id: p(7), kind: PropertyKind::Fixed, initial_atoms: 1000
+            }),
+            [12] => (12, "buyer", ProtocolOperation::Issue {
+                id: p(8), kind: PropertyKind::Managed, initial_atoms: 1000
+            }),
+            _ => return Err("unknown synthetic input".into()),
+        };
+        Ok(Some(AuthenticatedProtocolOperation {
+            txid: tx(n), actor: a(actor), operation
+        }))
+    }
+}
