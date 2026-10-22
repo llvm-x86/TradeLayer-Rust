@@ -6,6 +6,8 @@
 #![forbid(unsafe_code)]
 
 pub mod ledger; // In-memory atomic accounting primitives; not chain consensus.
+pub mod chain; // Trust-boundary and reversible block progression, prototype only.
+mod codec; // Bounded, checksummed snapshot codec.
 pub mod wire; // Read-only legacy ASCII format analysis; never auto-fallback.
 pub mod wire_v1; // Proposed versioned binary format.
 
@@ -64,13 +66,7 @@ mod tests {
 
     #[test]
     fn rejects_unknown_transaction_types() {
-        assert_eq!(
-            TransactionType::try_from(36),
-            Err(UnknownTransactionType(36))
-        );
-        assert_eq!(
-            TransactionType::try_from(u8::MAX),
-            Err(UnknownTransactionType(u8::MAX))
-        );
+        assert_eq!(TransactionType::try_from(36), Err(UnknownTransactionType(36)));
+        assert_eq!(TransactionType::try_from(u8::MAX), Err(UnknownTransactionType(u8::MAX)));
     }
 }
