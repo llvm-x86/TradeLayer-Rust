@@ -48,46 +48,50 @@ fn mock_statements(batch: &AuditBatch, admin: &str) -> Vec<TransitionStatement> 
         height: batch.start_height - 1,
         id: BlockId([19; 32]),
     };
-    let mut state = UnifiedChainState::new_unverified(
-        chain(), anchor, account(admin), 16,
-    ).unwrap();
+    let mut state = UnifiedChainState::new_unverified(chain(), anchor, account(admin), 16).unwrap();
     let mut steps = Vec::new();
     for i in 0..=(batch.end_height - batch.start_height) {
         let previous = state.clone();
         let id = synthetic_block_id(u8::try_from(i).unwrap());
-        state.apply_block(&CandidateBlock {
-            chain: chain(),
-            header: BlockHeader {
-                height: previous.tip().height + 1,
-                id,
-                parent: previous.tip().id,
-            },
-            raw_transactions: vec![],
-        }, &SyntheticHeadersOnly).unwrap();
-        steps.push(TransitionStatement::from_reversible_states_unverified(
-            &previous, &state,
-        ).unwrap());
+        state
+            .apply_block(
+                &CandidateBlock {
+                    chain: chain(),
+                    header: BlockHeader {
+                        height: previous.tip().height + 1,
+                        id,
+                        parent: previous.tip().id,
+                    },
+                    raw_transactions: vec![],
+                },
+                &SyntheticHeadersOnly,
+            )
+            .unwrap();
+        steps.push(
+            TransitionStatement::from_reversible_states_unverified(&previous, &state).unwrap(),
+        );
     }
     steps
 }
 
-fn mock_records(
-    batch: &AuditBatch,
-    steps: &[TransitionStatement],
-) -> Vec<ObservedReceipt> {
+fn mock_records(batch: &AuditBatch, steps: &[TransitionStatement]) -> Vec<ObservedReceipt> {
     let mut counts = vec![0u32; steps.len()];
-    batch.receipts.iter().map(|receipt| {
-        let offset = (receipt.height - batch.start_height) as usize;
-        let order = counts[offset];
-        counts[offset] += 1;
-        ObservedReceipt {
-            height: receipt.height,
-            block_id: steps[offset].child().id,
-            txid: receipt.txid,
-            tx_type: receipt.tx_type,
-            order_in_block: order,
-        }
-    }).collect()
+    batch
+        .receipts
+        .iter()
+        .map(|receipt| {
+            let offset = (receipt.height - batch.start_height) as usize;
+            let order = counts[offset];
+            counts[offset] += 1;
+            ObservedReceipt {
+                height: receipt.height,
+                block_id: steps[offset].child().id,
+                txid: receipt.txid,
+                tx_type: receipt.tx_type,
+                order_in_block: order,
+            }
+        })
+        .collect()
 }
 
 fn setup() -> (
@@ -152,11 +156,18 @@ fn source_derived_26_receipts_align_across_eight_synthetic_tlpt_blocks() {
     assert_eq!(report.zktl_first_root, batch.first_state_root);
     assert_eq!(report.zktl_last_root, batch.final_state_root);
     assert_eq!(report.rust_first_root, steps[0].old_protocol_root());
-    assert_eq!(report.rust_last_root, steps.last().unwrap().new_protocol_root());
+    assert_eq!(
+        report.rust_last_root,
+        steps.last().unwrap().new_protocol_root()
+    );
     assert_ne!(report.audit_digest, [0; 32]);
     assert_ne!(report.rust_first_root, report.zktl_first_root.as_bytes());
     assert_eq!(
-        report.blocks.iter().map(|block| block.receipt_count as usize).sum::<usize>(),
+        report
+            .blocks
+            .iter()
+            .map(|block| block.receipt_count as usize)
+            .sum::<usize>(),
         26
     );
     for pair in report.blocks.windows(2) {
@@ -179,9 +190,7 @@ fn parsed_wire_files_reconcile_identically_to_typed_inputs() {
     let parsed_records = parse_observations_tsv_unverified(&record_bytes).unwrap();
     assert_eq!(parsed_steps, steps);
     assert_eq!(parsed_records, observations);
-    let from_wire = reconcile_unverified(
-        &batch, &parsed_steps, &parsed_records, expected,
-    ).unwrap();
+    let from_wire = reconcile_unverified(&batch, &parsed_steps, &parsed_records, expected).unwrap();
     let typed = reconcile_unverified(&batch, &steps, &observations, expected).unwrap();
     assert_eq!(from_wire.audit_digest, typed.audit_digest);
 
@@ -191,9 +200,9 @@ fn parsed_wire_files_reconcile_identically_to_typed_inputs() {
     let uppercase = tlpt.to_ascii_uppercase();
     assert!(parse_tlpt_tsv_unverified(&uppercase).is_err());
     assert!(parse_tlpt_tsv_unverified(&(tlpt + "JUNK")).is_err());
-    assert!(parse_observations_tsv_unverified(
-        &record_bytes.replacen("\t0\n", "\t00\n", 1),
-    ).is_err());
+    assert!(
+        parse_observations_tsv_unverified(&record_bytes.replacen("\t0\n", "\t00\n", 1),).is_err()
+    );
     assert!(parse_observations_tsv_unverified("O\tbad\t0\t0\t0\t0\n").is_err());
 }
 
@@ -282,7 +291,10 @@ fn equivalent_block_tips_with_different_rust_state_are_not_equivalent() {
     let other = mock_statements(&batch, "different-admin");
     assert_eq!(statements[3].parent(), other[3].parent());
     assert_eq!(statements[3].child(), other[3].child());
-    assert_ne!(statements[3].old_protocol_root(), other[3].old_protocol_root());
+    assert_ne!(
+        statements[3].old_protocol_root(),
+        other[3].old_protocol_root()
+    );
     statements[3] = other[3];
     assert!(matches!(
         reconcile_unverified(&batch, &statements, &observations, expected),
@@ -296,28 +308,29 @@ fn equivalent_block_tips_with_different_rust_state_are_not_equivalent() {
         height: batch.start_height - 1,
         id: BlockId([19; 32]),
     };
-    let mut s = UnifiedChainState::new_unverified(
-        chain(), anchor, account("admin"), 16,
-    ).unwrap();
+    let mut s = UnifiedChainState::new_unverified(chain(), anchor, account("admin"), 16).unwrap();
     for i in 0..3 {
         let prior = s.clone();
         let mut block_id = synthetic_block_id(i);
         if i == 2 {
             block_id = BlockId([251; 32]);
         }
-        s.apply_block(&CandidateBlock {
-            chain: chain(),
-            header: BlockHeader {
-                height: prior.tip().height + 1,
-                parent: prior.tip().id,
-                id: block_id,
+        s.apply_block(
+            &CandidateBlock {
+                chain: chain(),
+                header: BlockHeader {
+                    height: prior.tip().height + 1,
+                    parent: prior.tip().id,
+                    id: block_id,
+                },
+                raw_transactions: vec![],
             },
-            raw_transactions: vec![],
-        }, &SyntheticHeadersOnly).unwrap();
+            &SyntheticHeadersOnly,
+        )
+        .unwrap();
         if i == 2 {
-            alt[i as usize] = TransitionStatement::from_reversible_states_unverified(
-                &prior, &s,
-            ).unwrap();
+            alt[i as usize] =
+                TransitionStatement::from_reversible_states_unverified(&prior, &s).unwrap();
         }
     }
     statements[2] = alt[2];
@@ -336,9 +349,8 @@ fn corrupted_zktl_batch_is_rejected_before_cross_namespace_comparison() {
         Err(BridgeError::Zk(ClaimError::Invalid("invalid receipt")))
     ));
     batch = setup().0;
-    batch.batch_id = Digest::parse(
-        "1111111111111111111111111111111111111111111111111111111111111111",
-    ).unwrap();
+    batch.batch_id =
+        Digest::parse("1111111111111111111111111111111111111111111111111111111111111111").unwrap();
     assert!(matches!(
         reconcile_unverified(&batch, &steps, &observations, expected),
         Err(BridgeError::Zk(ClaimError::Mismatch("batchId")))
