@@ -171,3 +171,27 @@ and payment-reference options, withdraw-all, clearing/PNL, native balances,
 accepted-chain fixtures, and Cairo/STWO economic proof verification.
 
 See [docs/CHANNEL_ESCROW.md](docs/CHANNEL_ESCROW.md).
+
+
+## Stage 11: Finalized-height replay fence and legacy withdrawal diagnostics
+
+- Persist the exact block-finalization height (TLPS v2) once a complete block
+  has been processed; reject replay into closed blocks and noncontiguous future
+  block finalizations. TLPS v1 remains readable and byte-preserving where
+  finalization has not yet been performed.
+- Reject restored TLUC snapshots whose v2 finalized height differs from the
+  corresponding chain tip or prior history tip, preserving rollback integrity.
+- Add an independent single-property/column model of legacy JavaScript's
+  **deferred**, non-reserving withdrawal queue. Compare it with Stage 10's
+  reserving semantics on overlapping requests, transfer-before-maturity,
+  refund-before-maturity, FIFO resolution and rejected synthetic operations.
+- Prove an observable legacy type-21 amount coding mismatch using dependency-
+  free Node.js + Rust vectors: the old encoder emits decimal atoms, while the
+  decoder interprets the text as base 36. The verifier is read-only and
+  cannot authorize monetary state transitions.
+
+The engine's Stage 10 reserving semantics stay unchanged. Real JS/archive
+differential replay, channel reserve shortfalls, withdraw-all, proven source
+authorization and full type 23 settlement remain blocked.
+
+See [docs/WITHDRAWAL_PARITY.md](docs/WITHDRAWAL_PARITY.md).
