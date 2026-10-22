@@ -121,12 +121,15 @@ fn unwrap<'a>(
 ) -> Result<&'a [u8], ProfileReplayError> {
     let body = verify_crc(bytes).map_err(|_| invalid("checkpoint CRC/length"))?;
     let mut reader = Cursor::new(body);
-    if reader.fixed::<5>().map_err(|_| invalid("missing profile magic"))? != *MAGIC {
+    if reader
+        .fixed::<5>()
+        .map_err(|_| invalid("missing profile magic"))?
+        != *MAGIC
+    {
         return Err(invalid("profile checkpoint version"));
     }
     let tag = reader.u8().map_err(|_| invalid("missing network tag"))?;
-    let network =
-        TradeLayerMainnet::from_tag(tag).map_err(|_| invalid("unknown network tag"))?;
+    let network = TradeLayerMainnet::from_tag(tag).map_err(|_| invalid("unknown network tag"))?;
     if network != expected_network {
         return Err(invalid("network checkpoint mismatch"));
     }
@@ -134,17 +137,27 @@ fn unwrap<'a>(
     if lane != expected_lane.tag() {
         return Err(invalid("replay lane mismatch"));
     }
-    let genesis = reader.fixed::<32>().map_err(|_| invalid("genesis truncated"))?;
-    let namespace = reader.fixed::<32>().map_err(|_| invalid("chain namespace truncated"))?;
+    let genesis = reader
+        .fixed::<32>()
+        .map_err(|_| invalid("genesis truncated"))?;
+    let namespace = reader
+        .fixed::<32>()
+        .map_err(|_| invalid("chain namespace truncated"))?;
     if genesis != expected_network.genesis().0 || namespace != expected_network.chain_id().0 {
         return Err(invalid("invalid pinned genesis or chain namespace"));
     }
-    let length = reader.u32().map_err(|_| invalid("nested length truncated"))? as usize;
+    let length = reader
+        .u32()
+        .map_err(|_| invalid("nested length truncated"))? as usize;
     if length == 0 || length > MAX_CHECKPOINT_BYTES {
         return Err(invalid("invalid nested checkpoint length"));
     }
-    let nested = reader.take(length).map_err(|_| invalid("nested checkpoint truncated"))?;
-    reader.end().map_err(|_| invalid("trailing profile checkpoint bytes"))?;
+    let nested = reader
+        .take(length)
+        .map_err(|_| invalid("nested checkpoint truncated"))?;
+    reader
+        .end()
+        .map_err(|_| invalid("trailing profile checkpoint bytes"))?;
     if wrap(network, expected_lane, nested)?.as_slice() != bytes {
         return Err(invalid("noncanonical network envelope"));
     }
@@ -405,13 +418,26 @@ mod tests {
     fn rejects_invalid_envelope_versions_lanes_and_damaged_lengths() {
         let network = TradeLayerMainnet::Bitcoin;
         let bytes = wrap(network, ReplayLane::UnifiedProtocol, b"test").unwrap();
-        assert_eq!(unwrap(&bytes, network, ReplayLane::UnifiedProtocol).unwrap(), b"test");
+        assert_eq!(
+            unwrap(&bytes, network, ReplayLane::UnifiedProtocol).unwrap(),
+            b"test"
+        );
         assert!(unwrap(&bytes, network, ReplayLane::SpotResearch).is_err());
-        assert!(unwrap(&bytes, TradeLayerMainnet::Litecoin, ReplayLane::UnifiedProtocol).is_err());
+        assert!(unwrap(
+            &bytes,
+            TradeLayerMainnet::Litecoin,
+            ReplayLane::UnifiedProtocol
+        )
+        .is_err());
         let mut damaged = bytes.clone();
         damaged[7] ^= 1;
         assert!(unwrap(&damaged, network, ReplayLane::UnifiedProtocol).is_err());
-        assert!(unwrap(&bytes[..bytes.len() - 1], network, ReplayLane::UnifiedProtocol).is_err());
+        assert!(unwrap(
+            &bytes[..bytes.len() - 1],
+            network,
+            ReplayLane::UnifiedProtocol
+        )
+        .is_err());
         let mut trailing = bytes;
         trailing.push(0);
         assert!(unwrap(&trailing, network, ReplayLane::UnifiedProtocol).is_err());
