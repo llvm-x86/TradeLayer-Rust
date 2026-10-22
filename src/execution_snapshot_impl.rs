@@ -145,7 +145,11 @@ impl ProtocolState {
             _ => return Err(protocol_bad("noncanonical height option")),
         };
         let finalized_height = if version == 2 {
-            Some(reader.u64().map_err(|_| protocol_bad("finalized height truncated"))?)
+            Some(
+                reader
+                    .u64()
+                    .map_err(|_| protocol_bad("finalized height truncated"))?,
+            )
         } else {
             None
         };
