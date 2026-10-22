@@ -62,6 +62,8 @@ This digest is **not a validity proof** or new state root. The previous
 caller-observation API remains explicitly named reconcile_unverified for
 offline comparison; the economic state machine is unchanged.
 
+Stage 17 adds [bounded Bitcoin-mainnet difficulty, MTP and cumulative-work checks](BITCOIN_CHAINWORK.md) from a published genesis header or separately declared checkpoint. Its stricter source-of-anchor distinctions do not turn the Stage 16 Merkle path into an economic proof.
+
 ## Critical limitations and why they matter
 
 A fabricated but self-consistent Bitcoin-regtest-like header chain can
