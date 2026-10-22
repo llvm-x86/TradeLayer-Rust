@@ -394,8 +394,8 @@ mod tests {
     #[test]
     fn work_and_retarget_vectors_match_independent_big_int_reference() {
         for (bits, work) in [
-            (0x1d00ffff, 4_295_032_834u64),
-            (0x1c00ffff, 1_099_528_405_249),
+            (0x1d00ffff, 4_295_032_833u64),
+            (0x1c00ffff, 1_099_528_405_248),
             (0x207fffff, 3),
         ] {
             if bits == 0x207fffff {
