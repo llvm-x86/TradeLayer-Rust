@@ -11,8 +11,6 @@ pub(crate) enum CodecError {
     TooLarge,
     BadChecksum,
     TrailingBytes,
-    NonCanonical,
-    Invalid(&'static str),
 }
 
 impl fmt::Display for CodecError {
@@ -32,8 +30,14 @@ impl<'a> Cursor<'a> {
     }
 
     pub(crate) fn take(&mut self, length: usize) -> Result<&'a [u8], CodecError> {
-        let end = self.offset.checked_add(length).ok_or(CodecError::TooLarge)?;
-        let bytes = self.data.get(self.offset..end).ok_or(CodecError::Truncated)?;
+        let end = self
+            .offset
+            .checked_add(length)
+            .ok_or(CodecError::TooLarge)?;
+        let bytes = self
+            .data
+            .get(self.offset..end)
+            .ok_or(CodecError::Truncated)?;
         self.offset = end;
         Ok(bytes)
     }
