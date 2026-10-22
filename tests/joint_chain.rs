@@ -4,18 +4,18 @@
 
 use std::collections::BTreeSet;
 use tradelayer_core::chain::{BlockHeader, BlockId, CandidateBlock, ChainId, Tip};
+use tradelayer_core::execution::ProtocolOperation;
 use tradelayer_core::joint::{JointError, JointOperation, UnverifiedJointTx};
 use tradelayer_core::joint_chain::{JointChainError, JointChainState, UnverifiedJointBlock};
 use tradelayer_core::ledger::{AccountId, Ledger, Operation, PropertyId, PropertyKind, TxId};
 use tradelayer_core::network_bound::{NetworkBoundSpot, NetworkBoundUnified};
 use tradelayer_core::network_profile::TradeLayerMainnet;
 use tradelayer_core::registry::{Registry, RegistryAction, RegistryTx};
-use tradelayer_core::execution::ProtocolOperation;
-use tradelayer_core::unified_chain::{AuthenticatedProtocolOperation, TrustedProtocolAdapter};
 use tradelayer_core::spot::{
     CancelSelector, SpotExchange, SpotIntent, SpotPair, UnverifiedSpotPlacement,
 };
 use tradelayer_core::spot_chain::{UnverifiedSpotBlock, UnverifiedSpotOperation};
+use tradelayer_core::unified_chain::{AuthenticatedProtocolOperation, TrustedProtocolAdapter};
 
 fn p(n: u32) -> PropertyId {
     PropertyId::try_from(n).unwrap()
@@ -876,33 +876,53 @@ fn spot_migration_refuses_reused_registry_and_spot_input_ids() {
     ));
 }
 
-
 struct HistoricalUnifiedMock;
 impl TrustedProtocolAdapter for HistoricalUnifiedMock {
     fn verify_block(&self, _: &CandidateBlock) -> Result<(), String> {
         Ok(())
     }
     fn authenticate_and_decode(
-        &self, _: ChainId, _: &BlockHeader, raw: &[u8],
+        &self,
+        _: ChainId,
+        _: &BlockHeader,
+        raw: &[u8],
     ) -> Result<Option<AuthenticatedProtocolOperation>, String> {
         let (n, actor, operation) = match raw {
-            [10] => (10, "admin", ProtocolOperation::Registry(RegistryAction::Activate {
-                types: vec![1, 2, 5, 6], code_hash: [13; 32]
-            })),
-            [11] => (11, "seller", ProtocolOperation::Issue {
-                id: p(7), kind: PropertyKind::Fixed, initial_atoms: 1000
-            }),
-            [12] => (12, "buyer", ProtocolOperation::Issue {
-                id: p(8), kind: PropertyKind::Managed, initial_atoms: 1000
-            }),
+            [10] => (
+                10,
+                "admin",
+                ProtocolOperation::Registry(RegistryAction::Activate {
+                    types: vec![1, 2, 5, 6],
+                    code_hash: [13; 32],
+                }),
+            ),
+            [11] => (
+                11,
+                "seller",
+                ProtocolOperation::Issue {
+                    id: p(7),
+                    kind: PropertyKind::Fixed,
+                    initial_atoms: 1000,
+                },
+            ),
+            [12] => (
+                12,
+                "buyer",
+                ProtocolOperation::Issue {
+                    id: p(8),
+                    kind: PropertyKind::Managed,
+                    initial_atoms: 1000,
+                },
+            ),
             _ => return Err("unknown synthetic input".into()),
         };
         Ok(Some(AuthenticatedProtocolOperation {
-            txid: tx(n), actor: a(actor), operation
+            txid: tx(n),
+            actor: a(actor),
+            operation,
         }))
     }
 }
-
 
 #[test]
 fn legacy_tluc_registry_and_ledger_migrate_into_one_joint_ledger() {
@@ -913,62 +933,95 @@ fn legacy_tluc_registry_and_ledger_migrate_into_one_joint_ledger() {
         header: BlockHeader {
             height: prior.height + 1,
             id: BlockId([n; 32]),
-            parent: prior.id
+            parent: prior.id,
         },
         raw_transactions: raws.iter().map(|x| vec![*x]).collect(),
     };
-    old.apply_block(&mk(old.tip(), 25, &[10]), &HistoricalUnifiedMock).unwrap();
-    old.apply_block(&mk(old.tip(), 26, &[11, 12]), &HistoricalUnifiedMock).unwrap();
+    old.apply_block(&mk(old.tip(), 25, &[10]), &HistoricalUnifiedMock)
+        .unwrap();
+    old.apply_block(&mk(old.tip(), 26, &[11, 12]), &HistoricalUnifiedMock)
+        .unwrap();
     let previous_bytes = old.checkpoint_bytes().unwrap();
-    let mut joint = JointChainState::migrate_from_unified_unverified(
-        &old, permitted(), 4
-    ).unwrap();
+    let mut joint = JointChainState::migrate_from_unified_unverified(&old, permitted(), 4).unwrap();
     assert_eq!(joint.anchor(), old.tip());
     assert_eq!(joint.rollback_depth(), 0);
     assert_eq!(joint.state().processed_count(), 3);
     assert_eq!(joint.state().registry().activation(5).unwrap().height, 1);
-    assert_eq!(joint.state().ledger().available_atoms(p(7), &a("seller")), 1000);
+    assert_eq!(
+        joint.state().ledger().available_atoms(p(7), &a("seller")),
+        1000
+    );
     let migrated = joint.checkpoint_bytes().unwrap();
     assert_ne!(previous_bytes, migrated);
     assert!(JointChainState::from_checkpoint_bytes(
-        &previous_bytes, net, anchor(net), &a("admin"), &permitted(), 4
-    ).is_err());
+        &previous_bytes,
+        net,
+        anchor(net),
+        &a("admin"),
+        &permitted(),
+        4
+    )
+    .is_err());
 
-    joint.apply_unverified_block(&block(&joint, 27, vec![
-        place(true, 13, 100, 200),
-        place(false, 14, 220, 100),
-    ])).unwrap();
+    joint
+        .apply_unverified_block(&block(
+            &joint,
+            27,
+            vec![place(true, 13, 100, 200), place(false, 14, 220, 100)],
+        ))
+        .unwrap();
     assert_eq!(joint.state().spot().fills().len(), 1);
-    assert_eq!(joint.state().ledger().available_atoms(p(7), &a("buyer")), 100);
-    assert_eq!(joint.state().ledger().available_atoms(p(8), &a("seller")), 220);
+    assert_eq!(
+        joint.state().ledger().available_atoms(p(7), &a("buyer")),
+        100
+    );
+    assert_eq!(
+        joint.state().ledger().available_atoms(p(8), &a("seller")),
+        220
+    );
     joint.state().verify_components_unverified().unwrap();
     let restored = JointChainState::from_checkpoint_bytes(
-        &joint.checkpoint_bytes().unwrap(), net, old.tip(), &a("admin"), &permitted(), 4
-    ).unwrap();
+        &joint.checkpoint_bytes().unwrap(),
+        net,
+        old.tip(),
+        &a("admin"),
+        &permitted(),
+        4,
+    )
+    .unwrap();
     assert_eq!(restored, joint);
     joint.rollback_tip(joint.tip()).unwrap();
     assert_eq!(joint.checkpoint_bytes().unwrap(), migrated);
     assert_eq!(old.checkpoint_bytes().unwrap(), previous_bytes);
 }
 
-
 #[test]
 fn joint_bootstrap_rejects_outstanding_channel_and_settlement_state() {
     let mut original = ledger();
-    original.apply(tx(41), Operation::ChannelCommit {
-        id: p(7),
-        owner: a("seller"),
-        channel: a("channel"),
-        side: ChannelSide::A,
-        amount_atoms: 50,
-    }).unwrap();
+    original
+        .apply(
+            tx(41),
+            Operation::ChannelCommit {
+                id: p(7),
+                owner: a("seller"),
+                channel: a("channel"),
+                side: ChannelSide::A,
+                amount_atoms: 50,
+            },
+        )
+        .unwrap();
     assert!(!original.has_no_channel_or_settlement_liabilities_unverified());
     assert!(matches!(
         JointChainState::new_unverified(
             TradeLayerMainnet::Litecoin,
             anchor(TradeLayerMainnet::Litecoin),
-            a("admin"), original, permitted(), 4
+            a("admin"),
+            original,
+            permitted(),
+            4
         ),
-        Err(JointChainError::Joint(JointError::UnsupportedLegacyLiabilities))
+        Err(JointChainError::Joint(
+            JointError::UnsupportedLegacyLiabilities
+        ))
     ));
 }
