@@ -318,6 +318,23 @@ impl Ledger {
         self.processed.len()
     }
 
+    /// Previous unified-ledger replay IDs, needed for an explicit one-ledger
+    /// Stage 22 migration without weakening transaction replay protection.
+    pub fn input_txids_unverified(&self) -> &BTreeSet<TxId> {
+        &self.processed
+    }
+
+    /// Stage 22's current joint executor supports token issuance, transfers,
+    /// and spot escrows. Existing channel claims or pending withdrawals would
+    /// otherwise be frozen by the narrower end-of-block finalizer.
+    pub fn has_no_channel_or_settlement_liabilities_unverified(&self) -> bool {
+        self.channels.is_empty()
+            && self.pending_withdrawals.is_empty()
+            && self.pending_net_settlements.is_empty()
+            && self.swept_net_settlements.is_empty()
+            && self.king_settlements.is_empty()
+    }
+
     /// Atomically apply one operation. On error, all state is preserved.
     pub fn apply(&mut self, txid: TxId, op: Operation) -> Result<(), LedgerError> {
         self.apply_batch([(txid, op)])
