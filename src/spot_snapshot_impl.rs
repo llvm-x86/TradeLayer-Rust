@@ -156,6 +156,7 @@ impl SpotExchange {
                     || order.sequence >= self.next_sequence
                     || previous_sequence.is_some_and(|old| old >= order.sequence)
                     || !self.seen.contains(&order.txid)
+                    || !self.ledger.is_processed(internal_txid(order.txid, b"reserve", 0))
                     || !active_ids.insert(order.txid)
                     || !sequences.insert(order.sequence)
                 {
@@ -164,7 +165,8 @@ impl SpotExchange {
                 previous_sequence = Some(order.sequence);
             }
         }
-        for fill in &self.fills {
+        for (index, fill) in self.fills.iter().enumerate() {
+            let nonce = u32::try_from(index).map_err(|_| spot_invalid("fill index"))?;
             if fill.at_height == 0
                 || fill.at_height > height
                 || fill.base_atoms == 0
@@ -172,6 +174,8 @@ impl SpotExchange {
                 || !self.seen.contains(&fill.sell_txid)
                 || !self.seen.contains(&fill.buy_txid)
                 || !self.seen.contains(&fill.trigger_txid)
+                || !self.ledger.is_processed(internal_txid(fill.trigger_txid, b"fill-base", nonce))
+                || !self.ledger.is_processed(internal_txid(fill.trigger_txid, b"fill-quote", nonce))
             {
                 return Err(spot_invalid("invalid fill history"));
             }
