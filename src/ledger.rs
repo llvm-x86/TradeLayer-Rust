@@ -149,6 +149,28 @@ pub enum Operation {
         to_side: ChannelSide,
         amount_atoms: u128,
     },
+    /// Type 23 (NET_SETTLE only): journal a non-spending PnL claim.
+    ChannelNetClaim {
+        id: PropertyId,
+        channel: AccountId,
+        payer_side: ChannelSide,
+        amount_atoms: u128,
+        trade_reference: TxId,
+        height: u64,
+        expiry_height: u64,
+    },
+    /// Type 31: settle an exact, root-bound set of journaled claims.
+    ChannelKingSettle {
+        id: PropertyId,
+        channel: AccountId,
+        start_height: u64,
+        end_height: u64,
+        settled_at: u64,
+        expected_root: [u8; 32],
+        expected_count: u32,
+        payer_side: ChannelSide,
+        net_atoms: u128,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -177,6 +199,14 @@ pub enum LedgerError {
     MalformedChannel(PropertyId),
     MalformedPendingWithdrawal(PropertyId),
     InvalidWithdrawalHeight,
+    ChannelNotBilateral(AccountId),
+    InvalidSettlementClaim,
+    DuplicateSettlementReference,
+    SettlementJournalFull,
+    InvalidSettlementRange,
+    ZeroNetSettlement,
+    SettlementCommitmentMismatch,
+    MalformedSettlementJournal,
 }
 
 impl fmt::Display for LedgerError {
@@ -220,6 +250,14 @@ impl fmt::Display for LedgerError {
                 write!(f, "malformed pending withdrawal {}", id.get())
             }
             Self::InvalidWithdrawalHeight => write!(f, "invalid withdrawal maturity height"),
+            Self::ChannelNotBilateral(channel) => write!(f, "channel {} needs two owners", channel.as_str()),
+            Self::InvalidSettlementClaim => write!(f, "invalid or expired net settlement claim"),
+            Self::DuplicateSettlementReference => write!(f, "trade reference already claimed"),
+            Self::SettlementJournalFull => write!(f, "settlement journal limit exceeded"),
+            Self::InvalidSettlementRange => write!(f, "invalid or empty settlement range"),
+            Self::ZeroNetSettlement => write!(f, "zero-net king settlement unsupported"),
+            Self::SettlementCommitmentMismatch => write!(f, "settlement root, amount or count mismatch"),
+            Self::MalformedSettlementJournal => write!(f, "invalid settlement journal state"),
         }
     }
 }
@@ -233,6 +271,9 @@ pub struct Ledger {
     available: BTreeMap<(PropertyId, AccountId), u128>,
     channels: BTreeMap<AccountId, ChannelState>,
     pending_withdrawals: BTreeMap<TxId, PendingWithdrawal>,
+    pending_net_settlements: BTreeMap<TxId, NetClaim>,
+    swept_net_settlements: BTreeMap<TxId, NetClaim>,
+    king_settlements: BTreeMap<TxId, KingReceipt>,
     processed: BTreeSet<TxId>,
 }
 
@@ -460,6 +501,25 @@ impl Ledger {
                 to_side,
                 amount_atoms,
             ),
+            Operation::ChannelNetClaim { id, channel, payer_side, amount_atoms, trade_reference, height, expiry_height } => {
+                self.record_net_settlement(txid, NetClaim {
+                    channel, property: id, payer_side, amount_atoms,
+                    trade_reference, height, expiry_height,
+                })
+            }
+            Operation::ChannelKingSettle { id, channel, start_height, end_height, settled_at, expected_root, expected_count, payer_side, net_atoms } => {
+                let selected: Vec<TxId> = self.pending_net_settlements.iter()
+                    .filter(|(_, claim)| claim.channel == channel && claim.property == id
+                        && (start_height..=end_height).contains(&claim.height))
+                    .map(|(id, _)| *id).collect();
+                self.perform_king_settlement(txid, KingReceipt {
+                    channel, property: id, start_height, end_height, settled_at,
+                    preview: SettlementPreview {
+                        root: expected_root, count: expected_count, payer_side, net_atoms,
+                    },
+                    claim_txids: selected,
+                })
+            }
         }
     }
 
@@ -488,6 +548,7 @@ impl Ledger {
                 return Err(LedgerError::SupplyMismatch(*id));
             }
         }
+        self.verify_settlement_journal()?;
         Ok(())
     }
 }
@@ -573,6 +634,9 @@ impl Ledger {
             self.processed.len(),
             self.channels.len(),
             self.pending_withdrawals.len(),
+            self.pending_net_settlements.len(),
+            self.swept_net_settlements.len(),
+            self.king_settlements.len(),
         ]
         .iter()
         .any(|&count| count > MAX_SNAPSHOT_ENTRIES)
@@ -580,8 +644,14 @@ impl Ledger {
             return Err(SnapshotError::InvalidFormat("too many ledger records"));
         }
         let mut bytes = Vec::new();
-        let channel_version = !self.channels.is_empty() || !self.pending_withdrawals.is_empty();
-        bytes.extend_from_slice(if channel_version {
+        let settlement_version = !self.pending_net_settlements.is_empty()
+            || !self.swept_net_settlements.is_empty()
+            || !self.king_settlements.is_empty();
+        let channel_version = settlement_version
+            || !self.channels.is_empty() || !self.pending_withdrawals.is_empty();
+        bytes.extend_from_slice(if settlement_version {
+            b"TLL\x03"
+        } else if channel_version {
             b"TLL\x02"
         } else {
             b"TLL\x01"
@@ -609,6 +679,9 @@ impl Ledger {
         if channel_version {
             self.append_channel_snapshot(&mut bytes)?;
         }
+        if settlement_version {
+            self.append_settlement_snapshot(&mut bytes)?;
+        }
         if bytes.len() > MAX_CHECKPOINT_BYTES - 4 {
             return Err(SnapshotError::InvalidFormat("ledger checkpoint too large"));
         }
@@ -621,9 +694,10 @@ impl Ledger {
         use crate::codec::{verify_crc, Cursor};
         let payload = verify_crc(input).map_err(snapshot_codec_error)?;
         let mut reader = Cursor::new(payload);
-        let channel_version = match reader.fixed::<4>().map_err(snapshot_codec_error)? {
-            [b'T', b'L', b'L', 1] => false,
-            [b'T', b'L', b'L', 2] => true,
+        let version = match reader.fixed::<4>().map_err(snapshot_codec_error)? {
+            [b'T', b'L', b'L', 1] => 1,
+            [b'T', b'L', b'L', 2] => 2,
+            [b'T', b'L', b'L', 3] => 3,
             _ => return Err(SnapshotError::InvalidFormat("ledger checkpoint version")),
         };
         let mut state = Self::new();
@@ -679,8 +753,11 @@ impl Ledger {
             last = Some(id);
             state.processed.insert(id);
         }
-        if channel_version {
+        if version >= 2 {
             state.read_channel_snapshot(&mut reader)?;
+        }
+        if version >= 3 {
+            state.read_settlement_snapshot(&mut reader)?;
         }
         reader.end().map_err(snapshot_codec_error)?;
         state
@@ -806,3 +883,4 @@ mod snapshot_tests {
 
 // Escrow book and pending withdrawal checkpoint extension.
 include!("ledger_channels_impl.rs");
+include!("ledger_settlement_impl.rs");
