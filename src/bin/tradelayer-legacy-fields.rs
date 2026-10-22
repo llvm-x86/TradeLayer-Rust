@@ -6,18 +6,70 @@ use tradelayer_core::wire::{parse_frame, parse_typed, ParsedTransaction};
 
 fn export_values(tx: ParsedTransaction) -> (&'static str, String, String, String, String) {
     match tx {
-        ParsedTransaction::Activate { types, code_hash_base36 } =>
-            ("activate", types.iter().map(|t| t.as_u8().to_string()).collect::<Vec<_>>().join(";"), code_hash_base36, "-".into(), "-".into()),
-        ParsedTransaction::Issue { initial_tokens, ticker, whitelist_raw, managed, .. } =>
-            ("issue", initial_tokens.to_string(), ticker, whitelist_raw, if managed { "1" } else { "0" }.into()),
-        ParsedTransaction::Send { recipient, property_id, amount_atoms } =>
-            ("send", property_id.to_string(), amount_atoms.to_string(), recipient, "-".into()),
-        ParsedTransaction::SendAll { recipient } =>
-            ("all", recipient, "-".into(), "-".into(), "-".into()),
-        ParsedTransaction::Grant { property_id, amount_atoms, recipient, .. } =>
-            ("grant", property_id.to_string(), amount_atoms.to_string(), recipient, "-".into()),
-        ParsedTransaction::Redeem { property_id, amount_atoms, .. } =>
-            ("redeem", property_id.to_string(), amount_atoms.to_string(), "-".into(), "-".into()),
+        ParsedTransaction::Activate {
+            types,
+            code_hash_base36,
+        } => (
+            "activate",
+            types
+                .iter()
+                .map(|t| t.as_u8().to_string())
+                .collect::<Vec<_>>()
+                .join(";"),
+            code_hash_base36,
+            "-".into(),
+            "-".into(),
+        ),
+        ParsedTransaction::Issue {
+            initial_tokens,
+            ticker,
+            whitelist_raw,
+            managed,
+            ..
+        } => (
+            "issue",
+            initial_tokens.to_string(),
+            ticker,
+            whitelist_raw,
+            if managed { "1" } else { "0" }.into(),
+        ),
+        ParsedTransaction::Send {
+            recipient,
+            property_id,
+            amount_atoms,
+        } => (
+            "send",
+            property_id.to_string(),
+            amount_atoms.to_string(),
+            recipient,
+            "-".into(),
+        ),
+        ParsedTransaction::SendAll { recipient } => {
+            ("all", recipient, "-".into(), "-".into(), "-".into())
+        }
+        ParsedTransaction::Grant {
+            property_id,
+            amount_atoms,
+            recipient,
+            ..
+        } => (
+            "grant",
+            property_id.to_string(),
+            amount_atoms.to_string(),
+            recipient,
+            "-".into(),
+        ),
+        ParsedTransaction::Redeem {
+            property_id,
+            amount_atoms,
+            ..
+        } => (
+            "redeem",
+            property_id.to_string(),
+            amount_atoms.to_string(),
+            "-".into(),
+            "-".into(),
+        ),
     }
 }
 
@@ -52,8 +104,18 @@ fn main() {
                 Ok(tx) => export_values(tx),
                 Err(_) => ("invalid", "-".into(), "-".into(), "-".into(), "-".into()),
             };
-            println!("{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}", txid,
-                carrier.vout, frame.tx_type.as_u8(), hex_bytes(frame.body.as_bytes()), kind, one, two, three, four);
+            println!(
+                "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+                txid,
+                carrier.vout,
+                frame.tx_type.as_u8(),
+                hex_bytes(frame.body.as_bytes()),
+                kind,
+                one,
+                two,
+                three,
+                four
+            );
         }
     }
 }
