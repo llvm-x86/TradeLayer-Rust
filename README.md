@@ -2,7 +2,7 @@
 
 A staged Rust rebuild of the [TradeLayer protocol](https://github.com/patrickdugan/tradelayer.js).
 
-**Status:** wire-format reconnaissance plus a proposed versioned binary envelope. This repository does not process funds, accept network transactions, validate consensus, maintain balances, or handle wallet keys.
+**Status:** draft wire format and deterministic in-memory ledger prototype. This repository cannot process real funds, accept network transactions, validate chain consensus, or handle wallet keys.
 
 ## Quick start
 
@@ -32,6 +32,12 @@ node scripts/generate_v1_vectors.mjs --check
 ```
 
 The legacy vectors reconstruct pinned historical source expressions. The new v1 vectors test a proposed serialization and are not evidence of historically accepted transactions.
+
+## In-memory accounting prototype
+
+The independent [`tradelayer_core::ledger`](src/ledger.rs) module now models fixed/managed property supply and exact available balances, with checked `u128` atomic-unit arithmetic. Ordered batches commit atomically, and replay IDs are tracked. It has no signing, chain authentication, persistent storage, or live consensus integration.
+
+See [ledger invariants and limits](docs/LEDGER.md) and the [integration tests](tests/ledger_invariants.rs). Draft wire-v1 direct sends can be decoded and explicitly translated to a ledger transfer by a **trusted caller**; the module itself never infers sender authorization from a payload.
 
 ## Working rules
 
