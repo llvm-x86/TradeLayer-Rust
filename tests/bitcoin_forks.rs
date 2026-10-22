@@ -56,17 +56,22 @@ fn historical_blocks_1_to_3_select_strictly_more_observed_header_work() {
     assert_eq!(graph.observed_header_count(), 3);
     assert_eq!(graph.best_observed_tip(), second.selected());
     assert_eq!(
-        graph.chain_at(second.connected()[0].id).unwrap().tip().height,
+        graph
+            .chain_at(second.connected()[0].id)
+            .unwrap()
+            .tip()
+            .height,
         2
     );
     assert_eq!(
-        graph.chain_at(second.connected()[1].id).unwrap().tip().height,
+        graph
+            .chain_at(second.connected()[1].id)
+            .unwrap()
+            .tip()
+            .height,
         3
     );
-    assert_eq!(
-        graph.chain_at(graph.root().id).unwrap().tip().height,
-        0
-    );
+    assert_eq!(graph.chain_at(graph.root().id).unwrap().tip().height, 0);
     assert!(graph.chain_at(BlockId([0x45; 32])).is_none());
     assert_eq!(
         graph.best_observed_work().to_be_bytes()[24..],
@@ -176,7 +181,8 @@ fn claimed_external_checkpoint_stays_untrusted_after_honest_descendants() {
     assert_eq!(graph.best_observed_tip().height, 2);
     assert_eq!(graph.anchor_status(), AnchorStatus::ClaimedExternal);
     assert_eq!(
-        graph.chain_at(graph.best_observed_tip().id)
+        graph
+            .chain_at(graph.best_observed_tip().id)
             .unwrap()
             .anchor_status(),
         AnchorStatus::ClaimedExternal
