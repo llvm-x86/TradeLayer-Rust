@@ -23,6 +23,8 @@ jobs:
         run: cargo clippy --all-targets --locked -- -D warnings
       - name: Run tests
         run: cargo test --locked
+      - name: Legacy withdrawal amount mismatch audit
+        run: node scripts/audit_legacy_withdrawal_codec.cjs
       - name: Legacy wire vector audit
         run: node scripts/generate_vectors.mjs --check
       - name: Binary wire vector audit
