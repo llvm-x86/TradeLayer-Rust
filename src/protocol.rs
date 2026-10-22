@@ -48,7 +48,7 @@ pub const TRANSACTION_CATALOG: [TransactionSpec; 36] = [
     TransactionSpec {
         number: 4,
         name: "Commit Token",
-        stage: PortStage::ZkTlJsPrototype,
+        stage: PortStage::RustLedgerPrimitive,
     },
     TransactionSpec {
         number: 5,
@@ -133,12 +133,12 @@ pub const TRANSACTION_CATALOG: [TransactionSpec; 36] = [
     TransactionSpec {
         number: 21,
         name: "Withdrawal",
-        stage: PortStage::ZkTlJsPrototype,
+        stage: PortStage::RustLedgerPrimitive,
     },
     TransactionSpec {
         number: 22,
         name: "Transfer",
-        stage: PortStage::ZkTlJsPrototype,
+        stage: PortStage::RustLedgerPrimitive,
     },
     TransactionSpec {
         number: 23,
