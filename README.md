@@ -117,3 +117,18 @@ persist or compose with the balance ledger.
 unported self-certification, banlist/xpub logic, token-admin migration and
 ZK proof-verification gates. Type 34 stays blocked by the legacy/zkTL conflict.
 Tests: `cargo test --locked --test registry_transitions`.
+
+## Unified registry and ledger state (simulation-grade)
+
+The [`execution` module](src/execution.rs) coordinates activation,
+fixed/managed token issuance, sends, mint/burn, whitelists, attestations,
+and oracle state under **one transaction replay set** and atomic batches.
+This is a local, typed protocol execution model for tx0,1,2,7–9,11–15.
+Its input is explicitly named `UnverifiedTx` because it supplies claimed
+actors, heights and operations; **nothing here verifies signed chain input**.
+The coordinator is separate from `ChainState` and carries no persistent
+checkpoint format yet.
+
+[Implementation and trust boundaries](docs/UNIFIED_EXECUTION.md).
+Run `cargo test --locked --test protocol_execution` for cross-module
+rollback and global replay checks.
