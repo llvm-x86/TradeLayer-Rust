@@ -1,0 +1,16 @@
+# name	hex	category	property	atoms	recipient
+direct-one-atom	544c5201020000000005000000000000000105616c696365	direct	5	1	alice
+direct-one-token	544c52010200000000050000000005f5e10005616c696365	direct	5	100000000	alice
+direct-large	544c52010200ffffffffffffffffffffffff015a	direct	4294967295	18446744073709551615	Z
+send-all	544c5201020103626f62	all			bob
+unknown-type-36	544c520124	reject			
+legacy-ascii	746c32303b616c6963653b353b32	reject			
+legacy-double-prefix	746c32746c32303b616c6963653b353b32	reject			
+wrong-version	544c520202	reject			
+zero-amount	544c5201020000000005000000000000000005616c696365	reject			
+zero-property	544c5201020000000000000000000000000105616c696365	reject			
+short-send	544c52010200	reject			
+trailing-bytes	544c5201020103626f6200	reject			
+truncated-address	544c5201020103626f	reject			
+unknown-send-variant	544c5201027f	reject			
+blank-address	544c5201020100	reject			
