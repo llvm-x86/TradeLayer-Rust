@@ -107,6 +107,7 @@ pub enum SpotError {
     UnrepresentableFill,
     ArithmeticOverflow,
     ReserveMismatch,
+    UnsupportedProtocolOperation,
     Ledger(LedgerError),
 }
 
@@ -218,6 +219,50 @@ impl SpotExchange {
 
     pub fn ledger(&self) -> &Ledger {
         &self.ledger
+    }
+
+    /// Immutable policy and spot replay markers for opt-in Stage 22
+    /// single-ledger migration and its joint replay audit.
+    pub fn permitted_properties(&self) -> &BTreeSet<PropertyId> {
+        &self.permitted
+    }
+
+    pub fn spot_input_ids_unverified(&self) -> &BTreeSet<TxId> {
+        &self.seen
+    }
+
+    /// The Stage 22 joint state owns this exchange as its ONLY token ledger.
+    /// This path is restricted to non-channel ledger operations and refuses
+    /// all synthetic escrow account addresses. Each operation is staged on a
+    /// clone and must leave existing order reserves intact.
+    pub fn apply_joint_ledger_operation_unverified(
+        &mut self,
+        txid: TxId,
+        operation: Operation,
+    ) -> Result<(), SpotError> {
+        let allowed = match &operation {
+            Operation::CreateProperty { issuer, .. } => !issuer.as_str().starts_with(ESCROW_PREFIX),
+            Operation::Transfer { from, to, .. } => {
+                !from.as_str().starts_with(ESCROW_PREFIX) && !to.as_str().starts_with(ESCROW_PREFIX)
+            }
+            Operation::Mint { issuer, to, .. } => {
+                !issuer.as_str().starts_with(ESCROW_PREFIX)
+                    && !to.as_str().starts_with(ESCROW_PREFIX)
+            }
+            Operation::Burn { issuer, .. } => !issuer.as_str().starts_with(ESCROW_PREFIX),
+            _ => return Err(SpotError::UnsupportedProtocolOperation),
+        };
+        if !allowed {
+            return Err(SpotError::ReservedAccount);
+        }
+        if self.seen.contains(&txid) || self.ledger.is_processed(txid) {
+            return Err(SpotError::Replay(txid));
+        }
+        let mut candidate = self.clone();
+        candidate.ledger.apply(txid, operation)?;
+        candidate.verify_reserves()?;
+        *self = candidate;
+        Ok(())
     }
     pub fn processed_through(&self) -> Option<u64> {
         self.processed_through

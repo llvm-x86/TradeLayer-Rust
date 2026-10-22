@@ -16,6 +16,35 @@ cargo clippy --all-targets --locked -- -D warnings
 
 The toolchain is pinned in `rust-toolchain.toml` and the crate has **zero third-party dependencies**. `Cargo.lock` is committed.
 
+## Stage 22: One ledger per TradeLayer for registry and spot replay
+
+The new `JointProtocolState` owns a single `SpotExchange` whose token
+ledger is also used for ordinary issuance, transfers, managed mint and
+redemption. Registry activation records and global transaction replay
+markers live alongside that ledger. `JointChainState` applies typed
+mixed-operation blocks atomically with complete state rollback.
+
+Bitcoin, Litecoin and Dogecoin each have **independent** joint instances,
+genesis identities, assets, and versioned `TLJP\x01` / `TLJC\x01`
+checkpoints. The earlier TLUC/TLSC formats remain readable through their
+previous APIs. Explicit, unverified migrations can import a Stage 20 spot
+instance with separately supplied registry history or a finalized TLUC
+registry+ledger instance with no outstanding channel obligations. Each
+starts new rollback history at the migration tip.
+
+All of this remains **offline research replay of caller-supplied input**.
+Type 3 UTXO exchange and types 23/31 economic settlement remain default-deny.
+Channel and derivatives opcodes remain outside the joint execution slice.
+External Bitcoin/Litecoin/Dogecoin consensus and actor authentication are
+required before live protocol processing.
+
+```sh
+cargo test --locked --test joint_chain
+cargo test --locked
+```
+
+See [Stage 22 shared-ledger architecture](docs/SINGLE_LEDGER_JOINT_REPLAY.md).
+
 ## Independent network profiles (Stage 21)
 
 Bitcoin, Litecoin, and Dogecoin run **three separate TradeLayers**.

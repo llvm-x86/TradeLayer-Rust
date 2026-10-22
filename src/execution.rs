@@ -185,6 +185,12 @@ impl ProtocolState {
     pub fn processed_count(&self) -> usize {
         self.processed.len()
     }
+
+    /// Read-only global replay IDs for an explicit migration from TLUC
+    /// into Stage 22's single-ledger joint replay format.
+    pub fn input_txids_unverified(&self) -> &BTreeSet<TxId> {
+        &self.processed
+    }
     pub fn last_height(&self) -> Option<u64> {
         self.last_height
     }
