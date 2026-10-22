@@ -133,6 +133,28 @@ checkpoint format yet.
 Run `cargo test --locked --test protocol_execution` for cross-module
 rollback and global replay checks.
 
+## Observed Bitcoin-mainnet header forks (Stage 18, audit-only)
+
+The dependency-free `bitcoin_forks` module now retains a bounded graph of
+individually validated Bitcoin-mainnet headers. It can select the greatest
+cumulative-work tip **among observed headers**, preserve equal-work incumbent
+choices, and report the common ancestor and attach/detach paths when a locally
+stronger branch appears. A complete segment commits atomically after Stage 17
+SHA256d PoW, mainnet difficulty, MTP and exact chainwork checks.
+
+The root's provenance stays explicit. A caller-supplied checkpoint is still
+untrusted, and an observed greatest-work tip is **not** evidence that Bitcoin
+Core considers it the active best chain. Block economics, UTXOs, scripts,
+external clocks, Scrypt chains and Cairo/STWO verification remain outside this
+module. The settlement gate stays default-deny.
+
+```sh
+cargo test --locked --test bitcoin_forks
+python3 scripts/audit_bitcoin_forks.py
+```
+
+See [fork selection and trust boundary](docs/BITCOIN_FORK_SELECTION.md).
+
 ## Unified chain replay with combined checkpoints (experimental)
 
 `tradelayer_core::unified_chain::UnifiedChainState` brings the atomic ledger
