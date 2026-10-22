@@ -1,5 +1,7 @@
 # zkTL Cairo/STWO integration boundary
 
+Stage 14 adds [read-only Rust state and TLPT transition commitments](PROVING_COMMITMENTS.md). They use a separate namespace and have not been reconciled with zkTL's roots; they cannot authorize economic state changes.
+
 Source prototype: [patrickdugan/zkTL](https://github.com/patrickdugan/zkTL), specifically `src/state_checkpoint.js`, `src/hash_utils.js`, `src/zk_consensus_envelope.js`, `scripts/tlzk_stwo_batch_prover.sh` and `artifacts/cairo_inputs/batch_checkpoint_latest.json`.
 
 ## What is implemented
