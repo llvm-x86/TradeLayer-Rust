@@ -144,37 +144,31 @@ impl Ledger {
     fn request_channel_withdrawal(
         &mut self,
         txid: TxId,
-        id: PropertyId,
-        owner: AccountId,
-        channel: AccountId,
-        side: ChannelSide,
-        amount_atoms: u128,
-        unlock_height: u64,
+        request: PendingWithdrawal,
     ) -> Result<(), LedgerError> {
+        let id = request.id;
         self.existing_property(id)?;
-        if amount_atoms == 0 {
+        if request.atoms == 0 {
             return Err(LedgerError::ZeroAmount);
         }
-        if unlock_height == 0 {
+        if request.unlock_height == 0 {
             return Err(LedgerError::InvalidWithdrawalHeight);
         }
-        let state = self.channels.get_mut(&channel)
-            .ok_or_else(|| LedgerError::UnknownChannel(channel.clone()))?;
-        if state.owner(side) != Some(&owner) {
-            return Err(LedgerError::ChannelSideMismatch(channel));
+        let state = self.channels.get_mut(&request.channel)
+            .ok_or_else(|| LedgerError::UnknownChannel(request.channel.clone()))?;
+        if state.owner(request.side) != Some(&request.owner) {
+            return Err(LedgerError::ChannelSideMismatch(request.channel.clone()));
         }
-        let balance = state.atoms(side, id);
-        if balance < amount_atoms {
+        let balance = state.atoms(request.side, id);
+        if balance < request.atoms {
             return Err(LedgerError::InsufficientAvailable {
                 property: id,
                 available: balance,
-                requested: amount_atoms,
+                requested: request.atoms,
             });
         }
-        state.put(side, id, balance - amount_atoms);
-        self.pending_withdrawals.insert(txid, PendingWithdrawal {
-            channel, side, owner, id, atoms: amount_atoms, unlock_height,
-        });
+        state.put(request.side, id, balance - request.atoms);
+        self.pending_withdrawals.insert(txid, request);
         Ok(())
     }
 
