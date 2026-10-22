@@ -2,8 +2,16 @@
 //! UNTRUSTED checkpoint/retarget metadata. No best-chain or script verification.
 
 use std::cmp::Ordering;
+use tradelayer_core::bitcoin_chainwork::{
+    mainnet_block_proof_work, mainnet_retarget_bits, AnchorStatus, ClaimedMainnetCheckpoint,
+    MainnetWorkChain, Work256, WorkError, MAINNET_ADJUSTMENT_INTERVAL, MAINNET_TARGET_TIMESPAN,
+    MTP_WINDOW,
+};
+use tradelayer_core::bitcoin_inclusion::MerklePath;
 use tradelayer_core::chain::{BlockHeader, CandidateBlock, ChainId};
+use tradelayer_core::chain::{BlockId, Tip};
 use tradelayer_core::ledger::AccountId;
+use tradelayer_core::read_only::decode_hex;
 use tradelayer_core::root_reconciliation::{
     reconcile_mainnet_work_headers_unverified, BridgeError, ExpectedChainRange,
 };
@@ -13,14 +21,6 @@ use tradelayer_core::unified_chain::{
 };
 use tradelayer_core::zk_batch::{AuditBatch, Digest, Receipt, SupportLevel};
 use tradelayer_core::TransactionType;
-use tradelayer_core::bitcoin_inclusion::MerklePath;
-use tradelayer_core::bitcoin_chainwork::{
-    mainnet_block_proof_work, mainnet_retarget_bits, AnchorStatus, ClaimedMainnetCheckpoint,
-    MainnetWorkChain, Work256, WorkError, MAINNET_ADJUSTMENT_INTERVAL, MAINNET_TARGET_TIMESPAN,
-    MTP_WINDOW,
-};
-use tradelayer_core::chain::{BlockId, Tip};
-use tradelayer_core::read_only::decode_hex;
 
 // Genuine, publicly documented Bitcoin mainnet genesis block header.
 const GENESIS: &str = concat!(
@@ -84,15 +84,26 @@ fn actual_genesis_and_block_one_validate_pow_link_mtp_and_accumulated_work() {
         "00000000839a8e6886ab5951d76f411475428afc90947ee320161bbf18eb6048"
     );
     assert_eq!(seg.headers()[0].n_bits(), 0x1d00ffff);
-    let coinbase = decode_hex(include_str!("../fixtures/bitcoin_mainnet_block1_coinbase.hex").trim()).unwrap();
-    let coinbase_included = seg.check_transaction_inclusion(
-        1, &coinbase, &MerklePath { tx_index: 0, tx_count: 1, siblings_raw: vec![] },
-    ).unwrap();
+    let coinbase =
+        decode_hex(include_str!("../fixtures/bitcoin_mainnet_block1_coinbase.hex").trim()).unwrap();
+    let coinbase_included = seg
+        .check_transaction_inclusion(
+            1,
+            &coinbase,
+            &MerklePath {
+                tx_index: 0,
+                tx_count: 1,
+                siblings_raw: vec![],
+            },
+        )
+        .unwrap();
     assert_eq!(coinbase_included.height(), 1);
     assert_eq!(coinbase_included.block_id(), seg.tip().id);
     assert_eq!(coinbase_included.legacy_type_hint(), None);
-    assert_eq!(hex(&coinbase_included.txid_display()),
-        "0e3e2357e806b6cdb1f70b54c3a3a17b6714ee1f0e68bebb44a74b1efd512098");
+    assert_eq!(
+        hex(&coinbase_included.txid_display()),
+        "0e3e2357e806b6cdb1f70b54c3a3a17b6714ee1f0e68bebb44a74b1efd512098"
+    );
     assert_eq!(chain.checkpoint().timestamp, 1231469665);
     assert_eq!(chain.checkpoint().first_period_timestamp, 1231006505);
     assert_eq!(chain.checkpoint().prior_timestamps.len(), 2);
@@ -113,12 +124,20 @@ fn actual_genesis_and_block_one_validate_pow_link_mtp_and_accumulated_work() {
     // The stronger cross-root audit path accepts only opaque work receipts
     // produced by the nBits/MTP verifier, with explicit anchor provenance.
     let mut receipt_chain = previous.clone();
-    let work_receipt = receipt_chain.extend_with_work_receipt(&[header(BLOCK_ONE)]).unwrap();
+    let work_receipt = receipt_chain
+        .extend_with_work_receipt(&[header(BLOCK_ONE)])
+        .unwrap();
     assert_eq!(work_receipt.anchor_status(), AnchorStatus::PublishedGenesis);
     assert_eq!(work_receipt.checked_headers().anchor(), previous.tip());
     assert_eq!(work_receipt.checked_headers().tip(), chain.tip());
-    assert_eq!(work_receipt.work_before(), previous.checkpoint().cumulative_work);
-    assert_eq!(work_receipt.work_after(), chain.checkpoint().cumulative_work);
+    assert_eq!(
+        work_receipt.work_before(),
+        previous.checkpoint().cumulative_work
+    );
+    assert_eq!(
+        work_receipt.work_after(),
+        chain.checkpoint().cumulative_work
+    );
     assert_ne!(work_receipt.work_before(), work_receipt.work_after());
 
     let same = MainnetWorkChain::from_published_genesis(&header(GENESIS)).unwrap();
@@ -242,7 +261,6 @@ fn forged_checkpoint_shape_and_cross_anchor_comparison_fail_closed() {
     ));
 }
 
-
 #[test]
 fn twenty_five_python_bigint_vectors_cover_full_u256_chainwork_width() {
     let mut checked = 0;
@@ -258,10 +276,12 @@ fn twenty_five_python_bigint_vectors_cover_full_u256_chainwork_width() {
     }
     assert_eq!(checked, 25);
     for bits in [0u32, 0x1d80ffff, 0x1d000000, 0x1e00ffff, 0x2100ffff] {
-        assert!(mainnet_block_proof_work(bits).is_err(), "invalid bits: {bits:08x}");
+        assert!(
+            mainnet_block_proof_work(bits).is_err(),
+            "invalid bits: {bits:08x}"
+        );
     }
 }
-
 
 struct SyntheticNoTransactions;
 impl TrustedProtocolAdapter for SyntheticNoTransactions {
@@ -269,7 +289,10 @@ impl TrustedProtocolAdapter for SyntheticNoTransactions {
         Ok(())
     }
     fn authenticate_and_decode(
-        &self, _: ChainId, _: &BlockHeader, _: &[u8],
+        &self,
+        _: ChainId,
+        _: &BlockHeader,
+        _: &[u8],
     ) -> Result<Option<AuthenticatedProtocolOperation>, String> {
         Ok(None)
     }
@@ -282,15 +305,24 @@ fn mock_digest(byte: u8) -> Digest {
 #[test]
 fn genuine_mainnet_merkle_inclusion_cannot_impersonate_a_trade_layer_receipt() {
     let mut chain = MainnetWorkChain::from_published_genesis(&header(GENESIS)).unwrap();
-    let receipt = chain.extend_with_work_receipt(&[header(BLOCK_ONE)]).unwrap();
+    let receipt = chain
+        .extend_with_work_receipt(&[header(BLOCK_ONE)])
+        .unwrap();
     assert_eq!(receipt.anchor_status(), AnchorStatus::PublishedGenesis);
-    let coinbase = decode_hex(include_str!("../fixtures/bitcoin_mainnet_block1_coinbase.hex")
-        .trim()).unwrap();
-    let included = receipt.checked_headers().check_transaction_inclusion(
-        1, &coinbase, &MerklePath {
-            tx_index: 0, tx_count: 1, siblings_raw: Vec::new(),
-        },
-    ).unwrap();
+    let coinbase =
+        decode_hex(include_str!("../fixtures/bitcoin_mainnet_block1_coinbase.hex").trim()).unwrap();
+    let included = receipt
+        .checked_headers()
+        .check_transaction_inclusion(
+            1,
+            &coinbase,
+            &MerklePath {
+                tx_index: 0,
+                tx_count: 1,
+                siblings_raw: Vec::new(),
+            },
+        )
+        .unwrap();
     assert_eq!(included.legacy_type_hint(), None);
 
     // Deliberately invent a zkTL batch claiming the genuine Bitcoin coinbase
@@ -329,19 +361,27 @@ fn genuine_mainnet_merkle_inclusion_cannot_impersonate_a_trade_layer_receipt() {
     let namespace = ChainId([7; 32]);
     let anchor = receipt.checked_headers().anchor();
     let prior = UnifiedChainState::new_unverified(
-        namespace, anchor, AccountId::try_from("admin").unwrap(), 2,
-    ).unwrap();
+        namespace,
+        anchor,
+        AccountId::try_from("admin").unwrap(),
+        2,
+    )
+    .unwrap();
     let mut next = prior.clone();
-    next.apply_block(&CandidateBlock {
-        chain: namespace,
-        header: BlockHeader {
-            height: 1, id: receipt.checked_headers().tip().id, parent: anchor.id,
+    next.apply_block(
+        &CandidateBlock {
+            chain: namespace,
+            header: BlockHeader {
+                height: 1,
+                id: receipt.checked_headers().tip().id,
+                parent: anchor.id,
+            },
+            raw_transactions: Vec::new(),
         },
-        raw_transactions: Vec::new(),
-    }, &SyntheticNoTransactions).unwrap();
-    let statement = TransitionStatement::from_reversible_states_unverified(
-        &prior, &next,
-    ).unwrap();
+        &SyntheticNoTransactions,
+    )
+    .unwrap();
+    let statement = TransitionStatement::from_reversible_states_unverified(&prior, &next).unwrap();
     let expected = ExpectedChainRange {
         chain: namespace,
         anchor,
@@ -350,7 +390,11 @@ fn genuine_mainnet_merkle_inclusion_cannot_impersonate_a_trade_layer_receipt() {
 
     assert!(matches!(
         reconcile_mainnet_work_headers_unverified(
-            &batch, &[statement], &receipt, &[included], expected,
+            &batch,
+            &[statement],
+            &receipt,
+            &[included],
+            expected,
         ),
         Err(BridgeError::ReceiptMismatch)
     ));
