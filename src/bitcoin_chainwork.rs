@@ -300,6 +300,17 @@ impl MainnetWorkChain {
     pub fn checkpoint(&self) -> &ClaimedMainnetCheckpoint { &self.current }
     pub fn anchor_status(&self) -> AnchorStatus { self.source }
     pub fn tip(&self) -> Tip { self.current.tip }
+    pub fn expected_next_bits(&self) -> Result<u32, WorkError> {
+        let next = self.current.tip.height.checked_add(1).ok_or(WorkError::InvalidCheckpoint)?;
+        if next.is_multiple_of(MAINNET_ADJUSTMENT_INTERVAL) {
+            mainnet_retarget_bits(
+                self.current.bits, self.current.first_period_timestamp,
+                self.current.timestamp,
+            )
+        } else {
+            Ok(self.current.bits)
+        }
+    }
 
     pub fn compare_work_since_same_anchor(
         &self,
