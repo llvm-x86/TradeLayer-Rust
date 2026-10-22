@@ -286,3 +286,29 @@ replay, zkTL-to-TLPS semantic state mapping and real STWO proof validation.
 All input observations in this stage are untrusted assertions.
 
 See [docs/TLPT_ZKTL_ALIGNMENT.md](docs/TLPT_ZKTL_ALIGNMENT.md).
+
+
+## Stage 16: Bitcoin SHA256d header and txid Merkle evidence (offline)
+
+- Introduce a Bitcoin SHA256d header checker with bounded nBits target
+  decoding, independently derived 80-byte header hashes, target ceiling,
+  PoW comparison and parent-hash continuity from an **external anchor**.
+- Independently derive strict Bitcoin-family non-witness txids,
+  including SegWit stripping; validate complete txid Merkle paths,
+  declared block indices, odd-level padding and mutation rejection.
+- Add an opaque checked-inclusion data type with a single syntactically
+  valid legacy TradeLayer type hint (no sender or consensus authority).
+- Add Stage 15 cross-namespace reconciliation that derives receipt
+  ID/type/ordering from these inclusion objects rather than from
+  freely declared observation fields; commit full-block indices and
+  header roots to a separate audit digest.
+- Pin Bitcoin-mainnet genesis header/coinbase against published hashes,
+  and test multi-sibling inclusion and zkTL metadata binding against
+  conspicuously **synthetic regtest-like headers**.
+
+Still blocked: active-best-chain selection, retarget/MTP, validated
+coinbase/block contents, script/UTXO/spend authority, trusted chain
+anchors, real Litecoin/Dogecoin Scrypt PoW, independent SHA256 audit,
+confirmed TradeLayer archive traces and real Cairo/STWO economics.
+
+See [docs/BITCOIN_SPV_INCLUSION.md](docs/BITCOIN_SPV_INCLUSION.md).
