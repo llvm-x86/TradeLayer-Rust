@@ -359,7 +359,9 @@ mod tests {
         let wire = format!("tl00,{base36_hash}");
         let tx = parse_typed(&wire).unwrap();
         match tx {
-            ParsedTransaction::Activate { code_hash_base36, .. } => {
+            ParsedTransaction::Activate {
+                code_hash_base36, ..
+            } => {
                 assert_eq!(code_hash_base36, base36_hash);
             }
             other => panic!("expected activation, got {other:?}"),
