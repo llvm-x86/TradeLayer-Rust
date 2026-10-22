@@ -382,23 +382,50 @@ impl ProtocolState {
                 )?;
             }
             ProtocolOperation::ChannelNetSettle {
-                id, payer_side, amount_atoms, trade_reference, expiry_height,
+                id,
+                payer_side,
+                amount_atoms,
+                trade_reference,
+                expiry_height,
             } => {
                 self.assert_activated(ty, height)?;
-                self.ledger.apply(txid, Operation::ChannelNetClaim {
-                    id, channel: actor, payer_side, amount_atoms,
-                    trade_reference, height, expiry_height,
-                })?;
+                self.ledger.apply(
+                    txid,
+                    Operation::ChannelNetClaim {
+                        id,
+                        channel: actor,
+                        payer_side,
+                        amount_atoms,
+                        trade_reference,
+                        height,
+                        expiry_height,
+                    },
+                )?;
             }
             ProtocolOperation::ChannelKingSettle {
-                id, start_height, end_height, expected_root,
-                expected_count, payer_side, net_atoms,
+                id,
+                start_height,
+                end_height,
+                expected_root,
+                expected_count,
+                payer_side,
+                net_atoms,
             } => {
                 self.assert_activated(ty, height)?;
-                self.ledger.apply(txid, Operation::ChannelKingSettle {
-                    id, channel: actor, start_height, end_height, settled_at: height,
-                    expected_root, expected_count, payer_side, net_atoms,
-                })?;
+                self.ledger.apply(
+                    txid,
+                    Operation::ChannelKingSettle {
+                        id,
+                        channel: actor,
+                        start_height,
+                        end_height,
+                        settled_at: height,
+                        expected_root,
+                        expected_count,
+                        payer_side,
+                        net_atoms,
+                    },
+                )?;
             }
         }
         self.last_height = Some(height);
