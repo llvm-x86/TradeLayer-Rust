@@ -50,6 +50,8 @@ jobs:
         run: python3 scripts/audit_bitcoin_spv_vectors.py
       - name: Bitcoin mainnet bigint chainwork and retarget audit
         run: python3 scripts/audit_bitcoin_chainwork.py
+      - name: Independent historical mainnet fork fixture audit
+        run: python3 scripts/audit_bitcoin_forks.py
       - name: Historical Bitcoin genesis-to-block1 CLI header work smoke test
         run: |
           cargo run --locked --bin tradelayer-bitcoin-work -- fixtures/bitcoin_mainnet_genesis_block1_headers.txt > /tmp/bitcoin-work-report.txt
