@@ -92,6 +92,13 @@ fn two_sided_netting_journal_moves_only_net_value_and_preserves_supply() {
     assert_eq!(expected.count, 2);
     assert_eq!(expected.payer_side, ChannelSide::A);
     assert_eq!(expected.net_atoms, 20);
+    // Independently computed SHA-256 transcript vector (domain, channel,
+    // property, block range and both txid-ordered claim records).
+    let root_hex: String = expected.root.iter().map(|b| format!("{b:02x}")).collect();
+    assert_eq!(
+        root_hex,
+        "be4790c41a1cf81c0f89f3df2405e8f2b5062d2c0b035d4dea7670172b603e3f"
+    );
     let initial = s.clone();
     s.apply_unverified(tx(8, "chan", 106, king(&expected, 104, 105))).unwrap();
     assert_balances(&s, 80, 120);
@@ -307,4 +314,31 @@ fn unified_chain_checkpoint_and_reorg_restore_sweep_and_consumed_claims() {
     assert_balances(state.state(), 100, 100);
     state.apply_block(&block(state.tip(), 107, &[8]), &fake).unwrap();
     assert_balances(state.state(), 80, 120);
+}
+
+
+fn checksum(data: &[u8]) -> u32 {
+    let mut crc = !0u32;
+    for &byte in data {
+        crc ^= u32::from(byte);
+        for _ in 0..8 {
+            crc = (crc >> 1) ^ (0xedb8_8320 & 0u32.wrapping_sub(crc & 1));
+        }
+    }
+    !crc
+}
+
+#[test]
+fn valid_crc_does_not_authorize_a_forged_receipt_root() {
+    let mut s = funded();
+    s.apply_unverified(tx(6, "chan", 104, claim(ChannelSide::A, 17, 40, 200))).unwrap();
+    let expected = preview(&s, 104, 104, 105);
+    s.apply_unverified(tx(7, "chan", 105, king(&expected, 104, 104))).unwrap();
+    let mut bytes = s.ledger().snapshot_bytes().unwrap();
+    let root_at = bytes.windows(32).position(|slice| slice == expected.root).unwrap();
+    bytes[root_at] ^= 1;
+    let tail = bytes.len() - 4;
+    let new_crc = checksum(&bytes[..tail]);
+    bytes[tail..].copy_from_slice(&new_crc.to_be_bytes());
+    assert!(tradelayer_core::ledger::Ledger::from_snapshot_bytes(&bytes).is_err());
 }
