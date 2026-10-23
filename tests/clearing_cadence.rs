@@ -121,11 +121,11 @@ fn scheduled_empty_block_only_forces_catchup_at_ten_thousand_multiples() {
     for height in [24u64, 240, 480, 960, 9_984, 10_000, 30_000, 60_000] {
         let catchup = project_end_block(ReplayPath::CatchUp, height, &[]).unwrap();
         let realtime = project_end_block(ReplayPath::RealTime, height, &[]).unwrap();
-        assert_eq!(catchup.clearing_called, height % 10_000 == 0);
+        assert_eq!(catchup.clearing_called, height.is_multiple_of(10_000));
         assert!(!realtime.clearing_called);
         assert_eq!(
             catchup.funding_attempted,
-            height % 10_000 == 0 && height % 24 == 0
+            height.is_multiple_of(10_000) && height.is_multiple_of(24)
         );
         assert!(!realtime.funding_attempted);
         assert!(!catchup.withdrawals_attempted || catchup.clearing_called);
