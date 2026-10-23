@@ -36,6 +36,8 @@ jobs:
         run: cargo clippy --all-targets --locked -- -D warnings
       - name: Run tests
         run: cargo test --locked
+      - name: Native wallet-key Ord and binary-search cross-language oracle
+        run: python3 scripts/audit_native_wallet_order.py
       - name: Legacy withdrawal amount mismatch audit
         run: node scripts/audit_legacy_withdrawal_codec.cjs
       - name: Legacy wire vector audit

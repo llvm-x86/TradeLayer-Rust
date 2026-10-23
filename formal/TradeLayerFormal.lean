@@ -3717,4 +3717,108 @@ theorem native_encoded_sorted_lookup_refines
       native_encoded_linear_get_matches_original
         rows query validQuery validRows
 
+
+/-!
+## Stage 14: full native wallet-key lower-bound index refinement
+
+For any finite native wallet book with valid 1–90-byte account identifiers,
+the midpoint search on their exact base-257 key ranks has precisely the
+same insertion index as an independent linear scan of the original typed
+keys. This is a mathematical comparator/index correctness contract, not
+a machine-level proof of Rust Ord, binary_search_by or Vec shifts.
+-/
+
+/-- Independently count native composite keys preceding a query, without
+constructing any numeric ranks or binary-search trees. -/
+def nativeAccountCountBefore :
+    List (NativeAccountKey × Nat) → NativeAccountKey → Nat
+  | [], _ => 0
+  | (key, _) :: tail, query =>
+      (if NativeAccountLess key query then 1 else 0) +
+        nativeAccountCountBefore tail query
+
+theorem native_account_lower_bound_count_refines
+    (rows : List (NativeAccountKey × Nat)) :
+    ∀ (query : NativeAccountKey),
+      (∀ entry ∈ rows, ValidAccountBytes entry.1.accountBytes) →
+      ValidAccountBytes query.accountBytes →
+      columnCountBefore (encodeNativeRows rows)
+          (encodeNativeAccount query) =
+        nativeAccountCountBefore rows query := by
+  induction rows with
+  | nil =>
+      intro query _ _
+      rfl
+  | cons pair tail ih =>
+      rcases pair with ⟨key, atoms⟩
+      intro query validRows validQuery
+      have validHead : ValidAccountBytes key.accountBytes :=
+        validRows (key, atoms) (by simp)
+      have validTail :
+          ∀ entry ∈ tail, ValidAccountBytes entry.1.accountBytes := by
+        intro entry member
+        exact validRows entry (List.mem_cons.mpr (Or.inr member))
+      have rankCompare :
+          (encodeNativeAccount key < encodeNativeAccount query) ↔
+            NativeAccountLess key query :=
+        (native_account_less_iff_rank key query validHead validQuery).symm
+      have tailResult := ih query validTail validQuery
+      by_cases before : NativeAccountLess key query
+      · have encodedBefore := rankCompare.mpr before
+        simpa [encodeNativeRows, columnCountBefore,
+          nativeAccountCountBefore, before, encodedBefore] using tailResult
+      · have encodedNotBefore :
+            ¬ encodeNativeAccount key < encodeNativeAccount query :=
+          fun h => before (rankCompare.mp h)
+        simpa [encodeNativeRows, columnCountBefore,
+          nativeAccountCountBefore, before, encodedNotBefore] using tailResult
+
+theorem native_midpoint_lower_bound_matches_native_scan
+    (rows : List (NativeAccountKey × Nat)) (query : NativeAccountKey)
+    (nativeSorted : NativeAccountSorted rows)
+    (validRows : ∀ entry ∈ rows, ValidAccountBytes entry.1.accountBytes)
+    (validQuery : ValidAccountBytes query.accountBytes) :
+    midpointColumnLowerBound (encodeNativeRows rows)
+        (encodeNativeAccount query) =
+      nativeAccountCountBefore rows query := by
+  have sorted :=
+    native_account_sorted_embeds_in_nat rows nativeSorted validRows
+  rw [midpoint_column_lower_bound_is_exact _ _ sorted]
+  exact native_account_lower_bound_count_refines
+    rows query validRows validQuery
+
+/-- Both the exact lower-bound insertion position and lookup value are
+preserved after mapping a native composite-key wallet book into the
+proved midpoint-search representation. -/
+theorem native_midpoint_lookup_and_index_refine
+    (rows : List (NativeAccountKey × Nat)) (query : NativeAccountKey)
+    (nativeSorted : NativeAccountSorted rows)
+    (validRows : ∀ entry ∈ rows, ValidAccountBytes entry.1.accountBytes)
+    (validQuery : ValidAccountBytes query.accountBytes) :
+    midpointColumnLowerBound (encodeNativeRows rows)
+        (encodeNativeAccount query) =
+      nativeAccountCountBefore rows query ∧
+    midpointColumnRead (encodeNativeRows rows)
+        (encodeNativeAccount query) =
+      nativeAccountLinearGet rows query := by
+  refine ⟨native_midpoint_lower_bound_matches_native_scan
+      rows query nativeSorted validRows validQuery, ?_⟩
+  have sorted :=
+    native_account_sorted_embeds_in_nat rows nativeSorted validRows
+  rw [midpoint_column_read_equals_sorted_vec _ _ sorted]
+  exact native_encoded_sorted_lookup_refines
+    rows query nativeSorted validRows validQuery
+
+theorem native_midpoint_lower_bound_is_within_support
+    (rows : List (NativeAccountKey × Nat)) (query : NativeAccountKey)
+    (nativeSorted : NativeAccountSorted rows)
+    (validRows : ∀ entry ∈ rows, ValidAccountBytes entry.1.accountBytes) :
+    midpointColumnLowerBound (encodeNativeRows rows)
+        (encodeNativeAccount query) ≤ rows.length := by
+  have sorted :=
+    native_account_sorted_embeds_in_nat rows nativeSorted validRows
+  have bounded := midpoint_lower_bound_within_length
+    (encodeNativeRows rows) (encodeNativeAccount query) sorted
+  simpa [encodeNativeRows] using bounded
+
 end TradeLayerFormal

@@ -22,5 +22,6 @@ rustfmt --check --edition 2021 \
 cargo clippy --all-targets --locked -- -D warnings
 if [[ "$mode" == "--full" ]]; then
   cargo test --locked
+  python3 scripts/audit_native_wallet_order.py
 fi
 echo "Rust CI preflight passed ($mode). GitHub still runs network, Lean and Kani gates."
