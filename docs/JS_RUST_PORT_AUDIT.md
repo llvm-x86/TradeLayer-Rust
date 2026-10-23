@@ -2,7 +2,7 @@
 
 **Pin:** `tradelayer.js` `dca0888b`; Rust candidate PR #29 `c5cdd450`. **Coverage:** 315 tracked JS repository files, 50 `src/` files (49 modules plus experimental README), and the separate server entry point.
 
-This is a file-presence and implementation-scope audit. 20 `src/` files have partial Rust analogues; 4 have only read-only evidence tooling; 25 are unported; the remaining `src` entry is an experimental README. None has verified mainnet consensus parity. Tests, utilities, fixtures, bundled binaries and docs have distinct migration roles.
+This is a file-presence and implementation-scope audit. 21 `src/` files have partial Rust analogues; 4 have only read-only evidence tooling; 24 are unported; the remaining `src` entry is an experimental README. None has verified mainnet consensus parity. Tests, utilities, fixtures, bundled binaries and docs have distinct migration roles.
 
 ## Source-module matrix
 
@@ -17,7 +17,7 @@ This is a file-presence and implementation-scope audit. 20 `src/` files have par
 | `src/bitvmCache.js` | Unported | `—` | BitVM integrations |
 | `src/bitvmRisk.js` | Unported | `—` | BitVM risk |
 | `src/channels.js` | Partial Rust analogue | `src/ledger_channels_impl.rs + src/unified_chain.rs` | Escrow and withdrawals subset only; absent joint executor; prototype or subset, historical mainnet parity unverified |
-| `src/clearing.js` | Unported | `—` | PNL, settlement and clearing engine |
+| `src/clearing.js` | Partial Rust analogue | `src/clearing_math.rs` | Pure loss coverage, integer funding deadband and mark-to-mark PnL only; full clearing and settlement remain unported |
 | `src/clearlist.js` | Partial Rust analogue | `src/registry.rs` | Restricted registry whitelist/attestation subset; prototype or subset, historical mainnet parity unverified |
 | `src/client.js` | Evidence tooling only | `src/litecoin_evidence.rs + scripts/litecoin_node_inspect.py` | RPC inspection only, no node client port |
 | `src/consensus.js` | Partial Rust analogue | `src/chain.rs + src/joint_chain.rs + src/state_commitment.rs` | Simulated transitions, history and checkpoints; authentic historical consensus outstanding; prototype or subset, hi... |
@@ -89,3 +89,18 @@ This is a file-presence and implementation-scope audit. 20 `src/` files have par
 - Tracking issue: https://github.com/patrickdugan/TradeLayer-Rust/issues/28
 
 All 315 paths and Git tree byte sizes were individually recorded. Core mappings follow the curated prior audit and Rust documentation. Utility and test statuses are mainly based on filename and directory roles, labelled in the companion CSV. Those rows need source review before assigning exact 1:1 parity.
+
+## Stage 24A addendum (23 October 2026)
+
+[PR #32](https://github.com/patrickdugan/TradeLayer-Rust/pull/32)
+introduced the first isolated numeric slice from legacy `src/clearing.js`,
+merged at `2811dcca`. Its new `src/clearing_math.rs` tests option-adjusted
+loss coverage, funding basis-point deadband, and bounded linear/inverse PnL
+with deliberate legacy 20dp-vs-exact reciprocal rounding modes. All 15
+vectors are synthetic, independently calculated with Node BigInt. Existing
+settlement and liquidation remain inaccessible from this module.
+
+The core-source status count is now **21 partial / 4 evidence-only /
+24 unported / 1 non-code README**. Other rows retain the original Stage
+23B/C assessment commit for reproducibility; the clearing row identifies
+the newer Stage 24A merge commit.
