@@ -125,6 +125,8 @@ class SourceTraceTests(unittest.TestCase):
         self.assertEqual(source["address"]["address"], "Lsender")
         self.assertEqual(source["address"]["status"], "legacy-exact")
         self.assertEqual([r["vout"] for r in item["indexed_reference_outputs_0_1"]], [1])
+        self.assertEqual(item["indexed_reference_outputs_0_1"][0]["address"]
+                         ["legacy_js_selected_address"], "Lreference")
         self.assertEqual(item["last_non_nulldata_reference"]["vout"], 2)
         self.assertEqual(item["last_non_nulldata_reference"]["address"]["status"], "modern-only")
         self.assertEqual(result["corpus_sha256"],
@@ -183,7 +185,9 @@ class SourceTraceTests(unittest.TestCase):
         node = FakeHistory()
         _, manifest = self.scan(node)
         node.parent["vout"][0]["scriptPubKey"]["addresses"] = ["a", "b"]
-        self.assertEqual(trace.script_address(node.parent["vout"][0]["scriptPubKey"])["status"], "ambiguous")
+        ambiguous = trace.script_address(node.parent["vout"][0]["scriptPubKey"])
+        self.assertEqual(ambiguous["status"], "ambiguous")
+        self.assertEqual(ambiguous["legacy_js_selected_address"], "a")
         node.parent["vout"][0]["scriptPubKey"]["addresses"] = ["a"]
         node.parent["vout"][0]["scriptPubKey"]["address"] = "b"
         self.assertEqual(trace.script_address(node.parent["vout"][0]["scriptPubKey"])["status"], "schema-conflict")
