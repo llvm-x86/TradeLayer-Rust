@@ -16,6 +16,24 @@ cargo clippy --all-targets --locked -- -D warnings
 
 The toolchain is pinned in `rust-toolchain.toml` and the crate has **zero third-party dependencies**. `Cargo.lock` is committed.
 
+### Supply-chain admission gate
+
+The consensus crate's **zero-third-party-crate baseline is now enforced**, not merely descriptive. CI and local Cargo builds refuse network resolution or lockfile updates; every PR runs a standard-library-only dependency gate and adversarial policy tests:
+
+```sh
+python3 scripts/check_rust_supply_chain.py
+python3 -m unittest discover -s tests -p test_rust_supply_chain.py -v
+cargo test --frozen
+```
+
+New dependencies, Git/path sources, build scripts, extra Cargo packages,
+toolchain upgrades and feature changes require an explicit, reviewed policy
+revision. When external code becomes unavoidable for storage, crypto, or
+transport, isolate it in an adapter with exact version pins, lockfile
+checksums, reviewed vendored source and independent audit. No crate has been
+admitted yet. See [Rust supply-chain policy](security/RUST_SUPPLY_CHAIN.md).
+
+
 ## Stage 22: One ledger per TradeLayer for registry and spot replay
 
 The new `JointProtocolState` owns a single `SpotExchange` whose token
