@@ -29,9 +29,24 @@ pub(crate) fn move_atoms(
     Ok((debit - amount, credited))
 }
 
+
+/** Add two contributions to the same property's issued-supply account.
+ * Returned None means u128 overflow; no implicit wrapping is allowed. */
+pub(crate) fn checked_supply_add(prior: u128, atoms: u128) -> Option<u128> {
+    prior.checked_add(atoms)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+
+    #[test]
+    fn supply_add_bounds_are_exact() {
+        assert_eq!(checked_supply_add(0, u128::MAX), Some(u128::MAX));
+        assert_eq!(checked_supply_add(u128::MAX, 1), None);
+        assert_eq!(checked_supply_add(100, 200), Some(300));
+    }
 
     #[test]
     fn movement_and_rejection_boundaries() {
@@ -76,6 +91,26 @@ mod kani_proofs {
             assert_eq!(credited - amount, credit);
             assert!(debited <= debit);
             assert!(credited >= credit);
+        }
+    }
+
+
+    /// This exact helper is used in all supply accumulation and audit rows.
+    /// Symbolic inputs span the complete representable u128 domain.
+    #[kani::proof]
+    fn checked_supply_add_is_precise_and_commutative() {
+        let prior: u128 = kani::any();
+        let atoms: u128 = kani::any();
+        let sum = checked_supply_add(prior, atoms);
+        assert_eq!(sum, prior.checked_add(atoms));
+        assert_eq!(sum, checked_supply_add(atoms, prior));
+        if let Some(value) = sum {
+            assert!(value >= prior);
+            assert!(value >= atoms);
+            assert_eq!(value - prior, atoms);
+            assert_eq!(value - atoms, prior);
+        } else {
+            assert!(prior > u128::MAX - atoms);
         }
     }
 

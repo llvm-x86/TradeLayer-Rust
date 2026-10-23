@@ -596,3 +596,66 @@ fn journal_sweep_preserves_other_property_and_rejects_wrong_receipt_atomically()
     let checkpoint = ledger.snapshot_bytes().unwrap();
     assert_eq!(Ledger::from_snapshot_bytes(&checkpoint).unwrap(), ledger);
 }
+
+#[test]
+fn canonical_supply_audit_tracks_arbitrary_wallet_channel_and_pending_columns() {
+    use tradelayer_core::ledger::{ChannelSide, SupplyAuditRow};
+
+    let mut ledger = Ledger::new();
+    ledger.apply(tx(1), create(7, PropertyKind::Fixed, 1000)).unwrap();
+    ledger.apply(tx(2), send(7, "alice", "bob", 400)).unwrap();
+    ledger.apply(tx(3), send(7, "bob", "carol", 100)).unwrap();
+    ledger
+        .apply(tx(4), Operation::ChannelCommit {
+            id: p(7), owner: a("bob"), channel: a("chan"),
+            side: ChannelSide::A, amount_atoms: 150,
+        }).unwrap();
+    ledger
+        .apply(tx(5), Operation::ChannelCommit {
+            id: p(7), owner: a("carol"), channel: a("chan"),
+            side: ChannelSide::B, amount_atoms: 60,
+        }).unwrap();
+    ledger
+        .apply(tx(6), Operation::ChannelWithdraw {
+            id: p(7), owner: a("bob"), channel: a("chan"),
+            side: ChannelSide::A, amount_atoms: 35,
+            unlock_height: 150,
+        }).unwrap();
+
+    ledger.apply(tx(7), create(8, PropertyKind::Managed, 500)).unwrap();
+    ledger
+        .apply(tx(8), Operation::Mint {
+            id: p(8), issuer: a("alice"), to: a("bob"), amount_atoms: 70,
+        }).unwrap();
+    ledger.apply(tx(9), send(8, "alice", "carol", 30)).unwrap();
+
+    let expected = vec![
+        SupplyAuditRow {
+            property: p(7), total_supply_atoms: 1000,
+            available_atoms: 790, escrow_atoms: 175,
+            pending_withdrawal_atoms: 35,
+        },
+        SupplyAuditRow {
+            property: p(8), total_supply_atoms: 570,
+            available_atoms: 570, escrow_atoms: 0,
+            pending_withdrawal_atoms: 0,
+        },
+    ];
+    assert_eq!(ledger.supply_audit_rows_unverified().unwrap(), expected);
+    assert_eq!(ledger.verify_conservation(), Ok(()));
+    let snapshot = ledger.snapshot_bytes().unwrap();
+    let reloaded = Ledger::from_snapshot_bytes(&snapshot).unwrap();
+    assert_eq!(reloaded, ledger);
+    assert_eq!(reloaded.supply_audit_rows_unverified().unwrap(), expected);
+
+    let immutable = ledger.clone();
+    assert_eq!(ledger.settle_due_withdrawals_unverified(149), Ok(0));
+    assert_eq!(ledger, immutable);
+    assert_eq!(ledger.settle_due_withdrawals_unverified(150), Ok(1));
+    let mut matured = expected;
+    matured[0].available_atoms += 35;
+    matured[0].pending_withdrawal_atoms = 0;
+    assert_eq!(ledger.supply_audit_rows_unverified().unwrap(), matured);
+    assert_eq!(ledger.pending_withdrawal_count(), 0);
+    assert_eq!(ledger.verify_conservation(), Ok(()));
+}

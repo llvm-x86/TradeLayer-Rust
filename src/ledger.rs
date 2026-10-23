@@ -95,6 +95,18 @@ pub struct Property {
     pub total_supply_atoms: u128,
 }
 
+
+/** A read-only summary of where the issued atoms for one property live.
+ * This is a deterministic audit projection, not a chain-authenticated proof. */
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SupplyAuditRow {
+    pub property: PropertyId,
+    pub total_supply_atoms: u128,
+    pub available_atoms: u128,
+    pub escrow_atoms: u128,
+    pub pending_withdrawal_atoms: u128,
+}
+
 /// Explicit ledger operations, intentionally separate from wire transaction
 /// parsing and from the chain's actual transaction-type authorization policy.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -618,6 +630,71 @@ impl Ledger {
         }
     }
 
+    /// Return canonical, property-ordered partitions of every minted unit.
+    /// Only reports states that already pass all of the ledger's structural
+    /// and journal invariants. Independent chain and signer authentication
+    /// remain external obligations.
+    pub fn supply_audit_rows_unverified(&self) -> Result<Vec<SupplyAuditRow>, LedgerError> {
+        self.verify_conservation()?;
+        let mut rows: BTreeMap<PropertyId, SupplyAuditRow> = self
+            .properties
+            .iter()
+            .map(|(&id, p)| {
+                (
+                    id,
+                    SupplyAuditRow {
+                        property: id,
+                        total_supply_atoms: p.total_supply_atoms,
+                        available_atoms: 0,
+                        escrow_atoms: 0,
+                        pending_withdrawal_atoms: 0,
+                    },
+                )
+            })
+            .collect();
+        for ((id, _owner), &atoms) in &self.available {
+            let row = rows.get_mut(id).ok_or(LedgerError::BalanceWithoutProperty(*id))?;
+            row.available_atoms = crate::checked_amounts::checked_supply_add(
+                row.available_atoms, atoms,
+            )
+            .ok_or(LedgerError::ArithmeticOverflow)?;
+        }
+        for channel in self.channels.values() {
+            for side in [ChannelSide::A, ChannelSide::B] {
+                for (&id, &atoms) in channel.escrow(side) {
+                    let row = rows.get_mut(&id).ok_or(LedgerError::BalanceWithoutProperty(id))?;
+                    row.escrow_atoms = crate::checked_amounts::checked_supply_add(
+                        row.escrow_atoms, atoms,
+                    )
+                    .ok_or(LedgerError::ArithmeticOverflow)?;
+                }
+            }
+        }
+        for reserved in self.pending_withdrawals.values() {
+            let row = rows
+                .get_mut(&reserved.id)
+                .ok_or(LedgerError::BalanceWithoutProperty(reserved.id))?;
+            row.pending_withdrawal_atoms = crate::checked_amounts::checked_supply_add(
+                row.pending_withdrawal_atoms,
+                reserved.atoms,
+            )
+            .ok_or(LedgerError::ArithmeticOverflow)?;
+        }
+        for row in rows.values() {
+            let total = crate::checked_amounts::checked_supply_add(
+                row.available_atoms, row.escrow_atoms,
+            )
+            .and_then(|part| crate::checked_amounts::checked_supply_add(
+                part, row.pending_withdrawal_atoms
+            ))
+            .ok_or(LedgerError::ArithmeticOverflow)?;
+            if total != row.total_supply_atoms {
+                return Err(LedgerError::SupplyMismatch(row.property));
+            }
+        }
+        Ok(rows.into_values().collect())
+    }
+
     /// Verify that each property's issued supply equals the sum of all
     /// available balances. This first slice has no reserved or other columns.
     pub fn verify_conservation(&self) -> Result<(), LedgerError> {
@@ -632,7 +709,7 @@ impl Ledger {
             let sum = sums.get(id).copied().unwrap_or(0);
             sums.insert(
                 *id,
-                sum.checked_add(*atoms)
+                crate::checked_amounts::checked_supply_add(sum, *atoms)
                     .ok_or(LedgerError::ArithmeticOverflow)?,
             );
         }
