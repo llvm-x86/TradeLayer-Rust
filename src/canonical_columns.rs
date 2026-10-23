@@ -1,9 +1,10 @@
 //! Canonical nonzero entry policy for production balance maps.
 //!
 //! This module controls insert/replace vs delete when a balance becomes zero.
-//! The BTreeMap implementation uses the standard library directly. Kani checks
-//! the identical branch logic with a bounded symbolic store, while Rust
-//! regression tests exercise the real ordered tree and exact key ordering.
+//! Production wallet/escrow stores now use the sorted-Vec OrderedColumns
+//! backend. The BTreeMap writer remains as an independent test comparator;
+//! Kani checks the shared branch with fixed-size symbolic stores and also
+//! checks bounded operations on the actual Vec-backed production store.
 
 use crate::ordered_columns::OrderedColumns;
 use std::collections::BTreeMap;

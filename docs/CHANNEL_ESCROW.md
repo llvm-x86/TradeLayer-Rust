@@ -53,6 +53,10 @@ insufficient escrow at maturity. Stage 10 reserves immediately, to make
 the projection non-double-spendable and deterministic. Historical replay
 parity is blocked until the queue/race semantics are explicitly resolved.
 
+## Stage 9 escrow column storage
+
+Both per-channel escrow sides now use the same sorted-Vec `OrderedColumns<PropertyId>` backend as wallet balances, with a shared canonical delete-on-zero write policy. Channel ownership, pending withdrawal identities and journal/receipt BTreeMaps are unchanged. Since escrow records remain sorted by property ID, the existing versioned TLL snapshot encoding and refusal of noncanonical order remain in force. There is a linear-time insert/delete tradeoff and no claim of production-scale throughput.
+
 ## Persistence and rollbacks
 
 The ledger snapshot retains TLL version 1 for states with no channel book
