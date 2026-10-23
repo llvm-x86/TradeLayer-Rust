@@ -130,6 +130,7 @@ def script_address(script: dict) -> dict:
     else:
         status, address = "unresolved", None
     return {"status": status, "address": address,
+            "legacy_js_selected_address": older[0] if older else None,
             "legacy_addresses": older, "modern_address": newer}
 
 
@@ -273,7 +274,7 @@ def augment_with_sources(rpc, tsv: str, manifest: dict) -> dict:
         sender = checked_parent_output(rpc, *inputs[0], height, index, cached_parents)
         # txIndex.processTransaction calls getTransactionOutputs then keeps vout 0/1.
         indexed_reference = [out for out in output_provenance[:2]
-                             if out["address"]["status"] != "unresolved"]
+                             if out["address"]["legacy_js_selected_address"] is not None]
         # txUtils.getReference instead chooses the LAST non-nulldata output.
         eligible = [out for out in output_provenance if out["script_type"] != "nulldata"]
         candidate["source_trace"] = {
