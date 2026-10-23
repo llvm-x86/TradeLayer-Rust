@@ -104,7 +104,6 @@ mod tests {
         }
     }
 
-
     #[test]
     fn canonical_write_matches_tree_on_zero_and_nonzero_balances() {
         let mut baseline = BTreeMap::new();
