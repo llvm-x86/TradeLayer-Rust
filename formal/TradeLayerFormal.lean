@@ -3215,4 +3215,115 @@ theorem midpoint_find_missing_returns_zero
   · exact zero
   · simp [zero] at missing
 
+
+/-!
+## Stage 13: full-length account byte comparator
+
+The actual Rust AccountId is 1–90 ASCII bytes, ordered lexicographically
+inside a (PropertyId, AccountId) key. To avoid a one-byte restriction, a
+base-257 fixed-width rank adds one to every encoded byte; the all-zero
+suffix is therefore an unambiguous terminator for shorter names. The
+proofs below quantify over arbitrary fuel and all bytes below 256,
+which includes all validated Rust AccountId characters.
+-/
+
+/-- Every input element is an unsigned byte; account validation imposes
+stronger printable-ASCII and 1–90-byte constraints in Rust. -/
+def AllByteDigits (bytes : List Nat) : Prop :=
+  ∀ byte ∈ bytes, byte < 256
+
+/-- Zero padding after end-of-string, positive digits for present bytes.
+Only the first `width` digits are considered; caller must prove length fits. -/
+def byteRank : Nat → List Nat → Nat
+  | 0, _ => 0
+  | _ + 1, [] => 0
+  | n + 1, byte :: tail =>
+      (byte + 1) * 257 ^ n + byteRank n tail
+
+/-- All bounded byte strings fit within the fixed radix width, leaving
+the highest digit's place value greater than every possible suffix. -/
+theorem byte_rank_bounded (width : Nat) :
+    ∀ bytes : List Nat, bytes.length ≤ width →
+      AllByteDigits bytes → byteRank width bytes < 257 ^ width := by
+  induction width with
+  | zero =>
+      intro bytes _ _
+      norm_num [byteRank]
+  | succ n ih =>
+      intro bytes fits valid
+      cases bytes with
+      | nil =>
+          have positive : 0 < 257 ^ (n + 1) := pow_pos (by omega) _
+          simpa [byteRank] using positive
+      | cons byte tail =>
+          have digitBound : byte < 256 := valid byte (by simp)
+          have tailFits : tail.length ≤ n := by
+            simpa using fits
+          have tailValid : AllByteDigits tail := by
+            intro item member
+            exact valid item (List.mem_cons.mpr (Or.inr member))
+          have small := ih tail tailFits tailValid
+          have upper :
+              (byte + 1) * 257 ^ n + byteRank n tail <
+                (byte + 2) * 257 ^ n := by
+            calc
+              (byte + 1) * 257 ^ n + byteRank n tail <
+                (byte + 1) * 257 ^ n + 257 ^ n :=
+                  Nat.add_lt_add_left small _
+              _ = (byte + 2) * 257 ^ n := by ring
+          have digitLimit : byte + 2 ≤ 257 := by omega
+          have multiplied :
+              (byte + 2) * 257 ^ n ≤ 257 * 257 ^ n :=
+            Nat.mul_le_mul_right _ digitLimit
+          change (byte + 1) * 257 ^ n + byteRank n tail <
+            257 ^ (n + 1)
+          calc
+            _ < (byte + 2) * 257 ^ n := upper
+            _ ≤ 257 * 257 ^ n := multiplied
+            _ = 257 ^ (n + 1) := by simp [pow_succ, Nat.mul_comm]
+
+/-- Any smaller leading byte beats all possible suffixes. -/
+theorem byte_rank_digit_dominates
+    (a b scale suffixA suffixB : Nat)
+    (less : a < b) (suffixFits : suffixA < scale) :
+    (a + 1) * scale + suffixA <
+      (b + 1) * scale + suffixB := by
+  have first :
+      (a + 1) * scale + suffixA < (a + 2) * scale := by
+    calc
+      (a + 1) * scale + suffixA <
+          (a + 1) * scale + scale :=
+        Nat.add_lt_add_left suffixFits _
+      _ = (a + 2) * scale := by ring
+  have digit : a + 2 ≤ b + 1 := by omega
+  have second : (a + 2) * scale ≤ (b + 1) * scale :=
+    Nat.mul_le_mul_right _ digit
+  omega
+
+/-- A padded, fixed-radix pair of unequal leading digits compares by the
+leading digit; identical digits compare by the suffix. -/
+theorem byte_rank_digits_compare
+    (a b scale suffixA suffixB : Nat)
+    (leftFits : suffixA < scale) (rightFits : suffixB < scale) :
+    ((a + 1) * scale + suffixA < (b + 1) * scale + suffixB) ↔
+      a < b ∨ (a = b ∧ suffixA < suffixB) := by
+  constructor
+  · intro less
+    by_cases first : a < b
+    · exact Or.inl first
+    · by_cases reverse : b < a
+      · have impossible :=
+          byte_rank_digit_dominates b a scale suffixB suffixA
+            reverse rightFits
+        omega
+      · have same : a = b := by omega
+        subst b
+        exact Or.inr ⟨rfl, by omega⟩
+  · intro choice
+    rcases choice with leading | ⟨same, tail⟩
+    · exact byte_rank_digit_dominates a b scale suffixA suffixB
+        leading leftFits
+    · subst b
+      omega
+
 end TradeLayerFormal
