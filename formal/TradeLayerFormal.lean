@@ -904,6 +904,7 @@ theorem column_total_put
       · subst head
         have absentTail := column_total_put_absent rest amounts key newValue noTail
         simp [columnTotal, columnPut, absentTail]
+        omega
       · have inTail : key ∈ rest := by
           have presentOrTail := List.mem_cons.mp present
           exact presentOrTail.resolve_left (by simpa [eq_comm] using same)
@@ -958,10 +959,10 @@ theorem column_move_debit
 
 theorem column_move_credit
     (amounts : Nat → Nat) (debitKey creditKey amount : Nat)
-    (distinct : debitKey ≠ creditKey) :
+    (_distinct : debitKey ≠ creditKey) :
     columnMove amounts debitKey creditKey amount creditKey =
       amounts creditKey + amount := by
-  simp [columnMove, columnPut, Ne.symm distinct]
+  simp [columnMove, columnPut]
 
 /-- The support of the actual ledger includes positive-value available
 accounts, channel escrow entries and pending withdrawal TxIds. The support
@@ -996,38 +997,38 @@ theorem finite_move_preserves_validity
   rcases good with ⟨unique, covered, conserved, bounded, supplyFits⟩
   refine ⟨unique, ?_, ?_, ?_, supplyFits⟩
   · intro key absent
+    have outside : key ∉ s.slots := by simpa [finiteMove] using absent
     have otherDebit : key ≠ debitKey := by
       intro same
-      apply absent
+      apply outside
       simpa [same] using debitPresent
     have otherCredit : key ≠ creditKey := by
       intro same
-      apply absent
+      apply outside
       simpa [same] using creditPresent
-    simpa [finiteMove, column_move_frame, otherDebit, otherCredit]
-      using covered key absent
+    change columnMove s.atoms debitKey creditKey amount key = 0
+    rw [column_move_frame s.atoms debitKey creditKey amount
+      key otherDebit otherCredit]
+    exact covered key outside
   · simpa [finiteMove] using
       (column_move_preserves_total s.slots s.atoms
         debitKey creditKey amount unique debitPresent
         creditPresent distinct funded).trans conserved
   · intro key present
+    have inSlots : key ∈ s.slots := by simpa [finiteMove] using present
+    change columnMove s.atoms debitKey creditKey amount key ≤ maxU128
     by_cases isDebit : key = debitKey
     · subst key
-      have newDebit := column_move_debit s.atoms debitKey creditKey amount distinct
-      simp only [finiteMove]
-      rw [newDebit]
+      rw [column_move_debit s.atoms debitKey creditKey amount distinct]
+      have debitBound := bounded debitKey debitPresent
       omega
     · by_cases isCredit : key = creditKey
       · subst key
-        have newCredit := column_move_credit s.atoms debitKey creditKey amount distinct
-        simp only [finiteMove]
-        rw [newCredit]
+        rw [column_move_credit s.atoms debitKey creditKey amount distinct]
         exact creditFits
-      · have unchanged := column_move_frame s.atoms debitKey creditKey amount
-          key isDebit isCredit
-        simp only [finiteMove]
-        rw [unchanged]
-        exact bounded key present
+      · rw [column_move_frame s.atoms debitKey creditKey amount
+          key isDebit isCredit]
+        exact bounded key inSlots
 
 def finiteMint (s : FiniteSupplyView) (key amount : Nat) : FiniteSupplyView :=
   { s with atoms := columnPut s.atoms key (s.atoms key + amount),

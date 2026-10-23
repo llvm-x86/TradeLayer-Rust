@@ -266,11 +266,9 @@ impl Ledger {
         if !self.properties.contains_key(&id) {
             return Err(LedgerError::BalanceWithoutProperty(id));
         }
-        let sum = crate::checked_amounts::checked_supply_add(
-            sums.get(&id).copied().unwrap_or(0),
-            atoms,
-        )
-        .ok_or(LedgerError::ArithmeticOverflow)?;
+        let sum =
+            crate::checked_amounts::checked_supply_add(sums.get(&id).copied().unwrap_or(0), atoms)
+                .ok_or(LedgerError::ArithmeticOverflow)?;
         sums.insert(id, sum);
         Ok(())
     }
