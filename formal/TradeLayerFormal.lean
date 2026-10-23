@@ -2667,7 +2667,9 @@ theorem sorted_vec_any_pivot_has_valid_bounds
   induction left with
   | nil =>
       have bound : ∀ entry ∈ right, pivot < entry.1 := sorted.1
-      exact ⟨by intro entry member; cases member, bound⟩
+      refine ⟨?_, bound⟩
+      intro entry member
+      cases member
   | cons pair tail ih =>
       rcases pair with ⟨stored, atoms⟩
       have pivotInTail : (pivot, value) ∈ tail ++ (pivot, value) :: right :=
