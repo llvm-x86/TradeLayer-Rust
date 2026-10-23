@@ -32,10 +32,18 @@ MAX_TRANSACTION_BYTES = 1_000_000
 MAX_CANDIDATES = 10_000
 NETWORK_PORTS = {"main": 9332, "test": 19332, "regtest": 19443}
 HASH_RE = re.compile(r"^[0-9a-fA-F]{64}$")
+# Read-only allowlist; no wallet, signing, broadcast, peer or config methods.
+READ_ONLY_METHODS = frozenset({"getblockchaininfo", "getblockcount", "getblockhash", "getblock",
+                               "getblockheader", "getrawtransaction", "getnetworkinfo",
+                               "getindexinfo"})
 
 
 class EvidenceError(Exception):
     pass
+
+
+class RPCMethodNotFound(EvidenceError):
+    """JSON-RPC -32601: the node predates the method. Transport loss is NOT this."""
 
 
 def require_hash(value: object, name: str) -> str:
@@ -86,8 +94,18 @@ class Cursor:
         return self.read(self.number())
 
 
-def inspect_raw_transaction(hex_value: str) -> tuple[str, list[str]]:
-    """Compute txid and exact vout scripts; handle segregated witnesses."""
+MWEB_HOGEX_NULL = b"\x00"
+
+
+def parse_transaction(hex_value: str) -> dict:
+    """Parse canonical inputs/outputs; txid excludes witness and MWEB data.
+
+    Litecoin Core (src/primitives/transaction.h at ec1b6489) adds flag 0x08
+    for MWEB data between the witness and nLockTime. A HogEx transaction
+    carries a null MWEB::Tx (a single 0x00 byte). Other MWEB payloads stay
+    opaque: only the canonical part is authenticated through the txid, and an
+    MWEB-only transaction has no canonical txid preimage, so it is refused.
+    """
     if not isinstance(hex_value, str) or len(hex_value) > MAX_TRANSACTION_BYTES * 2:
         raise EvidenceError("transaction exceeds size limit")
     try:
@@ -96,26 +114,31 @@ def inspect_raw_transaction(hex_value: str) -> tuple[str, list[str]]:
         raise EvidenceError("malformed transaction hex") from err
     cursor = Cursor(raw)
     version = cursor.read(4)
-    has_witness = raw[4:6] == b"\x00\x01"
-    if has_witness:
+    flags = 0
+    if len(raw) > 5 and raw[4] == 0:
+        flags = raw[5]
+        if flags == 0 or flags & ~0x09:
+            raise EvidenceError("unknown transaction serialization flags")
         cursor.read(2)
     start = cursor.index
     vin_count = cursor.number()
     if not 1 <= vin_count <= 100_000:
         raise EvidenceError("invalid input count")
+    inputs = []
     for _ in range(vin_count):
-        cursor.read(36)
+        prev = cursor.read(32)[::-1].hex()
+        inputs.append((prev, int.from_bytes(cursor.read(4), "little")))
         cursor.var_bytes()
         cursor.read(4)
     output_count = cursor.number()
     if not 1 <= output_count <= 100_000:
         raise EvidenceError("invalid output count")
-    scripts = []
+    outputs = []
     for _ in range(output_count):
-        cursor.read(8)
-        scripts.append(cursor.var_bytes().hex())
+        satoshis = int.from_bytes(cursor.read(8), "little")
+        outputs.append((satoshis, cursor.var_bytes().hex()))
     end = cursor.index
-    if has_witness:
+    if flags & 1:
         nonempty = False
         for _ in range(vin_count):
             witnesses = cursor.number()
@@ -125,11 +148,29 @@ def inspect_raw_transaction(hex_value: str) -> tuple[str, list[str]]:
                 nonempty |= bool(cursor.var_bytes())
         if not nonempty:
             raise EvidenceError("superfluous SegWit witness")
+    mweb = None
+    if flags & 8:
+        if len(raw) - cursor.index < 5:
+            raise EvidenceError("truncated MWEB transaction data")
+        blob = cursor.read(len(raw) - cursor.index - 4)
+        if blob == MWEB_HOGEX_NULL:
+            mweb = "hogex"
+        elif blob[0] == 1:
+            mweb = "opaque"
+        else:
+            raise EvidenceError("invalid MWEB optional-pointer tag")
     locktime = cursor.read(4)
     if cursor.index != len(raw):
         raise EvidenceError("trailing transaction bytes")
-    stripped = version + raw[start:end] + locktime if has_witness else raw
-    return sha256d(stripped)[::-1].hex(), scripts
+    stripped = version + raw[start:end] + locktime
+    return {"txid": sha256d(stripped)[::-1].hex(), "inputs": inputs,
+            "outputs": outputs, "witness": bool(flags & 1), "mweb": mweb}
+
+
+def inspect_raw_transaction(hex_value: str) -> tuple[str, list[str]]:
+    """Compute txid and exact vout scripts; handle SegWit and MWEB flags."""
+    parsed = parse_transaction(hex_value)
+    return parsed["txid"], [script for _, script in parsed["outputs"]]
 
 
 def op_return_payload(script_hex: str) -> bytes | None:
@@ -158,6 +199,32 @@ def op_return_payload(script_hex: str) -> bytes | None:
     if size != len(data) - start:
         return None
     return data[start:]
+
+
+LEGACY_JS_MARKER_HEX = "746c"
+
+
+def legacy_js_carrier(tx: dict) -> dict | None:
+    """Selection predicate of txIndex.DecodeRawTransaction at the pinned JS.
+
+    The JS examines only the FIRST output that the node decodes as
+    'nulldata', then searches its script hex for "746c" at nibble offsets
+    0..6, including odd offsets and with no push-length check. Printability
+    and payload decoding are left to the pinned JS harness; this only widens
+    collection so that JS-selected transactions are not silently dropped.
+    """
+    for position, output in enumerate(tx["vout"]):
+        script = output.get("scriptPubKey")
+        if isinstance(script, dict) and script.get("type") == "nulldata":
+            script_hex = script.get("hex")
+            if not isinstance(script_hex, str):
+                raise EvidenceError("missing output script")
+            marker = script_hex.find(LEGACY_JS_MARKER_HEX)
+            if marker == -1 or marker > 6:
+                return None
+            return {"vout": position, "marker_nibble": marker,
+                    "script_hex": script_hex.lower()}
+    return None
 
 
 def selected_candidates(tx: dict) -> list[tuple[int, bytes, str]]:
@@ -198,7 +265,7 @@ class LitecoinRPC:
         self.opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
 
     def call(self, method: str, params: list | None = None):
-        if method not in {"getblockchaininfo", "getblockcount", "getblockhash", "getblock", "getrawtransaction"}:
+        if method not in READ_ONLY_METHODS:
             raise EvidenceError("unsupported RPC method")
         data = json.dumps({"jsonrpc": "1.0", "id": "tradelayer-evidence", "method": method, "params": params or []}).encode()
         req = urllib.request.Request(self.url, data=data, headers={"Content-Type": "application/json", "Authorization": self.auth}, method="POST")
@@ -213,7 +280,12 @@ class LitecoinRPC:
             response = json.loads(payload)
         except (ValueError, UnicodeDecodeError) as err:
             raise EvidenceError("invalid RPC response") from err
-        if not isinstance(response, dict) or response.get("error") is not None:
+        if not isinstance(response, dict):
+            raise EvidenceError("invalid RPC response")
+        error = response.get("error")
+        if error is not None:
+            if isinstance(error, dict) and error.get("code") == -32601:
+                raise RPCMethodNotFound(f"RPC method {method} not available on this node")
             raise EvidenceError(f"RPC error in {method}; inspect your node logs")
         return response.get("result")
 
@@ -259,7 +331,8 @@ def scan_blocks(rpc, network: str, start: int, end: int, confirmations: int = 6)
         selected = []
         for index, tx in enumerate(txs):
             carriers = selected_candidates(tx)
-            if not carriers:
+            legacy = legacy_js_carrier(tx)
+            if not carriers and legacy is None:
                 continue
             txid = txids[index]
             raw_hex = rpc.call("getrawtransaction", [txid, False, block_hash])
@@ -268,11 +341,15 @@ def scan_blocks(rpc, network: str, start: int, end: int, confirmations: int = 6)
                 raise EvidenceError("raw txid differs from node's block txid")
             if isinstance(tx.get("hex"), str) and tx["hex"].lower() != raw_hex.lower():
                 raise EvidenceError("node returned inconsistent transaction serializations")
-            for vout, payload, decoded_script in carriers:
+            checked = [(vout, script) for vout, _, script in carriers]
+            if legacy is not None:
+                checked.append((legacy["vout"], legacy["script_hex"]))
+            for vout, decoded_script in checked:
                 if vout >= len(scripts) or scripts[vout] != decoded_script:
                     raise EvidenceError("output script differs from raw transaction bytes")
             selected.append({"txid": txid, "index": index, "raw_hex": raw_hex.lower(),
-                             "outputs": [{"vout": n, "payload_hex": p.hex(), "script_hex": s} for n, p, s in carriers]})
+                             "outputs": [{"vout": n, "payload_hex": p.hex(), "script_hex": s} for n, p, s in carriers],
+                             "legacy_js_carrier": legacy})
             if len(evidence) + len(selected) > MAX_CANDIDATES:
                 raise EvidenceError("candidate count cap reached")
         for record in selected:
@@ -280,7 +357,9 @@ def scan_blocks(rpc, network: str, start: int, end: int, confirmations: int = 6)
             rows.append("\t".join([label, chain_label, str(height), block_hash, record["txid"], record["raw_hex"]]))
             evidence.append({"label": label, "height": height, "blockhash": block_hash,
                              "transaction_position": record["index"], "txid": record["txid"],
-                             "outputs": record["outputs"]})
+                             "outputs": record["outputs"],
+                             "legacy_js_carrier": record["legacy_js_carrier"],
+                             "carrier_class": carrier_class(record)})
         block_hashes[height] = block_hash
         parent = block_hash
     # Recheck the full observed range in the node's active chain, detecting
@@ -293,6 +372,8 @@ def scan_blocks(rpc, network: str, start: int, end: int, confirmations: int = 6)
         "network": chain_label,
         "source": "local-unpruned-litecoin-core-json-rpc",
         "consensus_verified_by": "local node; not independently revalidated by this collector",
+        "selection_rules": ["rust-strict-canonical-op-return-tl-or-TLR",
+                            "legacy-js-first-nulldata-746c-nibble-0-6"],
         "merkle_root_checked": True,
         "raw_transaction_txids_checked": True,
         "raw_output_scripts_checked": True,
@@ -308,6 +389,15 @@ def scan_blocks(rpc, network: str, start: int, end: int, confirmations: int = 6)
         "transactions": evidence,
     }
     return "\n".join(rows) + "\n", manifest
+
+
+def carrier_class(record: dict) -> str:
+    """Which selection rule(s) admitted the transaction; never a validity verdict."""
+    strict = bool(record["outputs"])
+    legacy = record["legacy_js_carrier"] is not None
+    if strict and legacy:
+        return "strict-and-legacy-js"
+    return "strict-only" if strict else "legacy-js-only"
 
 
 def atomic_write(path: Path, data: str) -> None:
@@ -328,7 +418,8 @@ def default_cookie_file(network: str, home: Path | None = None) -> Path:
     """Litecoin Core's network-specific default RPC cookie location."""
     if network not in NETWORK_PORTS:
         raise EvidenceError("unsupported Litecoin network")
-    directory = {"main": "", "test": "testnet3", "regtest": "regtest"}[network]
+    # Litecoin Core src/chainparamsbase.cpp at ec1b6489: testnet uses "testnet4".
+    directory = {"main": "", "test": "testnet4", "regtest": "regtest"}[network]
     return (home if home is not None else Path.home()) / ".litecoin" / directory / ".cookie"
 
 

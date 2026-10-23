@@ -4,6 +4,7 @@ The RPC is fake and every transaction here is synthetic. Tests establish
 fidelity to source bytes and legacy address selection, never chain consensus.
 """
 import importlib.util
+import json
 from pathlib import Path
 import sys
 import unittest
@@ -75,11 +76,18 @@ class FakeHistory:
         }
         self.hash_queries = 0
         self.reorg_at = 1_000_000
+        self.txindex_synced = True
 
     def call(self, method, params=None):
         params = params or []
         if method == "getblockchaininfo":
-            return {"chain": "test", "pruned": False, "initialblockdownload": False}
+            return {"chain": "test", "pruned": False, "initialblockdownload": False,
+                    "blocks": 130, "headers": 130}
+        if method == "getnetworkinfo":
+            return {"version": 1, "subversion": "/synthetic-fake-rpc/", "protocolversion": 1,
+                    "localaddresses": [{"address": "must-not-be-recorded"}]}
+        if method == "getindexinfo":
+            return {"txindex": {"synced": self.txindex_synced, "best_block_height": 130}}
         if method == "getblockcount":
             return 130
         if method == "getblockhash":
@@ -208,6 +216,67 @@ class SourceTraceTests(unittest.TestCase):
             trace.require_satoshis("0.000000001")
         with self.assertRaises(collector.EvidenceError):
             trace.require_satoshis(-1)
+
+
+class NodeInspectionTests(unittest.TestCase):
+    def test_inspection_records_version_and_txindex_but_no_addresses(self):
+        node = FakeHistory()
+        record = trace.inspect_node(node, "test")
+        self.assertTrue(record["suitable_for_source_trace"], record["unsuitable_reasons"])
+        self.assertEqual(record["subversion"], "/synthetic-fake-rpc/")
+        self.assertEqual(record["txindex"], {"synced": True, "best_block_height": 130})
+        self.assertNotIn("must-not-be-recorded", json.dumps(record))
+        corpus, manifest = collector.scan_blocks(node, "test", 101, 101, confirmations=6)
+        result = trace.augment_with_sources(node, corpus, manifest)
+        self.assertEqual(result["node_inspection"]["genesis"], trace.PINNED_GENESIS["test"])
+        decoded = result["transactions"][0]["source_trace"]["decoded_outputs"]
+        self.assertEqual([o["vout"] for o in decoded], [0, 1, 2])
+        self.assertEqual(decoded[0]["script_type"], "nulldata")
+
+    def test_cli_report_adds_host_context_without_credentials(self):
+        sys.path.insert(0, str(SCRIPTS))
+        import litecoin_node_inspect as inspect_cli
+        record = inspect_cli.report(FakeHistory(), "test", "http://127.0.0.1:19332")
+        self.assertEqual(record["rpc_endpoint"], "http://127.0.0.1:19332")
+        self.assertIn("no independent Scrypt/PoW", record["consensus_note"])
+        self.assertTrue(record["suitable_for_source_trace"])
+
+    def test_unsynced_txindex_or_mainnet_mismatch_blocks_trace(self):
+        node = FakeHistory()
+        node.txindex_synced = False
+        corpus, manifest = collector.scan_blocks(node, "test", 101, 101, confirmations=6)
+        with self.assertRaisesRegex(collector.EvidenceError, "txindex is not synced"):
+            trace.augment_with_sources(node, corpus, manifest)
+        record = trace.inspect_node(FakeHistory(), "main")
+        self.assertFalse(record["suitable_for_source_trace"])
+        self.assertIn("chain differs from requested network", record["unsuitable_reasons"])
+
+    def test_getindexinfo_method_absent_versus_transport_loss(self):
+        node = FakeHistory()
+        original = node.call
+
+        def no_index(method, params=None):
+            if method == "getindexinfo":
+                raise collector.RPCMethodNotFound("absent")
+            return original(method, params)
+        node.call = no_index
+        self.assertEqual(trace.inspect_node(node, "test")["getindexinfo"], "unavailable")
+
+        def lost(method, params=None):
+            if method == "getindexinfo":
+                raise collector.EvidenceError("local RPC failed (getindexinfo)")
+            return original(method, params)
+        node.call = lost
+        with self.assertRaisesRegex(collector.EvidenceError, "local RPC failed"):
+            trace.inspect_node(node, "test")
+
+    def test_legacy_carrier_rechecked_against_raw_bytes(self):
+        node = FakeHistory()
+        corpus, manifest = collector.scan_blocks(node, "test", 101, 101, confirmations=6)
+        manifest["transactions"][0]["legacy_js_carrier"] = {
+            "vout": 1, "marker_nibble": 4, "script_hex": node.ref_script.hex()}
+        with self.assertRaisesRegex(collector.EvidenceError, "legacy JS carrier"):
+            trace.augment_with_sources(node, corpus, manifest)
 
 
 if __name__ == "__main__":

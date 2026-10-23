@@ -64,7 +64,7 @@ The Rust scanner recomputes txids from the raw serialized bytes and identifies
 legacy `tl` / proposed `TLR` payloads without modifying the ledger.
 
 On standard Linux installations, the collector looks for
-`~/.litecoin/testnet3/.cookie` on Litecoin testnet,
+`~/.litecoin/testnet4/.cookie` on Litecoin testnet (Litecoin Core `chainparamsbase.cpp` names its testnet directory `testnet4`),
 `~/.litecoin/regtest/.cookie` on regtest, or `~/.litecoin/.cookie`
 on mainnet. Use `--cookie-file` for alternative data directories.
 See [Litecoin Core's data directory documentation](https://github.com/litecoin-project/litecoin/blob/master/doc/files.md).

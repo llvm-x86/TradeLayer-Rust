@@ -128,7 +128,7 @@ class CollectorTests(unittest.TestCase):
     def test_core_cookie_paths(self):
         home = Path('/example/home')
         self.assertEqual(collector.default_cookie_file('test', home),
-                         home / '.litecoin' / 'testnet3' / '.cookie')
+                         home / '.litecoin' / 'testnet4' / '.cookie')
         self.assertEqual(collector.default_cookie_file('main', home),
                          home / '.litecoin' / '.cookie')
         self.assertEqual(collector.default_cookie_file('regtest', home),
@@ -148,6 +148,98 @@ class CollectorTests(unittest.TestCase):
         self.assertIsNone(collector.op_return_payload('6a02746c51'))
         self.assertIsNone(collector.op_return_payload('006a02746c'))
         self.assertIsNone(collector.op_return_payload('6a'))
+
+
+
+def synthetic_tx(scripts, flags=0, witness=None, mweb=b'', vin=1):
+    """Synthetic serialization only; never presented as chain evidence."""
+    body = bytearray([vin])
+    for _ in range(vin):
+        body += bytes(range(32)) + b'\x01\x00\x00\x00' + b'\x00' + b'\xff\xff\xff\xff'
+    body.append(len(scripts))
+    for script in scripts:
+        body += (1000).to_bytes(8, 'little') + bytes([len(script)]) + script
+    version, locktime = b'\x02\x00\x00\x00', b'\x00\x00\x00\x00'
+    legacy = version + bytes(body) + locktime
+    if not flags:
+        return legacy.hex(), legacy
+    extended = version + b'\x00' + bytes([flags]) + bytes(body)
+    if flags & 1:
+        extended += witness
+    if flags & 8:
+        extended += mweb
+    return (extended + locktime).hex(), legacy
+
+
+P2PKH = bytes.fromhex('76a914' + '11' * 20 + '88ac')
+
+
+class MwebAndLegacyCarrierTests(unittest.TestCase):
+    def test_hogex_and_opaque_mweb_txid_excludes_mweb_and_witness(self):
+        for flags, witness, mweb in [(8, None, b'\x00'), (9, b'\x01\x01\x07', b'\x00'),
+                                     (8, None, b'\x01' + b'\xee' * 40)]:
+            hex_value, legacy = synthetic_tx([P2PKH], flags, witness, mweb)
+            parsed = collector.parse_transaction(hex_value)
+            self.assertEqual(parsed['txid'], collector.sha256d(legacy)[::-1].hex())
+            self.assertEqual(parsed['outputs'], [(1000, P2PKH.hex())])
+            self.assertEqual(parsed['mweb'], 'hogex' if mweb == b'\x00' else 'opaque')
+            self.assertEqual(parsed['witness'], bool(flags & 1))
+
+    def test_malformed_mweb_and_unknown_flags_fail_closed(self):
+        cases = [(8, None, b'\x02'), (8, None, b''), (2, None, b''), (0x18, None, b'\x00')]
+        for flags, witness, mweb in cases:
+            hex_value, _ = synthetic_tx([P2PKH], flags, witness, mweb)
+            with self.assertRaises(collector.EvidenceError):
+                collector.parse_transaction(hex_value)
+        # MWEB-only: no canonical inputs, so no canonical txid preimage exists.
+        hex_value, _ = synthetic_tx([P2PKH], 8, None, b'\x01' + b'\xee' * 8, vin=0)
+        with self.assertRaisesRegex(collector.EvidenceError, 'input count'):
+            collector.parse_transaction(hex_value)
+
+    @staticmethod
+    def decoded(scripts_and_types):
+        return {'vout': [{'n': n, 'scriptPubKey': {'hex': h, 'type': ty}}
+                         for n, (h, ty) in enumerate(scripts_and_types)]}
+
+    def test_legacy_js_marker_positions(self):
+        self.assertEqual(collector.legacy_js_carrier(self.decoded([('6a04746c3141', 'nulldata')]))['marker_nibble'], 4)
+        self.assertEqual(collector.legacy_js_carrier(self.decoded([('6a4c04746c3141', 'nulldata')]))['marker_nibble'], 6)
+        self.assertEqual(collector.legacy_js_carrier(self.decoded([('6a0746c0', 'nulldata')]))['marker_nibble'], 3)
+        # A wrong-length push is still selected: JS has no push-length check.
+        self.assertEqual(collector.legacy_js_carrier(self.decoded([('6a17746c', 'nulldata')]))['marker_nibble'], 4)
+        # PUSHDATA2 puts the marker at nibble 8: JS rejects what Rust accepts.
+        pushdata2 = '6a4d0001746c' + '41' * 254
+        self.assertIsNone(collector.legacy_js_carrier(self.decoded([(pushdata2, 'nulldata')])))
+        self.assertEqual(collector.op_return_payload(pushdata2)[:2], b'tl')
+        # Only the FIRST nulldata output is examined.
+        first_only = self.decoded([('6a024142', 'nulldata'), ('6a02746c', 'nulldata')])
+        self.assertIsNone(collector.legacy_js_carrier(first_only))
+        # A non-push-only OP_RETURN is 'nonstandard' to the node, so JS skips it.
+        self.assertIsNone(collector.legacy_js_carrier(self.decoded([('6a746c', 'nonstandard')])))
+
+    def test_scan_records_legacy_js_only_candidates(self):
+        script = bytes.fromhex('6a4c04746c3141')  # strict reader refuses non-minimal push
+        hex_value, _ = synthetic_tx([script, P2PKH])
+        txid, _ = collector.inspect_raw_transaction(hex_value)
+        rpc = FakeRpc([['x', 'litecoin-testnet', '-', '-', txid, hex_value]])
+        rpc.txs[0]['vout'][0]['scriptPubKey']['type'] = 'nulldata'
+        _, manifest = collector.scan_blocks(rpc, 'test', 101, 101)
+        self.assertEqual(manifest['transactions_selected'], 1)
+        record = manifest['transactions'][0]
+        self.assertEqual(record['carrier_class'], 'legacy-js-only')
+        self.assertEqual(record['outputs'], [])
+        self.assertEqual(record['legacy_js_carrier']['marker_nibble'], 6)
+        self.assertIn('legacy-js-first-nulldata-746c-nibble-0-6', manifest['selection_rules'])
+        rpc.txs[0]['vout'][0]['scriptPubKey']['hex'] = '6a4c04746c3142'
+        with self.assertRaisesRegex(collector.EvidenceError, 'script differs'):
+            collector.scan_blocks(rpc, 'test', 101, 101)
+
+    def test_rpc_method_allowlist_is_read_only(self):
+        rpc = collector.LitecoinRPC('http://127.0.0.1:9332', 'user:password')
+        for method in ['dumpprivkey', 'sendrawtransaction', 'getwalletinfo', 'stop',
+                       'addnode', 'setnetworkactive', 'getpeerinfo']:
+            with self.assertRaisesRegex(collector.EvidenceError, 'unsupported RPC method'):
+                rpc.call(method)
 
 
 if __name__ == '__main__':

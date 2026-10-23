@@ -67,41 +67,70 @@ def require_satoshis(value: object) -> int:
 
 def transaction_layout(hex_value: str) -> tuple[list[tuple[str, int]], list[tuple[int, str]]]:
     """Outpoints, then exact (satoshis, script) from the serialized transaction."""
-    # The existing scanner checks witness shape, canonical CompactSize and txid.
-    base.inspect_raw_transaction(hex_value)
-    raw = bytes.fromhex(hex_value)
-    cur = base.Cursor(raw)
-    cur.read(4)
-    if raw[4:6] == b"\x00\x01":
-        cur.read(2)
-        has_witness = True
-    else:
-        has_witness = False
-    count = cur.number()
-    if not 1 <= count <= 100_000:
-        raise base.EvidenceError("invalid input count")
-    inputs = []
-    for _ in range(count):
-        prev = cur.read(32)[::-1].hex()
-        vout = int.from_bytes(cur.read(4), "little")
-        cur.var_bytes()
-        cur.read(4)
-        inputs.append((prev, vout))
-    count_out = cur.number()
-    if not 1 <= count_out <= 100_000:
-        raise base.EvidenceError("invalid output count")
-    outputs = []
-    for _ in range(count_out):
-        sat = int.from_bytes(cur.read(8), "little")
-        outputs.append((sat, cur.var_bytes().hex()))
-    if has_witness:
-        for _ in inputs:
-            for _ in range(cur.number()):
-                cur.var_bytes()
-    cur.read(4)
-    if cur.index != len(raw):
-        raise base.EvidenceError("trailing raw transaction bytes")
-    return inputs, outputs
+    parsed = base.parse_transaction(hex_value)
+    return parsed["inputs"], parsed["outputs"]
+
+
+def inspect_node(rpc, network: str) -> dict:
+    """Read-only node identity/suitability record. No wallet, peer or address data.
+
+    Version strings come from getnetworkinfo; only version, subversion and
+    protocolversion are retained (localaddresses and warnings are dropped).
+    getindexinfo exists from Litecoin Core 0.21; older nodes report it absent.
+    """
+    if network not in PINNED_GENESIS:
+        raise base.EvidenceError("unsupported Litecoin network")
+    info = rpc.call("getblockchaininfo")
+    if not isinstance(info, dict):
+        raise base.EvidenceError("invalid getblockchaininfo response")
+    genesis = base.require_hash(rpc.call("getblockhash", [0]), "Litecoin genesis")
+    net = rpc.call("getnetworkinfo")
+    if not isinstance(net, dict):
+        raise base.EvidenceError("invalid getnetworkinfo response")
+    try:
+        indexes = rpc.call("getindexinfo")
+    except base.RPCMethodNotFound:
+        indexes = None
+    txindex = indexes.get("txindex") if isinstance(indexes, dict) else None
+    record = {
+        "requested_network": network,
+        "chain": info.get("chain"),
+        "blocks": info.get("blocks"),
+        "headers": info.get("headers"),
+        "bestblockhash": info.get("bestblockhash"),
+        "initialblockdownload": info.get("initialblockdownload"),
+        "verificationprogress": info.get("verificationprogress"),
+        "pruned": info.get("pruned"),
+        "genesis": genesis,
+        "pinned_genesis": PINNED_GENESIS[network],
+        "version": net.get("version"),
+        "subversion": net.get("subversion"),
+        "protocolversion": net.get("protocolversion"),
+        "getindexinfo": "available" if isinstance(indexes, dict) else "unavailable",
+        "txindex": ({"synced": txindex.get("synced"),
+                     "best_block_height": txindex.get("best_block_height")}
+                    if isinstance(txindex, dict) else None),
+    }
+    reasons = []
+    if record["chain"] != network:
+        reasons.append("chain differs from requested network")
+    if genesis != PINNED_GENESIS[network]:
+        reasons.append("genesis differs from pinned Litecoin chainparams")
+    if record["pruned"] is not False:
+        reasons.append("node is pruned or pruning status unknown")
+    if record["initialblockdownload"] is not False:
+        reasons.append("node is in initial block download or status unknown")
+    if record["blocks"] is None or record["blocks"] != record["headers"]:
+        reasons.append("validated blocks lag known headers")
+    if record["getindexinfo"] == "available" and record["txindex"] is None:
+        reasons.append("txindex is not enabled")
+    elif record["txindex"] is not None and (
+            record["txindex"]["synced"] is not True
+            or record["txindex"]["best_block_height"] != record["blocks"]):
+        reasons.append("txindex is not synced to the active tip")
+    record["suitable_for_source_trace"] = not reasons
+    record["unsuitable_reasons"] = reasons
+    return record
 
 
 def script_address(script: dict) -> dict:
@@ -215,6 +244,11 @@ def augment_with_sources(rpc, tsv: str, manifest: dict) -> dict:
     if not manifest.get("canonical_range_rechecked"):
         raise base.EvidenceError("archive was not canonically rechecked")
     genesis = pin_litecoin_genesis(rpc, manifest.get("network"))
+    network = {"litecoin-mainnet": "main", "litecoin-testnet": "test",
+               "litecoin-regtest": "regtest"}[manifest["network"]]
+    node = inspect_node(rpc, network)
+    if not node["suitable_for_source_trace"]:
+        raise base.EvidenceError("node unsuitable: " + "; ".join(node["unsuitable_reasons"]))
     known = {}
     ordered_txids = []
     for line in tsv.splitlines():
@@ -277,7 +311,13 @@ def augment_with_sources(rpc, tsv: str, manifest: dict) -> dict:
                              if out["address"]["legacy_js_selected_address"] is not None]
         # txUtils.getReference instead chooses the LAST non-nulldata output.
         eligible = [out for out in output_provenance if out["script_type"] != "nulldata"]
+        legacy = candidate.get("legacy_js_carrier")
+        if legacy is not None and (legacy["vout"] >= len(outputs)
+                                   or outputs[legacy["vout"]][1] != legacy["script_hex"]
+                                   or output_provenance[legacy["vout"]]["script_type"] != "nulldata"):
+            raise base.EvidenceError("legacy JS carrier differs from raw output bytes")
         candidate["source_trace"] = {
+            "decoded_outputs": output_provenance,
             "actor_rule": "legacy-first-input-parent-vout",
             "sender_prevout": sender,
             "indexed_reference_outputs_0_1": indexed_reference,
@@ -297,6 +337,7 @@ def augment_with_sources(rpc, tsv: str, manifest: dict) -> dict:
     data["sender_identity_status"] = "output-script-address-only; signer/ownership semantics unresolved"
     data["joint_replay_authorized"] = False
     data["txindex_required"] = True
+    data["node_inspection"] = node
     data["corpus_sha256"] = hashlib.sha256(tsv.encode("utf-8")).hexdigest()
     return data
 
