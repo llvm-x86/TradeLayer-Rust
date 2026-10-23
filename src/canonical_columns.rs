@@ -6,15 +6,26 @@
 //! regression tests exercise the real ordered tree and exact key ordering.
 
 use std::collections::BTreeMap;
+use crate::ordered_columns::OrderedColumns;
 
 /// The only mutation methods needed by canonical balance columns.
 /// Implementations must maintain all keys other than `key`.
-trait ColumnWriter<K> {
+pub(crate) trait ColumnWriter<K> {
     fn insert_column(&mut self, key: K, atoms: u128);
     fn remove_column(&mut self, key: &K);
 }
 
 impl<K: Ord> ColumnWriter<K> for BTreeMap<K, u128> {
+    fn insert_column(&mut self, key: K, atoms: u128) {
+        self.insert(key, atoms);
+    }
+
+    fn remove_column(&mut self, key: &K) {
+        self.remove(key);
+    }
+}
+
+impl<K: Ord> ColumnWriter<K> for OrderedColumns<K> {
     fn insert_column(&mut self, key: K, atoms: u128) {
         self.insert(key, atoms);
     }
@@ -34,7 +45,7 @@ fn put_canonical<K, W: ColumnWriter<K>>(store: &mut W, key: K, atoms: u128) {
     }
 }
 
-pub(crate) fn put_nonzero<K: Ord>(map: &mut BTreeMap<K, u128>, key: K, atoms: u128) {
+pub(crate) fn put_nonzero<K, W: ColumnWriter<K>>(map: &mut W, key: K, atoms: u128) {
     put_canonical(map, key, atoms);
 }
 

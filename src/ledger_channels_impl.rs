@@ -35,8 +35,8 @@ impl ChannelSide {
 struct ChannelState {
     owner_a: Option<AccountId>,
     owner_b: Option<AccountId>,
-    escrow_a: BTreeMap<PropertyId, u128>,
-    escrow_b: BTreeMap<PropertyId, u128>,
+    escrow_a: OrderedColumns<PropertyId>,
+    escrow_b: OrderedColumns<PropertyId>,
 }
 impl ChannelState {
     fn owner(&self, side: ChannelSide) -> Option<&AccountId> {
@@ -45,13 +45,13 @@ impl ChannelState {
             ChannelSide::B => self.owner_b.as_ref(),
         }
     }
-    fn escrow(&self, side: ChannelSide) -> &BTreeMap<PropertyId, u128> {
+    fn escrow(&self, side: ChannelSide) -> &OrderedColumns<PropertyId> {
         match side {
             ChannelSide::A => &self.escrow_a,
             ChannelSide::B => &self.escrow_b,
         }
     }
-    fn escrow_mut(&mut self, side: ChannelSide) -> &mut BTreeMap<PropertyId, u128> {
+    fn escrow_mut(&mut self, side: ChannelSide) -> &mut OrderedColumns<PropertyId> {
         match side {
             ChannelSide::A => &mut self.escrow_a,
             ChannelSide::B => &mut self.escrow_b,

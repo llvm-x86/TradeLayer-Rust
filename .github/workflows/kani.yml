@@ -5,6 +5,7 @@ on:
     paths:
       - "src/atomic_batch.rs"
       - "src/canonical_columns.rs"
+      - "src/ordered_columns.rs"
       - "src/checked_amounts.rs"
       - "src/journal_move.rs"
       - "src/ledger.rs"
@@ -19,6 +20,7 @@ on:
     paths:
       - "src/atomic_batch.rs"
       - "src/canonical_columns.rs"
+      - "src/ordered_columns.rs"
       - "src/checked_amounts.rs"
       - "src/journal_move.rs"
       - "src/ledger.rs"

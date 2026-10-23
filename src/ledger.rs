@@ -14,6 +14,7 @@ use core::fmt;
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::network_profile::TradeLayerMainnet;
+use crate::ordered_columns::OrderedColumns;
 
 /// Maximum opaque identifier length, matching the draft wire-v1 send field.
 pub const MAX_ACCOUNT_BYTES: usize = 90;
@@ -361,7 +362,7 @@ fn checked_move_for_property(
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Ledger {
     properties: BTreeMap<PropertyId, Property>,
-    available: BTreeMap<(PropertyId, AccountId), u128>,
+    available: OrderedColumns<(PropertyId, AccountId)>,
     channels: BTreeMap<AccountId, ChannelState>,
     pending_withdrawals: BTreeMap<TxId, PendingWithdrawal>,
     pending_net_settlements: BTreeMap<TxId, NetClaim>,
