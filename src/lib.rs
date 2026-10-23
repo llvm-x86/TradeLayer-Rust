@@ -19,9 +19,9 @@ pub mod joint; // Stage 22 independent registry + sole spot-owned ledger in one 
 pub mod joint_chain; // Stage 22 mixed unverified block replay and TLJC checkpoints.
 mod journal_move; // Fail-closed single-use settlement journal movement; Kani harness.
 pub mod ledger; // In-memory atomic accounting primitives; not chain consensus.
-mod ordered_columns; // Sorted Vec backend for wallet and channel accounting columns.
 pub mod network_bound; // Stage 21 profile-bound replay and versioned checkpoint envelopes; unverified.
 pub mod network_profile; // Independent Bitcoin/Litecoin/Dogecoin mainnet identities and proof capabilities.
+mod ordered_columns; // Sorted Vec backend for wallet and channel accounting columns.
 pub mod protocol; // Audited legacy transaction catalog, not consensus execution.
 pub mod read_only; // Offline transaction scanning; cannot authorize ledger state.
 pub mod registry; // Standalone tx0/7-9/13-15 registry state; authentication external.

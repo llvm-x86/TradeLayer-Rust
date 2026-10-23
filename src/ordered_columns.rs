@@ -66,8 +66,7 @@ impl<K: Ord> OrderedColumns<K> {
 
 impl<'a, K: Ord> IntoIterator for &'a OrderedColumns<K> {
     type Item = (&'a K, &'a u128);
-    type IntoIter =
-        std::iter::Map<std::slice::Iter<'a, (K, u128)>, fn(&(K, u128)) -> (&K, &u128)>;
+    type IntoIter = std::iter::Map<std::slice::Iter<'a, (K, u128)>, fn(&(K, u128)) -> (&K, &u128)>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.entries

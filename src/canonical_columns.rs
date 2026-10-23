@@ -5,8 +5,8 @@
 //! the identical branch logic with a bounded symbolic store, while Rust
 //! regression tests exercise the real ordered tree and exact key ordering.
 
-use std::collections::BTreeMap;
 use crate::ordered_columns::OrderedColumns;
+use std::collections::BTreeMap;
 
 /// The only mutation methods needed by canonical balance columns.
 /// Implementations must maintain all keys other than `key`.
