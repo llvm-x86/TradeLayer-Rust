@@ -1,0 +1,6 @@
+name = "tradelayer_formal"
+version = "0.1.0"
+defaultTargets = ["TradeLayerFormal"]
+
+[[lean_lib]]
+name = "TradeLayerFormal"

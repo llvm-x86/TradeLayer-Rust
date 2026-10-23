@@ -1,0 +1,31 @@
+name: Lean protocol safety
+
+on:
+  pull_request:
+    paths:
+      - "formal/**"
+      - ".github/workflows/lean.yml"
+  push:
+    branches: [main, "formal/**"]
+    paths:
+      - "formal/**"
+      - ".github/workflows/lean.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lean:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: leanprover/lean-action@v1
+        with:
+          lake-package-directory: formal
+          build: true
+          test: false
+          lint: false
+          use-mathlib-cache: false
+          leanchecker: true
+          axiom-audit: true
