@@ -132,6 +132,22 @@ The Lean model now proves a **restricted concrete-key embedding** for a `(Proper
 
 **Important scope:** real `AccountId` accepts 1–90 printable ASCII bytes, so this one-byte model does **not** prove the comparator for the full Rust account domain, nor binary-search indices, Vec insertion/removal semantics, allocator behavior or the full ledger. The next proof should use a length-delimited lexicographic byte representation for the entire allowed account domain and relate the native `Ord` implementation to it. Rust production source is unchanged; the repository's local Rust preflight has not been claimed run.
 
+
+## Stage 12: concrete midpoint binary search and precise indices
+
+The earlier arbitrary-pivot tree theorems establish that **any valid pivot** produces the correct search result. Stage 12 now constructs a **specific halving algorithm**, `midpointColumnTree`, which selects `rows.length / 2` at each recursive step. The fuel starts at the number of rows, and no fixed maximum vector length is assumed in Lean.
+
+- `midpoint_split_certificate` proves every nonempty split covers the original list, and both recursive sublists are shorter. `midpoint_empty_suffix_implies_empty` excludes a missing pivot in nonempty input.
+- `midpoint_tree_preserves_entries` proves recursive splitting and inorder traversal recover the **exact original list**, not merely the same multiset or sum.
+- `midpoint_tree_is_ordered` proves every recursively selected midpoint satisfies the binary-search left/pivot/right ordering invariant.
+- `midpoint_column_read_equals_sorted_vec` and `midpoint_column_read_equals_linear` establish exact lookup agreement with the sorted-map specification and an independent full linear scan for **all queries on any finite strictly ordered list**.
+- `columnCountBefore` is an independent full-scan specification of the **lower-bound insertion index**: the number of existing keys strictly below the query. `column_count_before_pivot` proves that the index computation obeys the same branching as the midpoint search. `binary_column_lower_bound_matches_count`, `midpoint_column_lower_bound_is_exact`, and `midpoint_lower_bound_within_length` show the returned index is exact and always within the vector's length.
+- `columnAt` is a total, explicitly defined zero-based list-index accessor (avoiding assumptions about Lean's library list-index API). `sorted_vec_hit_at_lower_bound` proves that a successful nonzero lookup identifies the **exact record at that insertion index**. `midpoint_find_success_points_to_exact_record` and `midpoint_find_missing_returns_zero` connect this to a `Option Nat` successful/absent-key search interface.
+
+This is a stronger *algorithm-level Lean specification* than Stage 11's arbitrary pivot model: the recursive midpoint choice, index counting, hit position, complete coverage, termination fuel and sortedness preconditions are now all machine-checked. The successful-hit interface interprets a stored zero as missing; that agrees with the production **canonical nonzero balance** requirement, but not with raw malformed snapshot inputs that may contain zero-valued records.
+
+**Trusted implementation boundary remains:** the proof is of the Lean definitions, not a universal proof of Rust `std::slice::binary_search_by`, `Vec::insert/remove`, indexing/allocator behavior, the `usize` representation, or `Ord` for native `PropertyId` and `AccountId`. The actual production sorted-Vec implementation is separately checked by a bounded Kani harness, 5,000/3,000-operation storage-oracle comparisons, and the full ledger differential tests. This stage does not change Rust source. A future concrete refinement proof must relate Rust's comparator, each binary-search iteration and resulting `Result<usize,usize>` index to `midpointColumnLowerBound` and `midpointColumnFind` for the native key domain. A source-to-binary compiler/refinement proof is still independent.
+
 ## Boundaries for the next phases
 
 1. **Rust-to-Lean refinement.** Connect the new sorted-Vec implementation (native `Ord`, slice binary search, Vec insert/remove) to the Lean sorted-list semantics for arbitrary lengths, then relate all `Ledger::execute` operations and supply sums to the abstract state. Also verify the remaining Rust BTreeMap/BTreeSet registries, claims, pending withdrawals and replay sets. The current bounded Kani harness and differential tests are evidence for, not universal proof of, that correspondence.
