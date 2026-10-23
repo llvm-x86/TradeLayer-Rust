@@ -3417,4 +3417,146 @@ theorem byte_rank_lt_iff_lex (width : Nat) :
                 leftBound rightBound]
               rw [tailOrder]
 
+
+/-- For two arbitrary finite byte strings, one is strictly lexicographically
+smaller, the two are equal, or the second is strictly smaller. -/
+theorem byte_lex_trichotomy (left right : List Nat) :
+    ByteLexLess left right ∨ left = right ∨ ByteLexLess right left := by
+  induction left generalizing right with
+  | nil =>
+      cases right with
+      | nil => exact Or.inr (Or.inl rfl)
+      | cons byte tail => exact Or.inl (by simp [ByteLexLess])
+  | cons byte leftTail ih =>
+      cases right with
+      | nil => exact Or.inr (Or.inr (by simp [ByteLexLess]))
+      | cons other rightTail =>
+          by_cases smaller : byte < other
+          · exact Or.inl (by simp [ByteLexLess, smaller])
+          · by_cases greater : other < byte
+            · exact Or.inr (Or.inr (by simp [ByteLexLess, greater]))
+            · have same : byte = other := by omega
+              subst other
+              rcases ih rightTail with less | equal | more
+              · exact Or.inl (by simp [ByteLexLess, less])
+              · exact Or.inr (Or.inl (by simp [equal]))
+              · exact Or.inr (Or.inr (by simp [ByteLexLess, more]))
+
+/-- The fixed-width base-257 encoding is injective for ALL byte strings
+that fit the chosen width. The rank cannot merge prefixes or different
+valid byte sequences. -/
+theorem byte_rank_injective_on_valid (width : Nat)
+    (left right : List Nat)
+    (leftFits : left.length ≤ width)
+    (rightFits : right.length ≤ width)
+    (leftValid : AllByteDigits left)
+    (rightValid : AllByteDigits right)
+    (same : byteRank width left = byteRank width right) :
+    left = right := by
+  rcases byte_lex_trichotomy left right with less | equal | more
+  · have lessRank :=
+      (byte_rank_lt_iff_lex width left right
+        leftFits rightFits leftValid rightValid).2 less
+    omega
+  · exact equal
+  · have greaterRank :=
+      (byte_rank_lt_iff_lex width right left
+        rightFits leftFits rightValid leftValid).2 more
+    omega
+
+/-- A composite key with a full fixed-width byte suffix. One extra radix
+digit ensures the property ID dominates all suffixes. -/
+def compositeByteCode (width property : Nat) (bytes : List Nat) : Nat :=
+  (property + 1) * 257 ^ width + byteRank width bytes
+
+theorem composite_byte_code_order (width p q : Nat)
+    (left right : List Nat)
+    (leftFits : left.length ≤ width)
+    (rightFits : right.length ≤ width)
+    (leftValid : AllByteDigits left)
+    (rightValid : AllByteDigits right) :
+    (compositeByteCode width p left < compositeByteCode width q right) ↔
+      p < q ∨ (p = q ∧ ByteLexLess left right) := by
+  have boundLeft := byte_rank_bounded width left leftFits leftValid
+  have boundRight := byte_rank_bounded width right rightFits rightValid
+  change
+    ((p + 1) * 257 ^ width + byteRank width left <
+      (q + 1) * 257 ^ width + byteRank width right) ↔
+      (p < q ∨ (p = q ∧ ByteLexLess left right))
+  rw [byte_rank_digits_compare p q (257 ^ width)
+    (byteRank width left) (byteRank width right) boundLeft boundRight]
+  rw [byte_rank_lt_iff_lex width left right
+    leftFits rightFits leftValid rightValid]
+
+theorem composite_byte_code_injective (width p q : Nat)
+    (left right : List Nat)
+    (leftFits : left.length ≤ width)
+    (rightFits : right.length ≤ width)
+    (leftValid : AllByteDigits left)
+    (rightValid : AllByteDigits right)
+    (same : compositeByteCode width p left =
+      compositeByteCode width q right) :
+    p = q ∧ left = right := by
+  have sameProperty : p = q := by
+    by_cases equal : p = q
+    · exact equal
+    · by_cases smaller : p < q
+      · have less :=
+          (composite_byte_code_order width p q left right
+            leftFits rightFits leftValid rightValid).2
+            (Or.inl smaller)
+        omega
+      · have greater : q < p := by omega
+        have less :=
+          (composite_byte_code_order width q p right left
+            rightFits leftFits rightValid leftValid).2
+            (Or.inl greater)
+        omega
+  subst q
+  have sameBytesRank : byteRank width left = byteRank width right := by
+    unfold compositeByteCode at same
+    omega
+  exact ⟨rfl, byte_rank_injective_on_valid width left right
+    leftFits rightFits leftValid rightValid sameBytesRank⟩
+
+/-- Exactly the parser's supported printable-ASCII domain, represented as
+a list of Nat bytes: nonempty, at most 90 bytes, 0x21 through 0x7e. -/
+def ValidAccountBytes (bytes : List Nat) : Prop :=
+  0 < bytes.length ∧ bytes.length ≤ 90 ∧
+    (∀ byte ∈ bytes, 33 ≤ byte ∧ byte ≤ 126)
+
+theorem valid_account_bytes_are_digits (bytes : List Nat)
+    (valid : ValidAccountBytes bytes) : AllByteDigits bytes := by
+  intro byte member
+  have bounded := valid.2.2 byte member
+  omega
+
+/-- Full valid AccountId byte strings and all property IDs have EXACT
+lexicographic composite ordering after mathematical encoding. This
+removes the one-byte account restriction of Stage 12. -/
+theorem account_property_key_order_full (p q : Nat)
+    (left right : List Nat)
+    (validLeft : ValidAccountBytes left)
+    (validRight : ValidAccountBytes right) :
+    (compositeByteCode 90 p left < compositeByteCode 90 q right) ↔
+      p < q ∨ (p = q ∧ ByteLexLess left right) := by
+  exact composite_byte_code_order 90 p q left right
+    validLeft.2.1 validRight.2.1
+    (valid_account_bytes_are_digits left validLeft)
+    (valid_account_bytes_are_digits right validRight)
+
+/-- There are no mathematical composite-key collisions for any permissible
+1–90-byte printable account strings, including prefix relations. -/
+theorem account_property_key_injective_full (p q : Nat)
+    (left right : List Nat)
+    (validLeft : ValidAccountBytes left)
+    (validRight : ValidAccountBytes right)
+    (same : compositeByteCode 90 p left =
+      compositeByteCode 90 q right) :
+    p = q ∧ left = right := by
+  exact composite_byte_code_injective 90 p q left right
+    validLeft.2.1 validRight.2.1
+    (valid_account_bytes_are_digits left validLeft)
+    (valid_account_bytes_are_digits right validRight) same
+
 end TradeLayerFormal
