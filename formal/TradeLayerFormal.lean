@@ -1437,4 +1437,159 @@ theorem column_move_conserves_under_reordering
     _ = columnTotal reordered amounts :=
       column_total_permutation amounts permutation
 
+
+/-!
+## Stage 7: exact typed-key identity shared with Rust supply projections
+
+Rust exports `SupplyColumnProofKey` as a FOUR-FIELD tuple containing a
+declared network tag (1/2/3), nonzero local property ID, source tag
+(0/1/2/3), and verbatim identifier bytes (ASCII account/channel or 32-byte
+TxId). The formal key records those same data fields as Nat and List Nat.
+
+The following left inverse proves injectivity without assuming collision
+resistance or inventing a lossy digest. A separate correspondence obligation
+remains for Rust's string-to-byte representation, property bounds, and the
+caller-supplied network's actual chain provenance.
+-/
+
+inductive ColumnOrigin where
+  | available (bytes : List Nat)
+  | escrowA (bytes : List Nat)
+  | escrowB (bytes : List Nat)
+  | reserved (bytes : List Nat)
+  deriving Repr, DecidableEq
+
+structure TypedColumnKey where
+  network : Mainnet
+  property : Nat
+  origin : ColumnOrigin
+  deriving Repr, DecidableEq
+
+structure EncodedColumnKey where
+  networkTag : Nat
+  propertyId : Nat
+  sourceTag : Nat
+  identityBytes : List Nat
+  deriving Repr, DecidableEq
+
+def encodeNetwork : Mainnet → Nat
+  | .bitcoin => 1
+  | .litecoin => 2
+  | .dogecoin => 3
+
+def decodeNetwork : Nat → Option Mainnet
+  | 1 => some .bitcoin
+  | 2 => some .litecoin
+  | 3 => some .dogecoin
+  | _ => none
+
+def encodeOrigin : ColumnOrigin → Nat × List Nat
+  | .available bytes => (0, bytes)
+  | .escrowA bytes => (1, bytes)
+  | .escrowB bytes => (2, bytes)
+  | .reserved bytes => (3, bytes)
+
+def decodeOrigin (tag : Nat) (bytes : List Nat) : Option ColumnOrigin :=
+  match tag with
+  | 0 => some (.available bytes)
+  | 1 => some (.escrowA bytes)
+  | 2 => some (.escrowB bytes)
+  | 3 => some (.reserved bytes)
+  | _ => none
+
+def encodeTypedColumn (key : TypedColumnKey) : EncodedColumnKey :=
+  let origin := encodeOrigin key.origin
+  { networkTag := encodeNetwork key.network
+    propertyId := key.property
+    sourceTag := origin.1
+    identityBytes := origin.2 }
+
+def decodeTypedColumn (key : EncodedColumnKey) : Option TypedColumnKey := do
+  let network ← decodeNetwork key.networkTag
+  let origin ← decodeOrigin key.sourceTag key.identityBytes
+  pure { network := network, property := key.propertyId, origin := origin }
+
+/-- Reconstruct the exact typed network, property and source bytes. -/
+theorem decode_encode_typed_column (key : TypedColumnKey) :
+    decodeTypedColumn (encodeTypedColumn key) = some key := by
+  cases key with
+  | mk network property origin =>
+    cases network <;> cases origin <;> rfl
+
+/-- Exact structured key encoding is injective, for ALL byte sequences. -/
+theorem encode_typed_column_injective :
+    Function.Injective encodeTypedColumn := by
+  intro a b same
+  have decoded := congrArg decodeTypedColumn same
+  rw [decode_encode_typed_column, decode_encode_typed_column] at decoded
+  exact Option.some.inj decoded
+
+theorem encoded_typed_columns_separate_networks
+    (a b : TypedColumnKey) (different : a.network ≠ b.network) :
+    encodeTypedColumn a ≠ encodeTypedColumn b := by
+  intro equal
+  exact different (congrArg TypedColumnKey.network
+    (encode_typed_column_injective equal))
+
+theorem encoded_typed_columns_separate_properties
+    (a b : TypedColumnKey) (different : a.property ≠ b.property) :
+    encodeTypedColumn a ≠ encodeTypedColumn b := by
+  intro equal
+  exact different (congrArg TypedColumnKey.property
+    (encode_typed_column_injective equal))
+
+theorem encoded_typed_columns_separate_sources
+    (a b : TypedColumnKey) (different : a.origin ≠ b.origin) :
+    encodeTypedColumn a ≠ encodeTypedColumn b := by
+  intro equal
+  exact different (congrArg TypedColumnKey.origin
+    (encode_typed_column_injective equal))
+
+/-- General finite-support accounting total over typed keys. -/
+def typedColumnTotal {α : Type} : List α → (α → Nat) → Nat
+  | [], _ => 0
+  | key :: rest, amounts =>
+      amounts key + typedColumnTotal rest amounts
+
+def decodedColumnAmounts
+    (amounts : TypedColumnKey → Nat) (key : EncodedColumnKey) : Nat :=
+  match decodeTypedColumn key with
+  | some typed => amounts typed
+  | none => 0
+
+/-- Relabeling concrete typed support by the exact encoded-key structure
+cannot lose or double-count a single atom. Works for arbitrary finite lists. -/
+theorem typed_column_total_preserved_by_encoding
+    (support : List TypedColumnKey) (amounts : TypedColumnKey → Nat) :
+    typedColumnTotal (support.map encodeTypedColumn)
+      (decodedColumnAmounts amounts) =
+    typedColumnTotal support amounts := by
+  induction support with
+  | nil => rfl
+  | cons key tail ih =>
+      simpa [typedColumnTotal, decodedColumnAmounts,
+        decode_encode_typed_column] using
+        congrArg (fun n => amounts key + n) ih
+
+/-- A concrete example: the ASCII bytes for 'a', property 7, on
+Bitcoin's local TradeLayer remain visible without hashing or truncation. -/
+example :
+    encodeTypedColumn
+        { network := .bitcoin, property := 7,
+          origin := .available [97] } =
+      { networkTag := 1, propertyId := 7,
+        sourceTag := 0, identityBytes := [97] } := by
+  rfl
+
+/-- All source tags remain distinct even with byte-identical identifiers. -/
+theorem source_tag_noncollision
+    (network : Mainnet) (property : Nat) (bytes : List Nat) :
+    encodeTypedColumn
+        { network := network, property := property, origin := .available bytes } ≠
+      encodeTypedColumn
+        { network := network, property := property, origin := .reserved bytes } := by
+  intro equal
+  have contradiction := congrArg EncodedColumnKey.sourceTag equal
+  simp [encodeTypedColumn, encodeOrigin] at contradiction
+
 end TradeLayerFormal
