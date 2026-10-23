@@ -710,4 +710,145 @@ theorem nonadjacent_duplicate_txid_rejects_batch
   unfold batchResult
   rw [stagingFails]
 
+
+/-!
+## Arbitrarily many property identities
+
+The Rust ledger stores issued supply and available/escrow balances in ordered
+maps keyed by PropertyId. The following is a functional per-property model:
+all other property projections must be untouched by a local accounting step.
+The external Rust BTreeMap/identity correspondence remains open.
+-/
+
+structure PropertyLedgerView where
+  byId : Nat → Portfolio
+
+def propertyUpdate (s : PropertyLedgerView) (property : Nat)
+    (next : Portfolio) : PropertyLedgerView :=
+  { byId := fun other => if other = property then next else s.byId other }
+
+theorem property_update_keeps_other_assets (s : PropertyLedgerView)
+    (property other : Nat) (next : Portfolio) (different : other ≠ property) :
+    (propertyUpdate s property next).byId other = s.byId other := by
+  simp [propertyUpdate, different]
+
+theorem property_update_preserves_all_conservation
+    (s : PropertyLedgerView) (property : Nat) (next : Portfolio)
+    (valid : ∀ id, Conserved (s.byId id))
+    (admitted : AccountingStep (s.byId property) next) :
+    ∀ id, Conserved ((propertyUpdate s property next).byId id) := by
+  intro id
+  by_cases same : id = property
+  · subst id
+    simpa [propertyUpdate] using
+      accounting_step_conserves admitted (valid property)
+  · simpa [propertyUpdate, same] using valid id
+
+theorem property_update_preserves_all_bounds
+    (s : PropertyLedgerView) (property : Nat) (next : Portfolio)
+    (valid : ∀ id, Bounded (s.byId id))
+    (admitted : AccountingStep (s.byId property) next) :
+    ∀ id, Bounded ((propertyUpdate s property next).byId id) := by
+  intro id
+  by_cases same : id = property
+  · subst id
+    simpa [propertyUpdate] using
+      accounting_step_stays_bounded admitted (valid property)
+  · simpa [propertyUpdate, same] using valid id
+
+/-!
+## Claim-presence map and single-use sweep
+
+Each Nat represents a claim TxId. A successful sweep transfers membership
+between disjoint pending/swept maps with exactly one local update to each.
+This checks presence semantics. Trade-reference uniqueness, receipt roots,
+timestamps, economic validity and real SHA-256 bindings are external.
+-/
+
+structure JournalView where
+  pending : Nat → Bool
+  swept : Nat → Bool
+
+def JournalDisjoint (j : JournalView) : Prop :=
+  ∀ id, j.pending id = true → j.swept id = false
+
+def journalMove (j : JournalView) (key : Nat) : Option JournalView :=
+  if j.swept key then none
+  else if j.pending key then
+    some
+      { pending := fun query => if query = key then false else j.pending query,
+        swept := fun query => if query = key then true else j.swept query }
+  else none
+
+theorem journal_move_rejects_consumed (j : JournalView) (key : Nat)
+    (consumed : j.swept key = true) :
+    journalMove j key = none := by
+  simp [journalMove, consumed]
+
+theorem journal_move_rejects_missing (j : JournalView) (key : Nat)
+    (fresh : j.swept key = false) (missing : j.pending key = false) :
+    journalMove j key = none := by
+  simp [journalMove, fresh, missing]
+
+theorem journal_move_success_shape
+    (j after : JournalView) (key : Nat)
+    (accepted : journalMove j key = some after) :
+    j.swept key = false ∧ j.pending key = true ∧
+    after =
+      { pending := fun query => if query = key then false else j.pending query,
+        swept := fun query => if query = key then true else j.swept query } := by
+  cases swept : j.swept key with
+  | true =>
+      simp [journalMove, swept] at accepted
+  | false =>
+      cases pending : j.pending key with
+      | false =>
+          simp [journalMove, swept, pending] at accepted
+      | true =>
+          have shape :
+              ({ pending := fun query => if query = key then false else j.pending query,
+                 swept := fun query => if query = key then true else j.swept query } :
+                 JournalView) = after := by
+              simpa [journalMove, swept, pending] using accepted
+          exact ⟨swept, pending, shape.symm⟩
+
+theorem journal_move_marks_swept (j after : JournalView) (key : Nat)
+    (accepted : journalMove j key = some after) :
+    after.pending key = false ∧ after.swept key = true := by
+  obtain ⟨_, _, shape⟩ :=
+    journal_move_success_shape j after key accepted
+  rw [shape]
+  simp
+
+theorem journal_move_other_keys_unchanged
+    (j after : JournalView) (key other : Nat)
+    (accepted : journalMove j key = some after) (different : other ≠ key) :
+    after.pending other = j.pending other ∧
+    after.swept other = j.swept other := by
+  obtain ⟨_, _, shape⟩ :=
+    journal_move_success_shape j after key accepted
+  rw [shape]
+  simp [different]
+
+theorem journal_move_preserves_disjoint
+    (j after : JournalView) (key : Nat)
+    (valid : JournalDisjoint j)
+    (accepted : journalMove j key = some after) :
+    JournalDisjoint after := by
+  obtain ⟨_, _, shape⟩ :=
+    journal_move_success_shape j after key accepted
+  rw [shape]
+  intro other pending
+  by_cases same : other = key
+  · simp [same] at pending
+  · have previous : j.pending other = true := by
+      simpa [same] using pending
+    simpa [same] using valid other previous
+
+theorem journal_move_cannot_repeat (j after : JournalView) (key : Nat)
+    (accepted : journalMove j key = some after) :
+    journalMove after key = none := by
+  have swept := (journal_move_marks_swept j after key accepted).2
+  exact journal_move_rejects_consumed after key swept
+
 end TradeLayerFormal

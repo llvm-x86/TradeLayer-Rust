@@ -62,6 +62,16 @@ Lean's `CertifiedBatchTx` states the refinement premise each accepted individual
 
 The concrete `certifiedDirectSend` operation now derives its `AccountingStep` witness from `checkedMove` rather than taking it as a free external premise. A chain-origin/actor validator and the actual Rust map projection must still be connected for an end-to-end theorem. The `nonadjacent_duplicate_txid_rejects_batch` theorem covers repeats separated by an arbitrary list of operations, provided their network namespace and transaction identifier match. The proof uses monotonic replay-marker retention across successful intermediate steps.
 
+## Stage 4: per-property maps and single-use journals
+
+The mathematical state is now indexed by arbitrary property IDs through `PropertyLedgerView`. Lean establishes that applying one certified accounting step to a property preserves every other property's balances, alongside conservation and `u128` bounds across all property IDs. This extends the earlier single-property four-column projection to arbitrarily many properties. The number of balance columns within each property is still limited by the original abstract model.
+
+`JournalView` captures pending and swept membership keyed by claim transaction identity. A single successful `journalMove` changes only the selected entry, moves it from pending to swept and preserves the disjoint-membership invariant. A second consumption and attempts at absent claims are rejected.
+
+The production King settlement uses `journal_move::move_pending_once` on the actual `BTreeMap` journal collections. That function checks destination and source presence before mutation, so a duplicate or missing claim fails closed. A bounded Kani harness with fixed keys and symbolic values attempts to verify the real helper, with the cost and limitations of Rust's tree implementation to be assessed by CI. Rust unit tests exercise successful single-use movement and preservation of entries on both error branches.
+
+These additional theorems verify the **abstract map and journal projection**. The full Rust-to-Lean refinement remains open, including account/column ownership, claims with trade references, receipt hashes, batch rollback and authentic economic inputs.
+
 ## Boundaries for the next phases
 
 1. **Rust-to-Lean refinement.** Build a pure checked-`u128` transition function with a Verus specification and relate it to the current `Ledger::apply` and `calculate_settlement_preview` implementations. Prove failure leaves the ledger unchanged, conservation through all map entries, journal single-use, and finite-`u128` arithmetic. Tests and matching numbers alone are evidence, not a proof of refinement.
