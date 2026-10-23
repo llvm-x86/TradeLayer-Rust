@@ -384,4 +384,218 @@ theorem checked_move_preserves_u128 (debit credit amount afterDebit afterCredit 
     checked_move_success_is_exact debit credit amount afterDebit afterCredit accepted
   omega
 
+
+/-!
+## Atomic multi-transaction replay
+
+Rust's `Ledger::apply_batch` validates a cloned candidate and publishes it
+only after every operation and final conservation check succeed. This abstract
+model stages certified transitions and projects either the successful state
+or the original live state. Individual transition certification remains a
+separate obligation from Rust-to-Lean refinement.
+-/
+
+/-- Each operation supplies an implementation-shaped proposal and a proof
+that every successful proposal refines the accounting step relation.
+Rejection may represent authorization failure, arithmetic failure or an
+unavailable settlement proof. The executor still checks replay separately. -/
+structure CertifiedBatchTx where
+  network : Mainnet
+  txid : Nat
+  run : Portfolio → Option Portfolio
+  sound : ∀ s t, run s = some t → AccountingStep s t
+
+def stageTx (e : Engine) (tx : CertifiedBatchTx) : Option Engine :=
+  if e.replay.seen tx.network tx.txid then none
+  else
+    match tx.run (e.balances tx.network) with
+    | none => none
+    | some updated => some (finish e tx.network tx.txid updated)
+
+theorem stage_tx_effect (e after : Engine) (tx : CertifiedBatchTx)
+    (accepted : stageTx e tx = some after) :
+    ∃ updated, tx.run (e.balances tx.network) = some updated ∧
+      after = finish e tx.network tx.txid updated := by
+  cases used : e.replay.seen tx.network tx.txid with
+  | true =>
+      simp [stageTx, used] at accepted
+  | false =>
+      cases proposed : tx.run (e.balances tx.network) with
+      | none =>
+          simp [stageTx, used, proposed] at accepted
+      | some updated =>
+          have eq : finish e tx.network tx.txid updated = after := by
+            simpa [stageTx, used, proposed] using accepted
+          exact ⟨updated, proposed, eq.symm⟩
+
+theorem stage_tx_conserves (e after : Engine) (tx : CertifiedBatchTx)
+    (accepted : stageTx e tx = some after)
+    (good : AllConserved e) : AllConserved after := by
+  obtain ⟨updated, valid, eq⟩ := stage_tx_effect e after tx accepted
+  subst after
+  have transition : AccountingStep (e.balances tx.network) updated :=
+    tx.sound (e.balances tx.network) updated valid
+  intro other
+  by_cases same : other = tx.network
+  · subst other
+    simpa [finish] using accounting_step_conserves transition (good tx.network)
+  · simpa [finish, same] using good other
+
+theorem stage_tx_stays_bounded (e after : Engine) (tx : CertifiedBatchTx)
+    (accepted : stageTx e tx = some after)
+    (good : AllBounded e) : AllBounded after := by
+  obtain ⟨updated, valid, eq⟩ := stage_tx_effect e after tx accepted
+  subst after
+  have transition : AccountingStep (e.balances tx.network) updated :=
+    tx.sound (e.balances tx.network) updated valid
+  intro other
+  by_cases same : other = tx.network
+  · subst other
+    simpa [finish] using accounting_step_stays_bounded transition (good tx.network)
+  · simpa [finish, same] using good other
+
+theorem stage_tx_marks_replay (e after : Engine) (tx : CertifiedBatchTx)
+    (accepted : stageTx e tx = some after) :
+    after.replay.seen tx.network tx.txid = true := by
+  obtain ⟨updated, _, eq⟩ := stage_tx_effect e after tx accepted
+  subst after
+  simpa [finish] using marked_transaction_is_used e.replay tx.network tx.txid
+
+/-- A staged prefix is an internal candidate; any failure returns none. -/
+def stagedBatch (e : Engine) : List CertifiedBatchTx → Option Engine
+  | [] => some e
+  | tx :: tail =>
+      match stageTx e tx with
+      | none => none
+      | some mid => stagedBatch mid tail
+
+theorem staged_batch_conserves (txs : List CertifiedBatchTx) :
+    ∀ e after : Engine, stagedBatch e txs = some after →
+      AllConserved e → AllConserved after := by
+  induction txs with
+  | nil =>
+      intro e after accepted good
+      have eq : e = after := by simpa [stagedBatch] using accepted
+      rw [← eq]
+      exact good
+  | cons tx tail ih =>
+      intro e after accepted good
+      cases step : stageTx e tx with
+      | none =>
+          simp [stagedBatch, step] at accepted
+      | some mid =>
+          have tailAccepted : stagedBatch mid tail = some after := by
+            simpa [stagedBatch, step] using accepted
+          exact ih mid after tailAccepted (stage_tx_conserves e mid tx step good)
+
+theorem staged_batch_stays_bounded (txs : List CertifiedBatchTx) :
+    ∀ e after : Engine, stagedBatch e txs = some after →
+      AllBounded e → AllBounded after := by
+  induction txs with
+  | nil =>
+      intro e after accepted good
+      have eq : e = after := by simpa [stagedBatch] using accepted
+      rw [← eq]
+      exact good
+  | cons tx tail ih =>
+      intro e after accepted good
+      cases step : stageTx e tx with
+      | none =>
+          simp [stagedBatch, step] at accepted
+      | some mid =>
+          have tailAccepted : stagedBatch mid tail = some after := by
+            simpa [stagedBatch, step] using accepted
+          exact ih mid after tailAccepted
+            (stage_tx_stays_bounded e mid tx step good)
+
+/-- Published state plus whether the staged batch committed. This is the
+abstract observable projection of Rust's Result-based commit boundary. -/
+def batchResult (e : Engine) (txs : List CertifiedBatchTx) : Engine × Bool :=
+  match stagedBatch e txs with
+  | none => (e, false)
+  | some after => (after, true)
+
+theorem rejected_batch_restores_full_state
+    (e : Engine) (txs : List CertifiedBatchTx)
+    (failed : (batchResult e txs).2 = false) :
+    (batchResult e txs).1 = e := by
+  cases result : stagedBatch e txs with
+  | none =>
+      simp [batchResult, result]
+  | some after =>
+      simp [batchResult, result] at failed
+
+theorem rejected_batch_restores_replay_marker
+    (e : Engine) (txs : List CertifiedBatchTx)
+    (net : Mainnet) (txid : Nat)
+    (failed : (batchResult e txs).2 = false) :
+    (batchResult e txs).1.replay.seen net txid = e.replay.seen net txid := by
+  rw [rejected_batch_restores_full_state e txs failed]
+
+theorem committed_batch_conserves_all_networks
+    (e : Engine) (txs : List CertifiedBatchTx)
+    (good : AllConserved e)
+    (succeeded : (batchResult e txs).2 = true) :
+    AllConserved (batchResult e txs).1 := by
+  cases result : stagedBatch e txs with
+  | none =>
+      simp [batchResult, result] at succeeded
+  | some after =>
+      simpa [batchResult, result] using
+        (staged_batch_conserves txs e after result good)
+
+theorem committed_batch_bounds_all_networks
+    (e : Engine) (txs : List CertifiedBatchTx)
+    (good : AllBounded e)
+    (succeeded : (batchResult e txs).2 = true) :
+    AllBounded (batchResult e txs).1 := by
+  cases result : stagedBatch e txs with
+  | none =>
+      simp [batchResult, result] at succeeded
+  | some after =>
+      simpa [batchResult, result] using
+        (staged_batch_stays_bounded txs e after result good)
+
+theorem repeated_txid_fails_staging (e : Engine) (tx : CertifiedBatchTx) :
+    stagedBatch e [tx, tx] = none := by
+  cases first : stageTx e tx with
+  | none =>
+      simp [stagedBatch, first]
+  | some middle =>
+      have used : middle.replay.seen tx.network tx.txid = true :=
+        stage_tx_marks_replay e middle tx first
+      have second : stageTx middle tx = none := by
+        simp [stageTx, used]
+      simp [stagedBatch, first, second]
+
+theorem repeated_txid_rolls_back_everything (e : Engine)
+    (tx : CertifiedBatchTx) :
+    batchResult e [tx, tx] = (e, false) := by
+  simp [batchResult, repeated_txid_fails_staging]
+
+theorem staged_batch_append (e : Engine)
+    (prefix suffix : List CertifiedBatchTx) :
+    stagedBatch e (prefix ++ suffix) =
+      (stagedBatch e prefix).bind (fun mid => stagedBatch mid suffix) := by
+  induction prefix generalizing e with
+  | nil =>
+      simp [stagedBatch]
+  | cons tx tail ih =>
+      cases step : stageTx e tx with
+      | none =>
+          simp [stagedBatch, step]
+      | some middle =>
+          simp [stagedBatch, step, ih]
+
+theorem valid_prefix_then_rejection_rolls_back
+    (e middle : Engine) (prefix : List CertifiedBatchTx)
+    (bad : CertifiedBatchTx)
+    (validPrefix : stagedBatch e prefix = some middle)
+    (rejected : stageTx middle bad = none) :
+    batchResult e (prefix ++ [bad]) = (e, false) := by
+  have wholeFails : stagedBatch e (prefix ++ [bad]) = none := by
+    rw [staged_batch_append, validPrefix]
+    simp [stagedBatch, rejected]
+  simp [batchResult, wholeFails]
+
 end TradeLayerFormal

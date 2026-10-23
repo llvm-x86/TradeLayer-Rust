@@ -50,6 +50,16 @@ The production `src/checked_amounts.rs::move_atoms` function computes checked ch
 
 CI pins `kani-verifier 0.68.0` and runs the real Rust proof harnesses. This strengthens the Rust implementation boundary for arithmetic while leaving map ownership, channel authorization, full ledger cloning/rollback and chain authentication outside the checker.
 
+## Stage 3: atomic multi-transaction batches
+
+The real `Ledger::apply_batch` now calls `src/atomic_batch.rs::stage_validate_commit`, which clones the complete state, evaluates its validator, and writes the candidate back only when all work succeeds. The validator still calls `execute` for each transaction and `verify_conservation` before publication. Its transaction insertion order and replay semantics are unchanged.
+
+Two Kani harnesses symbolically check the *production generic commit function* instantiated with a scalar `MiniLedger`. They cover failures after staged mutations and duplicate replay markers, plus successful publication of multiple fields. This demonstrates the control-flow guarantee for that concrete instantiation. A general proof for arbitrary `Clone` implementations and the Rust `BTreeMap` storage is still open.
+
+Additional Rust integration tests run the **actual ledger** and assert byte-for-byte state equality after a duplicate txid late in a batch, an overflow late in a managed mint sequence, and a panic in the supplied iterator after a valid staged operation (with unwinding enabled). Previous replay markers remain unchanged. External side effects of caller iterators are outside the ledger's rollback contract.
+
+Lean's `CertifiedBatchTx` states the refinement premise each accepted individual operation must meet; `stagedBatch` iterates these operations and rejects duplicate txids before publication. Kernel theorems prove arbitrary finite accepted batch histories preserve conservation and bounds across the three separate TradeLayers, while a rejected batch restores every balance/replay field to the original live state. `valid_prefix_then_rejection_rolls_back` applies even when earlier operations modified the staged candidate. These are abstract proofs whose mapping to the actual Rust `Ledger` collections still requires a refinement argument.
+
 ## Boundaries for the next phases
 
 1. **Rust-to-Lean refinement.** Build a pure checked-`u128` transition function with a Verus specification and relate it to the current `Ledger::apply` and `calculate_settlement_preview` implementations. Prove failure leaves the ledger unchanged, conservation through all map entries, journal single-use, and finite-`u128` arithmetic. Tests and matching numbers alone are evidence, not a proof of refinement.
