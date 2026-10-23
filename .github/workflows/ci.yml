@@ -1,8 +1,12 @@
 name: Rust CI
 
 on:
+  # A PR is the feature-branch CI gate, so a push to that branch should not
+  # enqueue another full copy of the same workflow and email twice on failure.
   push:
+    branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
