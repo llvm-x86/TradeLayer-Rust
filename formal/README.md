@@ -90,6 +90,8 @@ A new production `canonical_columns::put_nonzero` helper consolidates the exact 
 
 Lean's `finite_erase_zero_anywhere_preserves_validity` and `finite_insert_zero_anywhere_preserves_validity` extend the earlier head-only support proofs to **any prefix/suffix index**. The theorems preserve duplicate-free support, conservation, zero outside the support, individual `u128` bounds, and total-supply bounds. Insertion starts with a fresh zero-valued column. Erasure requires that the selected old column has reached zero. The key encoding and exact `BTreeMap` collection semantics are still separate implementation correspondence obligations.
 
+Lean's `column_total_permutation` and `column_move_conserves_under_reordering` prove that sorting or otherwise permuting the finite support has no effect on conservation. A new Kani harness checks arbitrary selection of either of two symbolic columns through the production canonical-update control flow, preserving the unrelated column's exact Option value. This remains a bounded backing-store proof with actual `BTreeMap` behavior exercised by the Rust tests.
+
 ## Boundaries for the next phases
 
 1. **Rust-to-Lean refinement.** Build a pure checked-`u128` transition function with a Verus specification and relate it to the current `Ledger::apply` and `calculate_settlement_preview` implementations. Prove failure leaves the ledger unchanged, conservation through all map entries, journal single-use, and finite-`u128` arithmetic. Tests and matching numbers alone are evidence, not a proof of refinement.

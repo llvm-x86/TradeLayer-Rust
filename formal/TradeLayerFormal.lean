@@ -1387,4 +1387,54 @@ theorem finite_insert_zero_anywhere_preserves_validity
         rw [support]
         exact List.mem_append.mpr (Or.inr inBack)
 
+
+/-!
+## Support reordering is semantically inert
+
+A canonical BTreeMap enumerates keys in sorted order, while a finite-support
+model can enumerate them in any order. List.Perm is an explicit ordering
+certificate. These theorems show that all aggregate conservation obligations
+commute with any such finite rearrangement, under the existing unique-key
+and adequate-balance premises.
+-/
+
+theorem column_total_permutation
+    {keys reordered : List Nat} (amounts : Nat → Nat)
+    (permutation : keys.Perm reordered) :
+    columnTotal keys amounts = columnTotal reordered amounts := by
+  induction permutation with
+  | nil => rfl
+  | cons key earlier ih =>
+      simpa only [columnTotal] using
+        congrArg (fun n => amounts key + n) ih
+  | swap first second rest =>
+      simp only [columnTotal]
+      omega
+  | trans first second ihFirst ihSecond =>
+      exact ihFirst.trans ihSecond
+
+theorem column_move_conserves_under_reordering
+    (keys reordered : List Nat) (amounts : Nat → Nat)
+    (debitKey creditKey amount : Nat)
+    (permutation : keys.Perm reordered)
+    (unique : keys.Nodup)
+    (debitPresent : debitKey ∈ keys)
+    (creditPresent : creditKey ∈ keys)
+    (distinct : debitKey ≠ creditKey)
+    (funded : amount ≤ amounts debitKey) :
+    columnTotal reordered
+      (columnMove amounts debitKey creditKey amount) =
+    columnTotal reordered amounts := by
+  calc
+    columnTotal reordered
+        (columnMove amounts debitKey creditKey amount) =
+      columnTotal keys (columnMove amounts debitKey creditKey amount) :=
+      (column_total_permutation _ permutation).symm
+    _ = columnTotal keys amounts :=
+      column_move_preserves_total keys amounts
+        debitKey creditKey amount unique debitPresent
+        creditPresent distinct funded
+    _ = columnTotal reordered amounts :=
+      column_total_permutation amounts permutation
+
 end TradeLayerFormal

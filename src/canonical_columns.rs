@@ -109,6 +109,36 @@ mod kani_proofs {
         }
     }
 
+
+    /// Either key may be the target. Symbolic presence flags model inserted
+    /// and existing columns; the remaining key must retain its original
+    /// Option value for every possible nonzero/zero update.
+    #[kani::proof]
+    fn symbolic_key_choice_preserves_untouched_column() {
+        let key: u8 = kani::any();
+        kani::assume(key == 1 || key == 2);
+        let prior_one: u128 = kani::any();
+        let prior_two: u128 = kani::any();
+        let has_one: bool = kani::any();
+        let has_two: bool = kani::any();
+        let amount: u128 = kani::any();
+        let first = if has_one { Some(prior_one) } else { None };
+        let second = if has_two { Some(prior_two) } else { None };
+        let mut state = TwoSlots {
+            selected: first,
+            unrelated: second,
+        };
+        put_canonical(&mut state, key, amount);
+        let expected = if amount == 0 { None } else { Some(amount) };
+        if key == 1 {
+            assert_eq!(state.selected, expected);
+            assert_eq!(state.unrelated, second);
+        } else {
+            assert_eq!(state.selected, first);
+            assert_eq!(state.unrelated, expected);
+        }
+    }
+
     #[kani::proof]
     fn canonical_put_preserves_unrelated_slot_and_nonzero_storage() {
         let old: u128 = kani::any();
