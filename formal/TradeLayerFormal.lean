@@ -1218,4 +1218,173 @@ theorem finite_drop_zero_head_preserves_validity
     rw [support]
     simp [present]
 
+
+/-!
+## Arbitrary-position finite-support insertion and erasure
+
+A Rust BTreeMap may insert or erase a zero balance at any position in its
+canonical order. These theorems operate over any prefix and suffix witness
+of the affected key. The amount function is unchanged while a zero-valued
+slot is inserted or removed; the proven relation therefore applies to
+canonical support maintenance separately from moving nonzero atoms.
+-/
+
+def finiteInsertAt (s : FiniteSupplyView) (before after : List Nat)
+    (key : Nat) : FiniteSupplyView :=
+  { s with slots := before ++ key :: after }
+
+def finiteEraseAt (s : FiniteSupplyView) (before after : List Nat) :
+    FiniteSupplyView :=
+  { s with slots := before ++ after }
+
+/-- A zero-valued slot makes no contribution regardless of its location. -/
+theorem column_total_insert_zero_at (before after : List Nat)
+    (amounts : Nat → Nat) (key : Nat) (zero : amounts key = 0) :
+    columnTotal (before ++ key :: after) amounts =
+      columnTotal (before ++ after) amounts := by
+  induction before with
+  | nil => simp [columnTotal, zero]
+  | cons head tail ih =>
+      simpa only [List.cons_append, columnTotal] using
+        congrArg (fun n => amounts head + n) ih
+
+/-- Removing any one element from a duplicate-free support stays
+duplicate-free, independent of the original index. -/
+theorem column_erase_at_nodup (before after : List Nat) (key : Nat)
+    (unique : (before ++ key :: after).Nodup) :
+    (before ++ after).Nodup := by
+  induction before with
+  | nil =>
+      exact (List.nodup_cons.mp unique).2
+  | cons head tail ih =>
+      have old : (head :: (tail ++ key :: after)).Nodup := by
+        simpa only [List.cons_append] using unique
+      have absent := (List.nodup_cons.mp old).1
+      have rest := (List.nodup_cons.mp old).2
+      have kept : head ∉ (tail ++ after) := by
+        intro member
+        rcases List.mem_append.mp member with atFront | atBack
+        · exact absent (List.mem_append.mpr (Or.inl atFront))
+        · exact absent (List.mem_append.mpr
+            (Or.inr (List.mem_cons.mpr (Or.inr atBack))))
+      change (head :: (tail ++ after)).Nodup
+      exact List.nodup_cons.mpr ⟨kept, ih rest⟩
+
+/-- Inserting an absent key at any location preserves unique support. -/
+theorem column_insert_at_nodup (before after : List Nat) (key : Nat)
+    (unique : (before ++ after).Nodup)
+    (fresh : key ∉ before ++ after) :
+    (before ++ key :: after).Nodup := by
+  induction before with
+  | nil =>
+      exact List.nodup_cons.mpr ⟨fresh, unique⟩
+  | cons head tail ih =>
+      have old : (head :: (tail ++ after)).Nodup := by
+        simpa only [List.cons_append] using unique
+      have absent := (List.nodup_cons.mp old).1
+      have rest := (List.nodup_cons.mp old).2
+      have freshRest : key ∉ tail ++ after := by
+        intro member
+        exact fresh (List.mem_cons.mpr (Or.inr member))
+      have distinct : head ≠ key := by
+        intro equal
+        exact fresh (List.mem_cons.mpr (Or.inl equal.symm))
+      have kept : head ∉ tail ++ key :: after := by
+        intro member
+        rcases List.mem_append.mp member with atFront | atBack
+        · exact absent (List.mem_append.mpr (Or.inl atFront))
+        · rcases List.mem_cons.mp atBack with equal | inBack
+          · exact distinct equal
+          · exact absent (List.mem_append.mpr (Or.inr inBack))
+      change (head :: (tail ++ key :: after)).Nodup
+      exact List.nodup_cons.mpr ⟨kept, ih rest freshRest⟩
+
+/-- Arbitrary-position erasure of an exhausted slot preserves the entire
+finite-support validity predicate. Unlike the earlier head-only lemma, the
+key can occur anywhere in the recorded support. -/
+theorem finite_erase_zero_anywhere_preserves_validity
+    (s : FiniteSupplyView) (before after : List Nat) (key : Nat)
+    (valid : FiniteSupplyValid s)
+    (support : s.slots = before ++ key :: after)
+    (zero : s.atoms key = 0) :
+    FiniteSupplyValid (finiteEraseAt s before after) := by
+  rcases valid with ⟨unique, covered, conserved, bounded, supplyBounded⟩
+  have priorNodup : (before ++ key :: after).Nodup := by
+    simpa [support] using unique
+  have keptNodup := column_erase_at_nodup before after key priorNodup
+  change (before ++ after).Nodup ∧
+    (∀ other, other ∉ before ++ after → s.atoms other = 0) ∧
+    columnTotal (before ++ after) s.atoms = s.supply ∧
+    (∀ other, other ∈ before ++ after → s.atoms other ≤ maxU128) ∧
+    s.supply ≤ maxU128
+  refine ⟨keptNodup, ?_, ?_, ?_, supplyBounded⟩
+  · intro other missing
+    by_cases equal : other = key
+    · subst other
+      exact zero
+    · apply covered other
+      rw [support]
+      intro member
+      rcases List.mem_append.mp member with inFront | inTail
+      · exact missing (List.mem_append.mpr (Or.inl inFront))
+      · rcases List.mem_cons.mp inTail with atKey | inBack
+        · exact equal atKey
+        · exact missing (List.mem_append.mpr (Or.inr inBack))
+  · have originalTotal :
+        columnTotal (before ++ key :: after) s.atoms = s.supply := by
+      simpa [support] using conserved
+    rw [column_total_insert_zero_at before after s.atoms key zero] at originalTotal
+    exact originalTotal
+  · intro other present
+    apply bounded other
+    rw [support]
+    rcases List.mem_append.mp present with inFront | inBack
+    · exact List.mem_append.mpr (Or.inl inFront)
+    · exact List.mem_append.mpr
+        (Or.inr (List.mem_cons.mpr (Or.inr inBack)))
+
+/-- A previously absent zero-valued recipient may enter the finite support
+at any insertion index while retaining the original total and column bounds. -/
+theorem finite_insert_zero_anywhere_preserves_validity
+    (s : FiniteSupplyView) (before after : List Nat) (key : Nat)
+    (valid : FiniteSupplyValid s)
+    (support : s.slots = before ++ after)
+    (fresh : key ∉ s.slots) :
+    FiniteSupplyValid (finiteInsertAt s before after key) := by
+  rcases valid with ⟨unique, covered, conserved, bounded, supplyBounded⟩
+  have oldNodup : (before ++ after).Nodup := by
+    simpa [support] using unique
+  have freshSupport : key ∉ before ++ after := by
+    simpa [support] using fresh
+  have zero : s.atoms key = 0 := covered key fresh
+  have newNodup := column_insert_at_nodup
+    before after key oldNodup freshSupport
+  change (before ++ key :: after).Nodup ∧
+    (∀ other, other ∉ before ++ key :: after → s.atoms other = 0) ∧
+    columnTotal (before ++ key :: after) s.atoms = s.supply ∧
+    (∀ other, other ∈ before ++ key :: after → s.atoms other ≤ maxU128) ∧
+    s.supply ≤ maxU128
+  refine ⟨newNodup, ?_, ?_, ?_, supplyBounded⟩
+  · intro other missing
+    apply covered other
+    rw [support]
+    intro member
+    rcases List.mem_append.mp member with inFront | inBack
+    · exact missing (List.mem_append.mpr (Or.inl inFront))
+    · exact missing (List.mem_append.mpr
+        (Or.inr (List.mem_cons.mpr (Or.inr inBack))))
+  · rw [column_total_insert_zero_at before after s.atoms key zero]
+    simpa [support] using conserved
+  · intro other present
+    rcases List.mem_append.mp present with inFront | inTail
+    · apply bounded other
+      rw [support]
+      exact List.mem_append.mpr (Or.inl inFront)
+    · rcases List.mem_cons.mp inTail with atKey | inBack
+      · subst other
+        simp [zero]
+      · apply bounded other
+        rw [support]
+        exact List.mem_append.mpr (Or.inr inBack)
+
 end TradeLayerFormal

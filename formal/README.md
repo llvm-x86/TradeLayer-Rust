@@ -84,6 +84,12 @@ The ledger also exports `supply_column_rows_unverified`, a sorted finite support
 
 The `finite_extend_zero_preserves_validity` and `finite_move_to_new_recipient_preserves_validity` theorems handle a recipient absent from the formal support by adding a zero-valued slot before an authorized transfer, leaving totals and bounds unchanged. Rust regression `newly_seen_recipient_and_zero_pruning_change_only_column_support` checks that the actual BTreeMap omits the exhausted sender, creates the recipient, and maintains supply and snapshot correctness. Lean's `finite_drop_zero_head_preserves_validity` additionally proves that dropping an exhausted, unique zero-valued head entry preserves finite-support validity. General ordered-map erasure still needs an exact correspondence between the erased Rust key and its place in the abstract support, together with an arbitrary-key permutation argument.
 
+## Stage 6: arbitrary-key canonical storage
+
+A new production `canonical_columns::put_nonzero` helper consolidates the exact delete-on-zero, insert-on-positive behavior previously duplicated in wallet and channel escrow maps. Rust tests cover middle-key deletion, replacement, ordering, and a multi-property history where independent sends are replayed in different orders. Kani checks the same branch logic through a bounded two-key store using symbolic `u128` values; standard-library `BTreeMap` allocation and node mechanics remain trusted.
+
+Lean's `finite_erase_zero_anywhere_preserves_validity` and `finite_insert_zero_anywhere_preserves_validity` extend the earlier head-only support proofs to **any prefix/suffix index**. The theorems preserve duplicate-free support, conservation, zero outside the support, individual `u128` bounds, and total-supply bounds. Insertion starts with a fresh zero-valued column. Erasure requires that the selected old column has reached zero. The key encoding and exact `BTreeMap` collection semantics are still separate implementation correspondence obligations.
+
 ## Boundaries for the next phases
 
 1. **Rust-to-Lean refinement.** Build a pure checked-`u128` transition function with a Verus specification and relate it to the current `Ledger::apply` and `calculate_settlement_preview` implementations. Prove failure leaves the ledger unchanged, conservation through all map entries, journal single-use, and finite-`u128` arithmetic. Tests and matching numbers alone are evidence, not a proof of refinement.
