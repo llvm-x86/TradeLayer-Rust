@@ -2587,4 +2587,72 @@ theorem binary_column_read_matches_sorted_lookup
     _ = sortedVecGet (binaryColumnInorder tree) query :=
       (sorted_vec_get_equals_linear _ query sorted).symm
 
+
+/-- Concatenating sorted left/right sublists around an interior pivot
+preserves strict sortedness whenever the pivot separates both sides. -/
+theorem sorted_vec_join_pivot
+    (left right : List (Nat × Nat)) (pivot value : Nat)
+    (leftSorted : SortedVecKeys left)
+    (rightSorted : SortedVecKeys right)
+    (below : ∀ entry ∈ left, entry.1 < pivot)
+    (above : ∀ entry ∈ right, pivot < entry.1) :
+    SortedVecKeys (left ++ (pivot, value) :: right) := by
+  induction left with
+  | nil =>
+      change (∀ entry ∈ right, pivot < entry.1) ∧ SortedVecKeys right
+      exact ⟨above, rightSorted⟩
+  | cons pair tail ih =>
+      rcases pair with ⟨stored, oldValue⟩
+      obtain ⟨headBeforeTail, tailSorted⟩ := leftSorted
+      have headBeforePivot : stored < pivot :=
+        below (stored, oldValue) (by simp)
+      have tailBeforePivot : ∀ entry ∈ tail, entry.1 < pivot := by
+        intro entry member
+        exact below entry (List.mem_cons.mpr (Or.inr member))
+      have tailJoined := ih tailSorted tailBeforePivot
+      have headBeforeAll :
+          ∀ entry ∈ tail ++ (pivot, value) :: right,
+              stored < entry.1 := by
+        intro entry member
+        rcases List.mem_append.mp member with inTail | inSuffix
+        · exact headBeforeTail entry inTail
+        · rcases List.mem_cons.mp inSuffix with atPivot | inRight
+          · subst entry
+            exact headBeforePivot
+          · have pivotBefore := above entry inRight
+            omega
+      change SortedVecKeys
+        ((stored, oldValue) :: (tail ++ (pivot, value) :: right))
+      exact ⟨headBeforeAll, tailJoined⟩
+
+/-- The pivot-separation certificate alone is enough to establish that
+an arbitrary tree's in-order traversal is globally and strictly sorted. -/
+theorem binary_column_inorder_is_sorted :
+    ∀ tree : BinaryColumnTree,
+      BinaryColumnOrdered tree →
+      SortedVecKeys (binaryColumnInorder tree) := by
+  intro tree
+  induction tree with
+  | empty =>
+      intro _
+      trivial
+  | branch pivot atoms left right ihLeft ihRight =>
+      intro valid
+      rcases valid with ⟨validLeft, validRight, below, above⟩
+      change SortedVecKeys
+        (binaryColumnInorder left ++
+          (pivot, atoms) :: binaryColumnInorder right)
+      exact sorted_vec_join_pivot _ _ pivot atoms
+        (ihLeft validLeft) (ihRight validRight) below above
+
+/-- One validated pivot-separation invariant certifies the binary-tree
+lookup directly against the sorted-vector lookup for ANY finite depth. -/
+theorem binary_column_read_refines_sorted_vec
+    (tree : BinaryColumnTree) (query : Nat)
+    (valid : BinaryColumnOrdered tree) :
+    binaryColumnRead tree query =
+      sortedVecGet (binaryColumnInorder tree) query := by
+  exact binary_column_read_matches_sorted_lookup
+    tree query valid (binary_column_inorder_is_sorted tree valid)
+
 end TradeLayerFormal
