@@ -2422,4 +2422,169 @@ theorem canonical_sorted_columns_extensional_unique :
             ⟨canonRight.1.2, canonRight.2.2⟩ agreeRest
           rw [equalTail]
 
+
+/-!
+## Stage 11: sound binary-search pivot decisions over arbitrary partitions
+
+The production Vec uses `binary_search_by` and branches on key order.
+These lemmas prove that *any* interior pivot of a strictly partitioned
+finite key sequence supports the usual binary-search decisions. The
+recursive tree below models an arbitrary finite sequence of such decisions,
+including balanced midpoint trees. It does not prove the Rust standard
+library chooses these pivots or manipulates Vec indices correctly.
+-/
+
+theorem linear_get_zero_without_key
+    (rows : List (Nat × Nat)) (query : Nat)
+    (absent : ∀ entry ∈ rows, entry.1 ≠ query) :
+    linearColumnGet rows query = 0 := by
+  induction rows with
+  | nil => rfl
+  | cons pair rest ih =>
+      rcases pair with ⟨stored, atoms⟩
+      have notHead : stored ≠ query :=
+        absent (stored, atoms) (by simp)
+      have notTail : ∀ entry ∈ rest, entry.1 ≠ query := by
+        intro entry member
+        exact absent entry (List.mem_cons.mpr (Or.inr member))
+      simp [linearColumnGet, notHead, ih notTail]
+
+theorem linear_get_append_without_prefix
+    (front back : List (Nat × Nat)) (query : Nat)
+    (absent : ∀ entry ∈ front, entry.1 ≠ query) :
+    linearColumnGet (front ++ back) query =
+      linearColumnGet back query := by
+  induction front with
+  | nil => rfl
+  | cons pair tail ih =>
+      rcases pair with ⟨stored, atoms⟩
+      have notHead : stored ≠ query :=
+        absent (stored, atoms) (by simp)
+      have notTail : ∀ entry ∈ tail, entry.1 ≠ query := by
+        intro entry member
+        exact absent entry (List.mem_cons.mpr (Or.inr member))
+      simp [linearColumnGet, notHead, ih notTail]
+
+theorem linear_get_append_without_suffix
+    (front back : List (Nat × Nat)) (query : Nat)
+    (absent : ∀ entry ∈ back, entry.1 ≠ query) :
+    linearColumnGet (front ++ back) query =
+      linearColumnGet front query := by
+  induction front with
+  | nil =>
+      have none := linear_get_zero_without_key back query absent
+      simpa [linearColumnGet] using none
+  | cons pair tail ih =>
+      rcases pair with ⟨stored, atoms⟩
+      by_cases same : stored = query
+      · simp [linearColumnGet, same]
+      · simp [linearColumnGet, same, ih]
+
+/-- When left keys are smaller and right keys are larger, any pivot has
+the correct binary-search three-way branching semantics. -/
+theorem linear_get_pivot_split
+    (left right : List (Nat × Nat))
+    (pivot value query : Nat)
+    (below : ∀ entry ∈ left, entry.1 < pivot)
+    (above : ∀ entry ∈ right, pivot < entry.1) :
+    linearColumnGet (left ++ (pivot, value) :: right) query =
+      if query < pivot then linearColumnGet left query
+      else if query = pivot then value else linearColumnGet right query := by
+  by_cases before : query < pivot
+  · have suffixAbsent :
+        ∀ entry ∈ (pivot, value) :: right, entry.1 ≠ query := by
+      intro entry member
+      rcases List.mem_cons.mp member with atHead | atTail
+      · subst entry
+        omega
+      · have greater := above entry atTail
+        omega
+    have unchanged := linear_get_append_without_suffix
+      left ((pivot, value) :: right) query suffixAbsent
+    simpa [before] using unchanged
+  · by_cases equal : query = pivot
+    · subst query
+      have prefixAbsent : ∀ entry ∈ left, entry.1 ≠ pivot := by
+        intro entry member
+        have lt := below entry member
+        omega
+      have skipped := linear_get_append_without_prefix
+        left ((pivot, value) :: right) pivot prefixAbsent
+      simpa [before, linearColumnGet] using skipped
+    · have after : pivot < query := by omega
+      have prefixAbsent : ∀ entry ∈ left, entry.1 ≠ query := by
+        intro entry member
+        have lt := below entry member
+        omega
+      have skipped := linear_get_append_without_prefix
+        left ((pivot, value) :: right) query prefixAbsent
+      have notPivot : pivot ≠ query := by omega
+      simpa [before, equal, linearColumnGet, notPivot] using skipped
+
+/-- Any (balanced or unbalanced) finite decision tree of pivot keys. -/
+inductive BinaryColumnTree where
+  | empty
+  | branch (key atoms : Nat)
+      (left right : BinaryColumnTree)
+
+def binaryColumnInorder : BinaryColumnTree → List (Nat × Nat)
+  | .empty => []
+  | .branch key atoms left right =>
+      binaryColumnInorder left ++
+        (key, atoms) :: binaryColumnInorder right
+
+def binaryColumnRead : BinaryColumnTree → Nat → Nat
+  | .empty, _ => 0
+  | .branch key atoms left right, query =>
+      if query < key then binaryColumnRead left query
+      else if query = key then atoms else binaryColumnRead right query
+
+/-- Every pivot separates the complete left/right subtrees; recursively
+the same partition invariant must hold in both subtrees. -/
+def BinaryColumnOrdered : BinaryColumnTree → Prop
+  | .empty => True
+  | .branch pivot _ left right =>
+      BinaryColumnOrdered left ∧ BinaryColumnOrdered right ∧
+      (∀ entry ∈ binaryColumnInorder left, entry.1 < pivot) ∧
+      (∀ entry ∈ binaryColumnInorder right, pivot < entry.1)
+
+/-- A sequence of binary-search pivot decisions is observationally
+equivalent to scanning the entire represented ordered map. This is
+proved for arbitrary finite tree depth and all query values. -/
+theorem binary_column_read_matches_full_scan :
+    ∀ tree : BinaryColumnTree,
+      BinaryColumnOrdered tree →
+      ∀ query,
+        binaryColumnRead tree query =
+        linearColumnGet (binaryColumnInorder tree) query := by
+  intro tree
+  induction tree with
+  | empty =>
+      intro _ query
+      rfl
+  | branch pivot atoms left right ihLeft ihRight =>
+      intro ordered query
+      rcases ordered with ⟨validLeft, validRight, below, above⟩
+      change (if query < pivot then binaryColumnRead left query
+        else if query = pivot then atoms
+        else binaryColumnRead right query) =
+          linearColumnGet
+            (binaryColumnInorder left ++
+              (pivot, atoms) :: binaryColumnInorder right) query
+      rw [linear_get_pivot_split _ _ pivot atoms query below above]
+      rw [ihLeft validLeft query, ihRight validRight query]
+
+theorem binary_column_read_matches_sorted_lookup
+    (tree : BinaryColumnTree) (query : Nat)
+    (valid : BinaryColumnOrdered tree)
+    (sorted : SortedVecKeys (binaryColumnInorder tree)) :
+    binaryColumnRead tree query =
+      sortedVecGet (binaryColumnInorder tree) query := by
+  calc
+    binaryColumnRead tree query =
+      linearColumnGet (binaryColumnInorder tree) query :=
+        binary_column_read_matches_full_scan tree valid query
+    _ = sortedVecGet (binaryColumnInorder tree) query :=
+      (sorted_vec_get_equals_linear _ query sorted).symm
+
 end TradeLayerFormal
