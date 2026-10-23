@@ -2124,4 +2124,140 @@ theorem sorted_vec_move_refines_two_column_function
       simpa [sortedVecMove, mid, debit, credit, isSender, isReceiver]
         using secondFrame.trans firstFrame
 
+
+/-!
+## Stage 10: arbitrary-length sorted-column refinement through entire histories
+
+The production ordered-column backend searches a strictly sorted Vec. This
+model compares its early-stop lookup against an independent linear scan and
+then shows that any finite sequence of inserts, replacements or zero-erases
+refines a sequence of functional writes. The proof is not a verification of
+Rust slice indexing, binary_search_by, the allocator or native Ord.
+-/
+
+/-- Independent linear lookup that never stops early because of ordering. -/
+def linearColumnGet : List (Nat × Nat) → Nat → Nat
+  | [], _ => 0
+  | (stored, value) :: tail, query =>
+      if stored = query then value else linearColumnGet tail query
+
+theorem linear_column_get_below
+    (rows : List (Nat × Nat)) (query lower : Nat)
+    (above : ∀ entry ∈ rows, lower < entry.1)
+    (below : query ≤ lower) :
+    linearColumnGet rows query = 0 := by
+  induction rows with
+  | nil => rfl
+  | cons pair tail ih =>
+      rcases pair with ⟨stored, value⟩
+      have headAbove : lower < stored :=
+        above (stored, value) (by simp)
+      have different : stored ≠ query := by omega
+      have tailAbove : ∀ entry ∈ tail, lower < entry.1 := by
+        intro entry member
+        exact above entry (List.mem_cons.mpr (Or.inr member))
+      simpa [linearColumnGet, different] using ih tailAbove
+
+/-- A sorted early-stopping lookup is identical to an unconditional linear
+lookup on every key, for an arbitrary finite strictly ordered support. -/
+theorem sorted_vec_get_equals_linear
+    (rows : List (Nat × Nat)) (query : Nat)
+    (sorted : SortedVecKeys rows) :
+    sortedVecGet rows query = linearColumnGet rows query := by
+  induction rows with
+  | nil => rfl
+  | cons pair tail ih =>
+      rcases pair with ⟨stored, value⟩
+      obtain ⟨above, tailSorted⟩ := sorted
+      by_cases before : query < stored
+      · have different : stored ≠ query := by omega
+        have tailAbove : ∀ entry ∈ tail, query < entry.1 := by
+          intro entry member
+          have larger := above entry member
+          omega
+        have emptyTail :=
+          linear_column_get_below tail query query tailAbove (by omega)
+        simp [sortedVecGet, linearColumnGet, before, different, emptyTail]
+      · by_cases same : query = stored
+        · subst query
+          simp [sortedVecGet, linearColumnGet, before]
+        · have different : stored ≠ query := Ne.symm same
+          simpa [sortedVecGet, linearColumnGet, before, same, different]
+            using ih tailSorted
+
+/-- A pure functional balance map with an explicit sorted-vector
+representation invariant. Missing keys always correspond to zero. -/
+def SortedColumnRepresents (rows : List (Nat × Nat))
+    (amounts : Nat → Nat) : Prop :=
+  SortedVecKeys rows ∧
+    ∀ query, sortedVecGet rows query = amounts query
+
+theorem sorted_vec_write_refines_function
+    (rows : List (Nat × Nat)) (amounts : Nat → Nat)
+    (key value : Nat)
+    (represented : SortedColumnRepresents rows amounts) :
+    SortedColumnRepresents (sortedVecPut rows key value)
+      (fun query => if query = key then value else amounts query) := by
+  rcases represented with ⟨sorted, equal⟩
+  refine ⟨sorted_vec_write_preserves_order rows key value sorted, ?_⟩
+  intro query
+  by_cases same : query = key
+  · subst query
+    simpa using sorted_vec_put_reads_written_key rows key value sorted
+  · have framed := sorted_vec_put_keeps_other_keys
+      rows key query value sorted same
+    simpa [same, equal query] using framed
+
+/-- Sequential canonical writes, with zero as deletion. -/
+def sortedVecWriteTrace (rows : List (Nat × Nat)) :
+    List (Nat × Nat) → List (Nat × Nat)
+  | [] => rows
+  | (key, value) :: tail =>
+      sortedVecWriteTrace (sortedVecPut rows key value) tail
+
+/-- The mathematical function updated in precisely the same order. -/
+def functionalWriteTrace (amounts : Nat → Nat) :
+    List (Nat × Nat) → Nat → Nat
+  | [] => amounts
+  | (key, value) :: tail =>
+      functionalWriteTrace
+        (fun query => if query = key then value else amounts query) tail
+
+/-- Any finite sequence of canonical vector writes preserves strict key
+ordering and matches pointwise assignment in the abstract map. No bound on
+history length, key count or insertion/deletion position is assumed. -/
+theorem sorted_vec_write_trace_refines
+    (writes : List (Nat × Nat)) :
+    ∀ (rows : List (Nat × Nat)) (amounts : Nat → Nat),
+      SortedColumnRepresents rows amounts →
+      SortedColumnRepresents
+        (sortedVecWriteTrace rows writes)
+        (functionalWriteTrace amounts writes) := by
+  induction writes with
+  | nil =>
+      intro rows amounts good
+      simpa [sortedVecWriteTrace, functionalWriteTrace] using good
+  | cons pair tail ih =>
+      rcases pair with ⟨key, value⟩
+      intro rows amounts good
+      change SortedColumnRepresents
+        (sortedVecWriteTrace (sortedVecPut rows key value) tail)
+        (functionalWriteTrace
+          (fun query => if query = key then value else amounts query) tail)
+      exact ih _ _ (sorted_vec_write_refines_function
+        rows amounts key value good)
+
+/-- Even an initially empty wallet book admits arbitrary sequences of
+updates while remaining a correct representation of the balance function. -/
+theorem sorted_vec_empty_history_refines
+    (writes : List (Nat × Nat)) :
+    SortedColumnRepresents (sortedVecWriteTrace [] writes)
+      (functionalWriteTrace (fun _ => 0) writes) := by
+  have emptyRep : SortedColumnRepresents [] (fun _ => 0) := by
+    constructor
+    · trivial
+    · intro query
+      rfl
+  exact sorted_vec_write_trace_refines writes [] (fun _ => 0) emptyRep
+
 end TradeLayerFormal
