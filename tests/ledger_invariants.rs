@@ -776,25 +776,34 @@ fn newly_seen_recipient_and_zero_pruning_change_only_column_support() {
     use tradelayer_core::ledger::{SupplyColumnRow, SupplyColumnSource};
 
     let mut ledger = Ledger::new();
-    ledger.apply(tx(1), create(31, PropertyKind::Fixed, 100)).unwrap();
+    ledger
+        .apply(tx(1), create(31, PropertyKind::Fixed, 100))
+        .unwrap();
     let initial = ledger.supply_column_rows_unverified().unwrap();
     assert_eq!(initial.len(), 1);
     assert_eq!(initial[0].source, SupplyColumnSource::Available(a("alice")));
 
-    ledger.apply(tx(2), send(31, "alice", "new-recipient", 100)).unwrap();
+    ledger
+        .apply(tx(2), send(31, "alice", "new-recipient", 100))
+        .unwrap();
     let after = ledger.supply_column_rows_unverified().unwrap();
-    assert_eq!(after, vec![SupplyColumnRow {
-        property: p(31),
-        source: SupplyColumnSource::Available(a("new-recipient")),
-        atoms: 100,
-    }]);
+    assert_eq!(
+        after,
+        vec![SupplyColumnRow {
+            property: p(31),
+            source: SupplyColumnSource::Available(a("new-recipient")),
+            atoms: 100,
+        }]
+    );
     let first = ledger.supply_audit_rows_unverified().unwrap();
     assert_eq!(first[0].available_atoms, 100);
     assert_eq!(first[0].total_supply_atoms, 100);
 
     // Identity sends consume replay IDs after checking funds without adding
     // another balance column.
-    ledger.apply(tx(3), send(31, "new-recipient", "new-recipient", 100)).unwrap();
+    ledger
+        .apply(tx(3), send(31, "new-recipient", "new-recipient", 100))
+        .unwrap();
     assert_eq!(ledger.supply_column_rows_unverified().unwrap(), after);
     let snapshot = ledger.snapshot_bytes().unwrap();
     let restored = Ledger::from_snapshot_bytes(&snapshot).unwrap();
