@@ -2876,12 +2876,8 @@ theorem midpoint_tree_preserves_entries (fuel : Nat) :
           have rightBound : tail.length ≤ n := by omega
           have leftProof := ih (rows.take (rows.length / 2)) leftBound
           have rightProof := ih tail rightBound
-          change
-            binaryColumnInorder
-              (BinaryColumnTree.branch key atoms
-                (midpointColumnTree n (rows.take (rows.length / 2)))
-                (midpointColumnTree n tail)) = rows
-          simp only [binaryColumnInorder, leftProof, rightProof]
+          simp only [midpointColumnTree, split, binaryColumnInorder]
+          rw [leftProof, rightProof]
           exact restore.symm
 
 /-- If the input is sorted, every recursively chosen midpoint is a
@@ -2929,10 +2925,7 @@ theorem midpoint_tree_is_ordered (fuel : Nat) :
           have leftEntries := midpoint_tree_preserves_entries n
             (rows.take (rows.length / 2)) leftBound
           have rightEntries := midpoint_tree_preserves_entries n tail rightBound
-          change BinaryColumnOrdered
-            (BinaryColumnTree.branch key atoms
-              (midpointColumnTree n (rows.take (rows.length / 2)))
-              (midpointColumnTree n tail))
+          simp only [midpointColumnTree, split, BinaryColumnOrdered]
           refine ⟨leftValid, rightValid, ?_, ?_⟩
           · simpa only [leftEntries] using below
           · simpa only [rightEntries] using above
