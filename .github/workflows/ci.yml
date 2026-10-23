@@ -48,6 +48,8 @@ jobs:
         run: cargo run --locked --bin tradelayer-scan -- fixtures/synthetic_transactions.tsv
       - name: Offline Litecoin RPC collector tests
         run: python3 -m unittest discover -s tests -p test_collect_litecoin_rpc.py -v
+      - name: Litecoin first-input source trace and reorg tests (fake RPC only)
+        run: python3 -m unittest discover -s tests -p test_litecoin_source_trace.py -v
       - name: Legacy comparison integration tests (fake decoder only)
         run: node tests/test_compare_legacy.cjs
       - name: Rust diagnostic export smoke test
