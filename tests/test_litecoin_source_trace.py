@@ -41,6 +41,7 @@ class FakeHistory:
     """Two linked node-accepted blocks with parent outpoint provenance."""
     def __init__(self):
         self.h0, self.h1, self.old = "10" * 32, "20" * 32, "01" * 32
+        self.genesis = trace.PINNED_GENESIS["test"]
         self.origin_script = bytes.fromhex("76a914" + "11" * 20 + "88ac")
         self.ref_script = bytes.fromhex("76a914" + "22" * 20 + "88ac")
         self.ref2_script = bytes.fromhex("76a914" + "33" * 20 + "88ac")
@@ -82,6 +83,8 @@ class FakeHistory:
         if method == "getblockcount":
             return 130
         if method == "getblockhash":
+            if params == [0]:
+                return self.genesis
             if params == [99]:
                 return self.old
             if params == [100]:
@@ -159,6 +162,16 @@ class SourceTraceTests(unittest.TestCase):
         node.reorg_at = node.hash_queries + 2
         with self.assertRaisesRegex(collector.EvidenceError, "reorganized"):
             trace.augment_with_sources(node, corpus, manifest)
+
+    def test_wrong_bitcoin_family_node_is_rejected_by_genesis(self):
+        node = FakeHistory()
+        corpus, manifest = self.scan(node)
+        node.genesis = "00" * 32
+        with self.assertRaisesRegex(collector.EvidenceError, "wrong chain genesis"):
+            trace.augment_with_sources(node, corpus, manifest)
+        node.genesis = trace.PINNED_GENESIS["test"]
+        accepted = trace.augment_with_sources(node, corpus, manifest)
+        self.assertEqual(accepted["pinned_litecoin_genesis"], node.genesis)
 
     def test_corpus_mismatch_is_rejected(self):
         node = FakeHistory()
