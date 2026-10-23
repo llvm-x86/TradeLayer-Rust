@@ -1,0 +1,4 @@
+# Cargo must never fetch source code implicitly for this consensus repository.
+# If a dependency is later approved, vendor its exact reviewed source first.
+[net]
+offline = true
