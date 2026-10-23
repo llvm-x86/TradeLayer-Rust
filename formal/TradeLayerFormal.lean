@@ -3248,7 +3248,7 @@ theorem byte_rank_bounded (width : Nat) :
   induction width with
   | zero =>
       intro bytes _ _
-      norm_num [byteRank]
+      simp [byteRank]
   | succ n ih =>
       intro bytes fits valid
       cases bytes with
@@ -3270,7 +3270,7 @@ theorem byte_rank_bounded (width : Nat) :
               (byte + 1) * 257 ^ n + byteRank n tail <
                 (byte + 1) * 257 ^ n + 257 ^ n :=
                   Nat.add_lt_add_left small _
-              _ = (byte + 2) * 257 ^ n := by ring
+              _ = (byte + 2) * 257 ^ n := by simp [Nat.add_mul, Nat.add_assoc]
           have digitLimit : byte + 2 ≤ 257 := by omega
           have multiplied :
               (byte + 2) * 257 ^ n ≤ 257 * 257 ^ n :=
@@ -3294,11 +3294,14 @@ theorem byte_rank_digit_dominates
       (a + 1) * scale + suffixA <
           (a + 1) * scale + scale :=
         Nat.add_lt_add_left suffixFits _
-      _ = (a + 2) * scale := by ring
+      _ = (a + 2) * scale := by simp [Nat.add_mul, Nat.add_assoc]
   have digit : a + 2 ≤ b + 1 := by omega
   have second : (a + 2) * scale ≤ (b + 1) * scale :=
     Nat.mul_le_mul_right _ digit
-  omega
+  calc
+    (a + 1) * scale + suffixA < (a + 2) * scale := first
+    _ ≤ (b + 1) * scale := second
+    _ ≤ (b + 1) * scale + suffixB := by omega
 
 /-- A padded, fixed-radix pair of unequal leading digits compares by the
 leading digit; identical digits compare by the suffix. -/
