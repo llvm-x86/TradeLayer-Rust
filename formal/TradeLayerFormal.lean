@@ -2071,4 +2071,57 @@ theorem sorted_vec_write_preserves_order
                 ((stored, prior) :: sortedVecPut rest key amount)
               from ⟨futureGreater, tailSorted⟩)
 
+
+/-- Sequential debit and credit using the actual sorted-column update
+semantics. This is the abstract refinement target for Rust's two calls
+to the canonical wallet/escrow balance writer. -/
+def sortedVecMove (rows : List (Nat × Nat))
+    (sender receiver amount : Nat) : List (Nat × Nat) :=
+  let debit := sortedVecGet rows sender
+  let credit := sortedVecGet rows receiver
+  let intermediate := sortedVecPut rows sender (debit - amount)
+  sortedVecPut intermediate receiver (credit + amount)
+
+/-- Moving amounts between distinct keys has the exact pairwise accounting
+semantics, and every other balance column is untouched. This theorem is
+for any finite sorted list, not only a two-slot Kani fixture. -/
+theorem sorted_vec_move_refines_two_column_function
+    (rows : List (Nat × Nat))
+    (sender receiver amount : Nat)
+    (sorted : SortedVecKeys rows)
+    (distinct : sender ≠ receiver) :
+    ∀ query,
+      sortedVecGet (sortedVecMove rows sender receiver amount) query =
+        if query = sender then sortedVecGet rows sender - amount
+        else if query = receiver then sortedVecGet rows receiver + amount
+        else sortedVecGet rows query := by
+  let debit := sortedVecGet rows sender
+  let credit := sortedVecGet rows receiver
+  let mid := sortedVecPut rows sender (debit - amount)
+  have midSorted : SortedVecKeys mid :=
+    sorted_vec_write_preserves_order rows sender (debit - amount) sorted
+  have senderAfter : sortedVecGet mid sender = debit - amount :=
+    sorted_vec_put_reads_written_key rows sender (debit - amount) sorted
+  have receiverAfter :
+      sortedVecGet (sortedVecPut mid receiver (credit + amount)) receiver =
+        credit + amount :=
+    sorted_vec_put_reads_written_key mid receiver (credit + amount) midSorted
+  intro query
+  by_cases isSender : query = sender
+  · subst query
+    have framed := sorted_vec_put_keeps_other_keys
+      mid receiver sender (credit + amount) midSorted distinct
+    simpa [sortedVecMove, mid, debit, credit] using
+      (framed.trans senderAfter)
+  · by_cases isReceiver : query = receiver
+    · subst query
+      simpa [sortedVecMove, mid, debit, credit, isSender]
+        using receiverAfter
+    · have secondFrame := sorted_vec_put_keeps_other_keys
+        mid receiver query (credit + amount) midSorted isReceiver
+      have firstFrame := sorted_vec_put_keeps_other_keys
+        rows sender query (debit - amount) sorted isSender
+      simpa [sortedVecMove, mid, debit, credit, isSender, isReceiver]
+        using secondFrame.trans firstFrame
+
 end TradeLayerFormal
