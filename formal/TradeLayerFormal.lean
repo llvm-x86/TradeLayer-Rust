@@ -3559,4 +3559,105 @@ theorem account_property_key_injective_full (p q : Nat)
     (valid_account_bytes_are_digits left validLeft)
     (valid_account_bytes_are_digits right validRight) same
 
+
+/-!
+## Stage 13: native composite-key order embeds into the sorted balance model
+
+The proofs above establish exact bytewise comparison on all valid Rust
+account identifiers. A native key below is the property number paired
+with its validated ASCII bytes. Its numeric rank is now a *proved order
+embedding* into the Nat-key sorted-list model from Stages 9–12.
+-/
+
+structure NativeAccountKey where
+  property : Nat
+  accountBytes : List Nat
+  deriving Repr, DecidableEq
+
+def NativeAccountLess (left right : NativeAccountKey) : Prop :=
+  left.property < right.property ∨
+    (left.property = right.property ∧
+      ByteLexLess left.accountBytes right.accountBytes)
+
+def encodeNativeAccount (key : NativeAccountKey) : Nat :=
+  compositeByteCode 90 key.property key.accountBytes
+
+theorem native_account_less_iff_rank
+    (left right : NativeAccountKey)
+    (validLeft : ValidAccountBytes left.accountBytes)
+    (validRight : ValidAccountBytes right.accountBytes) :
+    NativeAccountLess left right ↔
+      encodeNativeAccount left < encodeNativeAccount right := by
+  simpa [NativeAccountLess, encodeNativeAccount] using
+    (account_property_key_order_full left.property right.property
+      left.accountBytes right.accountBytes validLeft validRight).symm
+
+theorem encode_native_account_injective_on_valid
+    (left right : NativeAccountKey)
+    (validLeft : ValidAccountBytes left.accountBytes)
+    (validRight : ValidAccountBytes right.accountBytes)
+    (same : encodeNativeAccount left = encodeNativeAccount right) :
+    left = right := by
+  cases left with
+  | mk propertyA bytesA =>
+      cases right with
+      | mk propertyB bytesB =>
+          have raw :
+              compositeByteCode 90 propertyA bytesA =
+                compositeByteCode 90 propertyB bytesB := by
+            simpa [encodeNativeAccount] using same
+          obtain ⟨equalProperty, equalBytes⟩ :=
+            account_property_key_injective_full
+              propertyA propertyB bytesA bytesB validLeft validRight raw
+          cases equalProperty
+          cases equalBytes
+          rfl
+
+def NativeAccountSorted : List (NativeAccountKey × Nat) → Prop
+  | [] => True
+  | (key, _) :: rest =>
+      (∀ entry ∈ rest, NativeAccountLess key entry.1) ∧
+        NativeAccountSorted rest
+
+def encodeNativeRows (rows : List (NativeAccountKey × Nat)) :
+    List (Nat × Nat) :=
+  rows.map (fun record => (encodeNativeAccount record.1, record.2))
+
+/-- Any finite wallet book sorted in the native composite lexicographic
+order remains strictly sorted after the exact mathematical encoding.
+Hence the entire Stage 10 sorted Vec abstraction applies at *full* 90-byte
+ASCII key lengths, not only single-byte identifiers. -/
+theorem native_account_sorted_embeds_in_nat (rows : List (NativeAccountKey × Nat)) :
+    NativeAccountSorted rows →
+    (∀ entry ∈ rows, ValidAccountBytes entry.1.accountBytes) →
+    SortedVecKeys (encodeNativeRows rows) := by
+  induction rows with
+  | nil =>
+      intro _ _
+      trivial
+  | cons pair rest ih =>
+      rcases pair with ⟨key, atoms⟩
+      intro sorted valid
+      have headValid : ValidAccountBytes key.accountBytes :=
+        valid (key, atoms) (by simp)
+      have restValid :
+          ∀ entry ∈ rest, ValidAccountBytes entry.1.accountBytes := by
+        intro entry member
+        exact valid entry (List.mem_cons.mpr (Or.inr member))
+      obtain ⟨less, restSorted⟩ := sorted
+      have tailProof := ih restSorted restValid
+      change
+        (∀ entry ∈ rest.map
+            (fun record => (encodeNativeAccount record.1, record.2)),
+          encodeNativeAccount key < entry.1) ∧
+          SortedVecKeys (encodeNativeRows rest)
+      constructor
+      · intro encoded member
+        rcases List.mem_map.mp member with ⟨source, inRest, rfl⟩
+        have sourceValid := restValid source inRest
+        have nativeLess := less source inRest
+        exact (native_account_less_iff_rank
+          key source.1 headValid sourceValid).1 nativeLess
+      · exact tailProof
+
 end TradeLayerFormal
