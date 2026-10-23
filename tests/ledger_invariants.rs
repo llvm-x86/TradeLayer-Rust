@@ -735,6 +735,26 @@ fn canonical_supply_audit_tracks_arbitrary_wallet_channel_and_pending_columns() 
         },
     ];
     assert_eq!(columns, expected_columns);
+    // Verify network-qualified byte keys against the actual heterogeneous
+    // BTreeMap columns, without rebuilding keys through the source adapter.
+    let proof_keys = ledger
+        .supply_proof_keys_unverified(
+            tradelayer_core::network_profile::TradeLayerMainnet::Litecoin,
+        )
+        .unwrap();
+    assert_eq!(proof_keys.len(), 9);
+    assert!(proof_keys.windows(2).all(|pair| pair[0].0 < pair[1].0));
+    for (index, (key, atoms)) in proof_keys.iter().enumerate() {
+        assert_eq!(key.network_tag, 2);
+        assert_eq!(key.property_id, expected_columns[index].property.get());
+        assert_eq!(key.source_tag, [0, 0, 0, 1, 2, 3, 0, 0, 0][index]);
+        assert_eq!(*atoms, expected_columns[index].atoms);
+    }
+    assert_eq!(proof_keys[0].0.identifier_bytes, b"alice");
+    assert_eq!(proof_keys[3].0.identifier_bytes, b"chan");
+    assert_eq!(proof_keys[4].0.identifier_bytes, b"chan");
+    assert_eq!(proof_keys[5].0.identifier_bytes, tx(6).as_bytes().to_vec());
+    assert_eq!(proof_keys[5].0.identifier_bytes.len(), 32);
     assert!(columns.windows(2).all(|pair| pair[0] < pair[1]));
     assert!(columns.iter().all(|row| row.atoms > 0));
     let mut grouped = std::collections::BTreeMap::new();
@@ -757,6 +777,12 @@ fn canonical_supply_audit_tracks_arbitrary_wallet_channel_and_pending_columns() 
     assert_eq!(
         reloaded.supply_column_rows_unverified().unwrap(),
         expected_columns
+    );
+    assert_eq!(
+        reloaded.supply_proof_keys_unverified(
+            tradelayer_core::network_profile::TradeLayerMainnet::Litecoin,
+        ).unwrap(),
+        proof_keys
     );
 
     let immutable = ledger.clone();
