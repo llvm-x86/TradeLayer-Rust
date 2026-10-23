@@ -75,11 +75,11 @@ pub fn project_end_block(
     if transactions.iter().any(|t| t.tx_type > 35) {
         return Err(CadenceError::UnknownTransactionType);
     }
-    let funding_bucket = transactions
+    let funding_bucket_count = transactions
         .iter()
         .filter(|t| funding_bucket(path, t.tx_type))
         .count();
-    let other_bucket = transactions.len() - funding_bucket;
+    let other_bucket = transactions.len() - funding_bucket_count;
 
     let clearing_called = match path {
         ReplayPath::CatchUp => {
@@ -93,7 +93,7 @@ pub fn project_end_block(
     };
     let funding_height_eligible = height % 24 == 0;
     Ok(EndBlockProjection {
-        funding_bucket,
+        funding_bucket: funding_bucket_count,
         other_bucket,
         clearing_called,
         funding_height_eligible,
