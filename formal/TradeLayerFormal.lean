@@ -2719,4 +2719,63 @@ theorem sorted_vec_any_pivot_search_sound
   rw [← sorted_vec_get_equals_linear left query leftSorted,
     ← sorted_vec_get_equals_linear right query rightSorted]
 
+
+/-!
+## Stage 12: executable-key comparator refinement, one-byte account slice
+
+Rust's wallet key is lexicographically ordered by (PropertyId, AccountId).
+For a *one-byte* account identifier, the following fixed-radix embedding into
+Nat is an order embedding, including property precedence and within-property
+account precedence. The full one-to-ninety-byte ASCII lexicographic encoder
+remains an outstanding generalization and has not been proven here.
+-/
+
+def oneByteColumnCode (property account : Nat) : Nat :=
+  256 * property + account
+
+theorem one_byte_column_code_injective
+    (p q a b : Nat) (aBound : a < 256) (bBound : b < 256)
+    (same : oneByteColumnCode p a = oneByteColumnCode q b) :
+    p = q ∧ a = b := by
+  unfold oneByteColumnCode at same
+  constructor <;> omega
+
+theorem one_byte_column_code_order
+    (p q a b : Nat) (aBound : a < 256) (bBound : b < 256) :
+    (oneByteColumnCode p a < oneByteColumnCode q b) ↔
+      p < q ∨ (p = q ∧ a < b) := by
+  unfold oneByteColumnCode
+  constructor <;> omega
+
+theorem one_byte_column_code_equal
+    (p q a b : Nat) (aBound : a < 256) (bBound : b < 256) :
+    (oneByteColumnCode p a = oneByteColumnCode q b) ↔
+      (p = q ∧ a = b) := by
+  constructor
+  · exact one_byte_column_code_injective p q a b aBound bBound
+  · rintro ⟨rfl, rfl⟩
+    rfl
+
+/-- The three-way comparison observed by an ordered-map binary search
+is preserved by this restricted concrete-to-Nat key embedding. -/
+theorem one_byte_column_compare_refines_nat
+    (p q a b : Nat) (aBound : a < 256) (bBound : b < 256) :
+    (oneByteColumnCode p a < oneByteColumnCode q b ↔
+      p < q ∨ (p = q ∧ a < b)) ∧
+    (oneByteColumnCode p a = oneByteColumnCode q b ↔
+      p = q ∧ a = b) ∧
+    (oneByteColumnCode q b < oneByteColumnCode p a ↔
+      q < p ∨ (p = q ∧ b < a)) := by
+  refine ⟨one_byte_column_code_order p q a b aBound bBound,
+    one_byte_column_code_equal p q a b aBound bBound, ?_⟩
+  simpa [eq_comm] using
+    one_byte_column_code_order q p b a bBound aBound
+
+/-- Concretely instantiated precedence: property ID difference dominates
+even maximal one-byte account differences. -/
+example (p q : Nat) (a b : Nat)
+    (aBound : a < 256) (bBound : b < 256) (before : p < q) :
+    oneByteColumnCode p a < oneByteColumnCode q b :=
+  (one_byte_column_code_order p q a b aBound bBound).2 (Or.inl before)
+
 end TradeLayerFormal
