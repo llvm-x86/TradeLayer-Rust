@@ -24,6 +24,29 @@ import collect_litecoin_rpc as base
 
 LEGACY_JS_COMMIT = "dca0888b827c5bc28fa9189bc9e1d507f5c5670c"
 SATOSHIS = 100_000_000
+# Pinned Litecoin Core src/chainparams.cpp at ec1b6489a900d09cf5991e220dce089c77a232a2.
+PINNED_GENESIS = {
+    "main": "12a765e31ffd4059bada1e25190f6e98c99d9714d334efa41a195a7e7e04bfe2",
+    "test": "4966625a4b2851d9fdee139e56211a0d88575f59ed816ff5e6a63deb4e3e29a0",
+    "regtest": "530827f38f93b43ed12af0b3ad25a288dc02ed74d6d7857862df51fc56c416f9",
+}
+
+
+def pin_litecoin_genesis(rpc, network_label: str) -> str:
+    labels = {"litecoin-mainnet": "main", "litecoin-testnet": "test",
+              "litecoin-regtest": "regtest"}
+    network = labels.get(network_label)
+    if network is None:
+        raise base.EvidenceError("unsupported TradeLayer network label")
+    info = rpc.call("getblockchaininfo")
+    if not isinstance(info, dict) or info.get("chain") != network:
+        raise base.EvidenceError("node chain changed during source trace")
+    if info.get("pruned") or info.get("initialblockdownload"):
+        raise base.EvidenceError("source trace requires synced unpruned Litecoin Core")
+    genesis = base.require_hash(rpc.call("getblockhash", [0]), "Litecoin genesis")
+    if genesis != PINNED_GENESIS[network]:
+        raise base.EvidenceError("wrong chain genesis: expected Litecoin Core")
+    return genesis
 
 
 def require_satoshis(value: object) -> int:
@@ -190,6 +213,7 @@ def augment_with_sources(rpc, tsv: str, manifest: dict) -> dict:
         raise base.EvidenceError("unrecognized archive manifest")
     if not manifest.get("canonical_range_rechecked"):
         raise base.EvidenceError("archive was not canonically rechecked")
+    genesis = pin_litecoin_genesis(rpc, manifest.get("network"))
     known = {}
     for line in tsv.splitlines():
         if line and not line.startswith("#"):
@@ -255,6 +279,7 @@ def augment_with_sources(rpc, tsv: str, manifest: dict) -> dict:
         if base.require_hash(rpc.call("getblockhash", [block["height"]]), "final active hash") != bh:
             raise base.EvidenceError("chain reorganized while resolving source outpoints")
     data["source_trace_format"] = "litecoin-legacy-js-source-trace-v1"
+    data["pinned_litecoin_genesis"] = genesis
     data["legacy_js_commit"] = LEGACY_JS_COMMIT
     data["source_trace_evidence"] = "locally-trusted-litecoin-core-plus-raw-prevout-checks"
     data["sender_identity_status"] = "output-script-address-only; signer/ownership semantics unresolved"
