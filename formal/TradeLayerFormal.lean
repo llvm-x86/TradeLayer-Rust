@@ -3253,7 +3253,7 @@ theorem byte_rank_bounded (width : Nat) :
       intro bytes fits valid
       cases bytes with
       | nil =>
-          have positive : 0 < 257 ^ (n + 1) := pow_pos (by omega) _
+          have positive : 0 < 257 ^ (n + 1) := Nat.pow_pos (by decide)
           simpa [byteRank] using positive
       | cons byte tail =>
           have digitBound : byte < 256 := valid byte (by simp)
@@ -3270,7 +3270,7 @@ theorem byte_rank_bounded (width : Nat) :
               (byte + 1) * 257 ^ n + byteRank n tail <
                 (byte + 1) * 257 ^ n + 257 ^ n :=
                   Nat.add_lt_add_left small _
-              _ = (byte + 2) * 257 ^ n := by simp [Nat.add_mul, Nat.add_assoc]
+              _ = (byte + 2) * 257 ^ n := by simp [Nat.add_mul, Nat.add_assoc, Nat.two_mul]
           have digitLimit : byte + 2 ≤ 257 := by omega
           have multiplied :
               (byte + 2) * 257 ^ n ≤ 257 * 257 ^ n :=
@@ -3280,7 +3280,7 @@ theorem byte_rank_bounded (width : Nat) :
           calc
             _ < (byte + 2) * 257 ^ n := upper
             _ ≤ 257 * 257 ^ n := multiplied
-            _ = 257 ^ (n + 1) := by simp [pow_succ, Nat.mul_comm]
+            _ = 257 ^ (n + 1) := by simp [Nat.pow_succ, Nat.mul_comm]
 
 /-- Any smaller leading byte beats all possible suffixes. -/
 theorem byte_rank_digit_dominates
@@ -3294,7 +3294,7 @@ theorem byte_rank_digit_dominates
       (a + 1) * scale + suffixA <
           (a + 1) * scale + scale :=
         Nat.add_lt_add_left suffixFits _
-      _ = (a + 2) * scale := by simp [Nat.add_mul, Nat.add_assoc]
+      _ = (a + 2) * scale := by simp [Nat.add_mul, Nat.add_assoc, Nat.two_mul]
   have digit : a + 2 ≤ b + 1 := by omega
   have second : (a + 2) * scale ≤ (b + 1) * scale :=
     Nat.mul_le_mul_right _ digit
