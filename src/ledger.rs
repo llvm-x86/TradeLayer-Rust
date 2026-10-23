@@ -110,7 +110,10 @@ pub struct SupplyAuditRow {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum SupplyColumnSource {
     Available(AccountId),
-    ChannelEscrow { channel: AccountId, side: ChannelSide },
+    ChannelEscrow {
+        channel: AccountId,
+        side: ChannelSide,
+    },
     ReservedWithdrawal(TxId),
 }
 
@@ -645,7 +648,6 @@ impl Ledger {
         }
     }
 
-
     /// Canonical finite support of the live ledger's supply columns.
     ///
     /// The different enum variants cannot alias. Output is ordered first
@@ -655,9 +657,9 @@ impl Ledger {
     pub fn supply_column_rows_unverified(&self) -> Result<Vec<SupplyColumnRow>, LedgerError> {
         self.verify_conservation()?;
         let mut entries = Vec::new();
-        for ((&property, owner), &atoms) in &self.available {
+        for ((property, owner), &atoms) in &self.available {
             entries.push(SupplyColumnRow {
-                property,
+                property: *property,
                 source: SupplyColumnSource::Available(owner.clone()),
                 atoms,
             });

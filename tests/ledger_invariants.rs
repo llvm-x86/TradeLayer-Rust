@@ -682,19 +682,57 @@ fn canonical_supply_audit_tracks_arbitrary_wallet_channel_and_pending_columns() 
     assert_eq!(ledger.supply_audit_rows_unverified().unwrap(), expected);
     let columns = ledger.supply_column_rows_unverified().unwrap();
     let expected_columns = vec![
-        SupplyColumnRow { property: p(7), source: SupplyColumnSource::Available(a("alice")), atoms: 600 },
-        SupplyColumnRow { property: p(7), source: SupplyColumnSource::Available(a("bob")), atoms: 150 },
-        SupplyColumnRow { property: p(7), source: SupplyColumnSource::Available(a("carol")), atoms: 40 },
-        SupplyColumnRow { property: p(7), source: SupplyColumnSource::ChannelEscrow {
-            channel: a("chan"), side: ChannelSide::A,
-        }, atoms: 115 },
-        SupplyColumnRow { property: p(7), source: SupplyColumnSource::ChannelEscrow {
-            channel: a("chan"), side: ChannelSide::B,
-        }, atoms: 60 },
-        SupplyColumnRow { property: p(7), source: SupplyColumnSource::ReservedWithdrawal(tx(6)), atoms: 35 },
-        SupplyColumnRow { property: p(8), source: SupplyColumnSource::Available(a("alice")), atoms: 470 },
-        SupplyColumnRow { property: p(8), source: SupplyColumnSource::Available(a("bob")), atoms: 70 },
-        SupplyColumnRow { property: p(8), source: SupplyColumnSource::Available(a("carol")), atoms: 30 },
+        SupplyColumnRow {
+            property: p(7),
+            source: SupplyColumnSource::Available(a("alice")),
+            atoms: 600,
+        },
+        SupplyColumnRow {
+            property: p(7),
+            source: SupplyColumnSource::Available(a("bob")),
+            atoms: 150,
+        },
+        SupplyColumnRow {
+            property: p(7),
+            source: SupplyColumnSource::Available(a("carol")),
+            atoms: 40,
+        },
+        SupplyColumnRow {
+            property: p(7),
+            source: SupplyColumnSource::ChannelEscrow {
+                channel: a("chan"),
+                side: ChannelSide::A,
+            },
+            atoms: 115,
+        },
+        SupplyColumnRow {
+            property: p(7),
+            source: SupplyColumnSource::ChannelEscrow {
+                channel: a("chan"),
+                side: ChannelSide::B,
+            },
+            atoms: 60,
+        },
+        SupplyColumnRow {
+            property: p(7),
+            source: SupplyColumnSource::ReservedWithdrawal(tx(6)),
+            atoms: 35,
+        },
+        SupplyColumnRow {
+            property: p(8),
+            source: SupplyColumnSource::Available(a("alice")),
+            atoms: 470,
+        },
+        SupplyColumnRow {
+            property: p(8),
+            source: SupplyColumnSource::Available(a("bob")),
+            atoms: 70,
+        },
+        SupplyColumnRow {
+            property: p(8),
+            source: SupplyColumnSource::Available(a("carol")),
+            atoms: 30,
+        },
     ];
     assert_eq!(columns, expected_columns);
     assert!(columns.windows(2).all(|pair| pair[0] < pair[1]));
@@ -716,7 +754,10 @@ fn canonical_supply_audit_tracks_arbitrary_wallet_channel_and_pending_columns() 
     let reloaded = Ledger::from_snapshot_bytes(&snapshot).unwrap();
     assert_eq!(reloaded, ledger);
     assert_eq!(reloaded.supply_audit_rows_unverified().unwrap(), expected);
-    assert_eq!(reloaded.supply_column_rows_unverified().unwrap(), expected_columns);
+    assert_eq!(
+        reloaded.supply_column_rows_unverified().unwrap(),
+        expected_columns
+    );
 
     let immutable = ledger.clone();
     assert_eq!(ledger.settle_due_withdrawals_unverified(149), Ok(0));
