@@ -156,7 +156,7 @@ class SourceTraceTests(unittest.TestCase):
     def test_reorg_while_reading_source_is_rejected(self):
         node = FakeHistory()
         corpus, manifest = self.scan(node)
-        node.reorg_at = node.hash_queries + 4
+        node.reorg_at = node.hash_queries + 2
         with self.assertRaisesRegex(collector.EvidenceError, "reorganized"):
             trace.augment_with_sources(node, corpus, manifest)
 
