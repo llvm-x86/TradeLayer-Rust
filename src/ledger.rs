@@ -95,7 +95,6 @@ pub struct Property {
     pub total_supply_atoms: u128,
 }
 
-
 /** A read-only summary of where the issued atoms for one property live.
  * This is a deterministic audit projection, not a chain-authenticated proof. */
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -653,20 +652,22 @@ impl Ledger {
             })
             .collect();
         for ((id, _owner), &atoms) in &self.available {
-            let row = rows.get_mut(id).ok_or(LedgerError::BalanceWithoutProperty(*id))?;
-            row.available_atoms = crate::checked_amounts::checked_supply_add(
-                row.available_atoms, atoms,
-            )
-            .ok_or(LedgerError::ArithmeticOverflow)?;
+            let row = rows
+                .get_mut(id)
+                .ok_or(LedgerError::BalanceWithoutProperty(*id))?;
+            row.available_atoms =
+                crate::checked_amounts::checked_supply_add(row.available_atoms, atoms)
+                    .ok_or(LedgerError::ArithmeticOverflow)?;
         }
         for channel in self.channels.values() {
             for side in [ChannelSide::A, ChannelSide::B] {
                 for (&id, &atoms) in channel.escrow(side) {
-                    let row = rows.get_mut(&id).ok_or(LedgerError::BalanceWithoutProperty(id))?;
-                    row.escrow_atoms = crate::checked_amounts::checked_supply_add(
-                        row.escrow_atoms, atoms,
-                    )
-                    .ok_or(LedgerError::ArithmeticOverflow)?;
+                    let row = rows
+                        .get_mut(&id)
+                        .ok_or(LedgerError::BalanceWithoutProperty(id))?;
+                    row.escrow_atoms =
+                        crate::checked_amounts::checked_supply_add(row.escrow_atoms, atoms)
+                            .ok_or(LedgerError::ArithmeticOverflow)?;
                 }
             }
         }
@@ -681,13 +682,15 @@ impl Ledger {
             .ok_or(LedgerError::ArithmeticOverflow)?;
         }
         for row in rows.values() {
-            let total = crate::checked_amounts::checked_supply_add(
-                row.available_atoms, row.escrow_atoms,
-            )
-            .and_then(|part| crate::checked_amounts::checked_supply_add(
-                part, row.pending_withdrawal_atoms
-            ))
-            .ok_or(LedgerError::ArithmeticOverflow)?;
+            let total =
+                crate::checked_amounts::checked_supply_add(row.available_atoms, row.escrow_atoms)
+                    .and_then(|part| {
+                        crate::checked_amounts::checked_supply_add(
+                            part,
+                            row.pending_withdrawal_atoms,
+                        )
+                    })
+                    .ok_or(LedgerError::ArithmeticOverflow)?;
             if total != row.total_supply_atoms {
                 return Err(LedgerError::SupplyMismatch(row.property));
             }

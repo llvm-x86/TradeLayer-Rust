@@ -29,7 +29,6 @@ pub(crate) fn move_atoms(
     Ok((debit - amount, credited))
 }
 
-
 /** Add two contributions to the same property's issued-supply account.
  * Returned None means u128 overflow; no implicit wrapping is allowed. */
 pub(crate) fn checked_supply_add(prior: u128, atoms: u128) -> Option<u128> {
@@ -39,7 +38,6 @@ pub(crate) fn checked_supply_add(prior: u128, atoms: u128) -> Option<u128> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
 
     #[test]
     fn supply_add_bounds_are_exact() {
@@ -93,7 +91,6 @@ mod kani_proofs {
             assert!(credited >= credit);
         }
     }
-
 
     /// This exact helper is used in all supply accumulation and audit rows.
     /// Symbolic inputs span the complete representable u128 domain.
