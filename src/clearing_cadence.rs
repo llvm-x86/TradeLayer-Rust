@@ -60,7 +60,7 @@ pub const fn funding_bucket(path: ReplayPath, ty: u8) -> bool {
 /// Models catch-up's new/unprocessed count (including invalid transactions)
 /// and realtime's `processedAny` indicator from ONLY non-funding payloads.
 /// Both call `Clearing.applyFundingRates` from `clearingFunction`,
-/// and that function gates on `height % 24 == 0`.
+/// and that function gates on `height.is_multiple_of(24)`.
 pub fn project_end_block(
     path: ReplayPath,
     height: u64,
@@ -85,13 +85,13 @@ pub fn project_end_block(
         ReplayPath::CatchUp => {
             // constructConsensusFromIndex: skip=false when ANY indexed tx
             // has not already been marked processed, or height % 10000 == 0.
-            height % 10_000 == 0 || transactions.iter().any(|t| !t.already_processed)
+            height.is_multiple_of(10_000) || transactions.iter().any(|t| !t.already_processed)
         }
         ReplayPath::RealTime => transactions.iter().any(|t| {
             !funding_bucket(path, t.tx_type) && !t.already_processed && t.valid_before_logic
         }),
     };
-    let funding_height_eligible = height % 24 == 0;
+    let funding_height_eligible = height.is_multiple_of(24);
     Ok(EndBlockProjection {
         funding_bucket: funding_bucket_count,
         other_bucket,
