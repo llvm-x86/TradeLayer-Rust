@@ -124,3 +124,38 @@ mod tests {
         );
     }
 }
+
+#[cfg(kani)]
+mod kani_proofs {
+    use super::*;
+    use crate::canonical_columns::put_nonzero;
+
+    /// Proof is over the actual Vec-backed production column store,
+    /// not a substitute two-slot model. Fixed key geometry keeps allocation
+    /// and iterator unwinding bounded; values span symbolic u8 inputs.
+    #[kani::proof]
+    #[kani::unwind(16)]
+    fn actual_vec_backend_inserts_and_erases_a_middle_key() {
+        let debit: u8 = kani::any();
+        let credit: u8 = kani::any();
+        let amount: u8 = kani::any();
+        let mut columns = OrderedColumns::<u8>::default();
+        assert_eq!(columns.insert(1, u128::from(debit)), None);
+        assert_eq!(columns.insert(3, u128::from(credit)), None);
+        put_nonzero(&mut columns, 2, u128::from(amount));
+        assert_eq!(columns.get(&1).copied(), Some(u128::from(debit)));
+        assert_eq!(columns.get(&3).copied(), Some(u128::from(credit)));
+        if amount == 0 {
+            assert_eq!(columns.get(&2).copied(), None);
+            assert_eq!(columns.len(), 2);
+        } else {
+            assert_eq!(columns.get(&2).copied(), Some(u128::from(amount)));
+            assert_eq!(columns.len(), 3);
+        }
+        put_nonzero(&mut columns, 2, 0);
+        assert_eq!(columns.get(&2).copied(), None);
+        assert_eq!(columns.get(&1).copied(), Some(u128::from(debit)));
+        assert_eq!(columns.get(&3).copied(), Some(u128::from(credit)));
+        assert_eq!(columns.len(), 2);
+    }
+}
