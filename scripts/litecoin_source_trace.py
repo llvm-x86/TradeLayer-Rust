@@ -215,6 +215,7 @@ def augment_with_sources(rpc, tsv: str, manifest: dict) -> dict:
         raise base.EvidenceError("archive was not canonically rechecked")
     genesis = pin_litecoin_genesis(rpc, manifest.get("network"))
     known = {}
+    ordered_txids = []
     for line in tsv.splitlines():
         if line and not line.startswith("#"):
             parts = line.split("\t")
@@ -223,10 +224,14 @@ def augment_with_sources(rpc, tsv: str, manifest: dict) -> dict:
             if parts[4] in known:
                 raise base.EvidenceError("duplicate candidate in corpus")
             known[parts[4]] = parts
+            ordered_txids.append(parts[4])
     if len(known) != manifest["transactions_selected"]:
         raise base.EvidenceError("candidate TSV and manifest disagree")
+    if ordered_txids != [candidate["txid"] for candidate in manifest["transactions"]]:
+        raise base.EvidenceError("candidate transaction order mismatch")
     data = json.loads(json.dumps(manifest))  # avoid mutating caller's manifest
     cached_blocks, cached_parents = {}, {}
+    prior_position = None
     for candidate in data["transactions"]:
         height = candidate["height"]
         bh = base.require_hash(candidate["blockhash"], "candidate block")
@@ -238,7 +243,13 @@ def augment_with_sources(rpc, tsv: str, manifest: dict) -> dict:
             cached_blocks[bh] = checked_block(rpc, bh, height, manifest["min_confirmations"], 2)
         block = cached_blocks[bh]
         index = candidate["transaction_position"]
-        if type(index) is not int or index < 0 or index >= len(block["tx"]):
+        if type(height) is not int or type(index) is not int:
+            raise base.EvidenceError("invalid historical position")
+        position = (height, index)
+        if prior_position is not None and position <= prior_position:
+            raise base.EvidenceError("candidate transaction order is not canonical")
+        prior_position = position
+        if index < 0 or index >= len(block["tx"]):
             raise base.EvidenceError("candidate position outside block")
         tx = block["tx"][index]
         if base.require_hash(tx.get("txid"), "candidate txid") != txid:
@@ -313,6 +324,9 @@ def main(argv=None) -> int:
                 raise base.EvidenceError("RPC cookie missing username/password separator")
         rpc = base.LitecoinRPC(args.rpc_url or
                                f"http://127.0.0.1:{base.NETWORK_PORTS[args.network]}", credential)
+        label = {"main": "litecoin-mainnet", "test": "litecoin-testnet",
+                 "regtest": "litecoin-regtest"}[args.network]
+        pin_litecoin_genesis(rpc, label)
         tsv, manifest = base.scan_blocks(rpc, args.network, args.start_height,
                                          args.end_height, args.min_confirmations)
         manifest = augment_with_sources(rpc, tsv, manifest)
