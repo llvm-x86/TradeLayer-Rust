@@ -3993,4 +3993,140 @@ theorem midpoint_indexed_trace_refines_function
   rw [midpoint_indexed_trace_equals_canonical writes rows good.1]
   exact sorted_vec_write_trace_refines writes rows amounts good
 
+
+/-!
+## Stage 16: the native account-key indexed write commutes with key encoding
+
+Stages 13–14 prove exact native account-key rank and lower-bound
+correspondence. Stage 15 proves indexed writes for Nat-ranked rows.
+The theorems here close the intervening *abstract-model* composition:
+indexing into a list of full 1–90-byte native keys and subsequently
+encoding it agrees with first encoding those keys and then applying the
+Nat-key indexed update. This remains a Lean list-level refinement and
+does not verify Rust standard-library Vec mutations or allocation.
+-/
+
+/-- An independent positional write retaining native property/account-byte
+keys. Keys at the selected position are replaced, inserted, or deleted
+according to the canonical delete-on-zero balance policy. -/
+def nativeIndexedColumnPut : Nat → List (NativeAccountKey × Nat) →
+    NativeAccountKey → Nat → List (NativeAccountKey × Nat)
+  | 0, [], key, amount =>
+      if amount = 0 then [] else [(key, amount)]
+  | 0, (stored, old) :: tail, key, amount =>
+      if stored = key then
+        if amount = 0 then tail else (stored, amount) :: tail
+      else if amount = 0 then (stored, old) :: tail
+      else (key, amount) :: (stored, old) :: tail
+  | _ + 1, [], _, _ => []
+  | index + 1, (stored, old) :: tail, key, amount =>
+      (stored, old) :: nativeIndexedColumnPut index tail key amount
+
+/-- The native indexed list update exactly commutes with base-257
+encoding for all indices, including ones beyond the list length. Key
+equality is reflected by the injective encoding on valid account bytes. -/
+theorem native_indexed_encode_commutes
+    (index : Nat) (rows : List (NativeAccountKey × Nat))
+    (key : NativeAccountKey) (amount : Nat)
+    (validRows : ∀ entry ∈ rows, ValidAccountBytes entry.1.accountBytes)
+    (validKey : ValidAccountBytes key.accountBytes) :
+    encodeNativeRows (nativeIndexedColumnPut index rows key amount) =
+      indexedColumnPut index (encodeNativeRows rows)
+        (encodeNativeAccount key) amount := by
+  induction index generalizing rows with
+  | zero =>
+      cases rows with
+      | nil =>
+          simp [nativeIndexedColumnPut, indexedColumnPut, encodeNativeRows]
+      | cons pair tail =>
+          rcases pair with ⟨stored, old⟩
+          have validStored : ValidAccountBytes stored.accountBytes :=
+            validRows (stored, old) (by simp)
+          by_cases equal : stored = key
+          · subst key
+            simp [nativeIndexedColumnPut, indexedColumnPut, encodeNativeRows]
+          · have rankNotEqual :
+                encodeNativeAccount stored ≠ encodeNativeAccount key := by
+              intro same
+              exact equal (encode_native_account_injective_on_valid
+                stored key validStored validKey same)
+            simp [nativeIndexedColumnPut, indexedColumnPut, encodeNativeRows,
+              equal, rankNotEqual]
+  | succ index ih =>
+      cases rows with
+      | nil => rfl
+      | cons pair tail =>
+          rcases pair with ⟨stored, old⟩
+          have validTail :
+              ∀ entry ∈ tail, ValidAccountBytes entry.1.accountBytes := by
+            intro entry member
+            exact validRows entry (List.mem_cons.mpr (Or.inr member))
+          simpa [nativeIndexedColumnPut, indexedColumnPut, encodeNativeRows]
+            using (ih tail validTail)
+
+/-- A native-key positional update uses an independent native full-scan
+lower-bound index rather than a numeric rank or midpoint decision. -/
+noncomputable def nativeLowerBoundIndexedPut
+    (rows : List (NativeAccountKey × Nat))
+    (key : NativeAccountKey) (amount : Nat) :
+    List (NativeAccountKey × Nat) :=
+  nativeIndexedColumnPut (nativeAccountCountBefore rows key) rows key amount
+
+/-- The exact native-key lower-bound update and midpoint-indexed
+encoded update yield structurally identical ordered rows after encoding. -/
+theorem native_lower_bound_indexed_encodes_midpoint
+    (rows : List (NativeAccountKey × Nat))
+    (key : NativeAccountKey) (amount : Nat)
+    (sorted : NativeAccountSorted rows)
+    (validRows : ∀ entry ∈ rows, ValidAccountBytes entry.1.accountBytes)
+    (validKey : ValidAccountBytes key.accountBytes) :
+    encodeNativeRows (nativeLowerBoundIndexedPut rows key amount) =
+      midpointIndexedPut (encodeNativeRows rows)
+        (encodeNativeAccount key) amount := by
+  unfold nativeLowerBoundIndexedPut midpointIndexedPut
+  rw [native_midpoint_lower_bound_matches_native_scan
+    rows key sorted validRows validKey]
+  exact native_indexed_encode_commutes
+    (nativeAccountCountBefore rows key) rows key amount validRows validKey
+
+/-- Structural, full-list refinement from native indexed writes all the
+way to the canonical Nat-key sorted-map specification, including zero
+deletions and absent-key insertions at arbitrary finite positions. -/
+theorem native_lower_bound_indexed_refines_sorted_put
+    (rows : List (NativeAccountKey × Nat))
+    (key : NativeAccountKey) (amount : Nat)
+    (sorted : NativeAccountSorted rows)
+    (validRows : ∀ entry ∈ rows, ValidAccountBytes entry.1.accountBytes)
+    (validKey : ValidAccountBytes key.accountBytes) :
+    encodeNativeRows (nativeLowerBoundIndexedPut rows key amount) =
+      sortedVecPut (encodeNativeRows rows)
+        (encodeNativeAccount key) amount := by
+  calc
+    encodeNativeRows (nativeLowerBoundIndexedPut rows key amount) =
+        midpointIndexedPut (encodeNativeRows rows)
+          (encodeNativeAccount key) amount :=
+      native_lower_bound_indexed_encodes_midpoint
+        rows key amount sorted validRows validKey
+    _ = sortedVecPut (encodeNativeRows rows) (encodeNativeAccount key) amount :=
+      midpoint_indexed_put_equals_sorted_put
+        (encodeNativeRows rows) (encodeNativeAccount key) amount
+        (native_account_sorted_embeds_in_nat rows sorted validRows)
+
+/-- The native indexed write leaves an encoded, strictly ordered support.
+This is an abstract representation property, not a Rust allocator proof. -/
+theorem native_indexed_write_preserves_encoded_order
+    (rows : List (NativeAccountKey × Nat))
+    (key : NativeAccountKey) (amount : Nat)
+    (sorted : NativeAccountSorted rows)
+    (validRows : ∀ entry ∈ rows, ValidAccountBytes entry.1.accountBytes)
+    (validKey : ValidAccountBytes key.accountBytes) :
+    SortedVecKeys (encodeNativeRows
+      (nativeLowerBoundIndexedPut rows key amount)) := by
+  rw [native_lower_bound_indexed_refines_sorted_put
+    rows key amount sorted validRows validKey]
+  exact sorted_vec_write_preserves_order
+    (encodeNativeRows rows) (encodeNativeAccount key) amount
+    (native_account_sorted_embeds_in_nat rows sorted validRows)
+
+
 end TradeLayerFormal
