@@ -42,6 +42,8 @@ The `lean.yml` GitHub Actions job compiles the proof and requests an independent
 
 ## Production arithmetic refinement stage
 
+The proofs apply to **successful two-column moves** and treat `u128` overflow as a rejected transition. The Rust entry point retains its original funds check and self-transfer no-op semantics. The entire ledger still commits through `apply_batch`, which stages and validates a clone before replacing the public state. The checker has not formally established the BTreeMap update semantics or this clone-and-commit behavior.
+
 The production `src/checked_amounts.rs::move_atoms` function computes checked changes for two distinct columns. Actual production call sites now use it in direct transfers, channel commits, cross-channel transfers and the Type-31 King settlement debit. Same-account transfers remain a validated no-op in `Ledger::execute`.
 
 `TradeLayerFormal.checkedMove` models its three exact rejection guards followed by its checked integer updates, and proves accepted moves preserve total units and u128 bounds. The separate Kani harnesses in that **production Rust module** use unconstrained symbolic `u128` inputs and prove guard correspondence and conservation when total supply fits `u128`.
