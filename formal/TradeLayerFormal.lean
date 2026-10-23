@@ -2655,4 +2655,66 @@ theorem binary_column_read_refines_sorted_vec
   exact binary_column_read_matches_sorted_lookup
     tree query valid (binary_column_inorder_is_sorted tree valid)
 
+
+/-- Splitting a strictly increasing list at ANY interior pivot establishes
+the left-less-than-pivot and right-greater-than-pivot conditions used by
+the binary-search tree. This includes a midpoint selected at runtime. -/
+theorem sorted_vec_any_pivot_has_valid_bounds
+    (left right : List (Nat × Nat)) (pivot value : Nat)
+    (sorted : SortedVecKeys (left ++ (pivot, value) :: right)) :
+    (∀ entry ∈ left, entry.1 < pivot) ∧
+      (∀ entry ∈ right, pivot < entry.1) := by
+  induction left with
+  | nil =>
+      have bound : ∀ entry ∈ right, pivot < entry.1 := sorted.1
+      exact ⟨by intro entry member; cases member, bound⟩
+  | cons pair tail ih =>
+      rcases pair with ⟨stored, atoms⟩
+      have pivotInTail : (pivot, value) ∈ tail ++ (pivot, value) :: right :=
+        List.mem_append.mpr (Or.inr (by simp))
+      have storedBelow : stored < pivot :=
+        sorted.1 (pivot, value) pivotInTail
+      have next := ih sorted.2
+      refine ⟨?_, next.2⟩
+      intro entry member
+      rcases List.mem_cons.mp member with atHead | inTail
+      · subst entry
+        exact storedBelow
+      · exact next.1 entry inTail
+
+/-- Every interior pivot leaves sorted sublists on both sides. -/
+theorem sorted_vec_any_pivot_subtrees_sorted
+    (left right : List (Nat × Nat)) (pivot value : Nat)
+    (sorted : SortedVecKeys (left ++ (pivot, value) :: right)) :
+    SortedVecKeys left ∧ SortedVecKeys right := by
+  induction left with
+  | nil =>
+      exact ⟨by trivial, sorted.2⟩
+  | cons pair tail ih =>
+      rcases pair with ⟨stored, atoms⟩
+      have next := ih sorted.2
+      have below : ∀ entry ∈ tail, stored < entry.1 := by
+        intro entry member
+        exact sorted.1 entry (List.mem_append.mpr (Or.inl member))
+      exact ⟨⟨below, next.1⟩, next.2⟩
+
+/-- For any interior split of a sorted Vec, searching the appropriate
+half according to the pivot comparison returns EXACTLY the same result
+as searching the entire Vec. No particular pivot index is required. -/
+theorem sorted_vec_any_pivot_search_sound
+    (left right : List (Nat × Nat)) (pivot value query : Nat)
+    (sorted : SortedVecKeys (left ++ (pivot, value) :: right)) :
+    sortedVecGet (left ++ (pivot, value) :: right) query =
+      if query < pivot then sortedVecGet left query
+      else if query = pivot then value
+      else sortedVecGet right query := by
+  obtain ⟨below, above⟩ :=
+    sorted_vec_any_pivot_has_valid_bounds left right pivot value sorted
+  obtain ⟨leftSorted, rightSorted⟩ :=
+    sorted_vec_any_pivot_subtrees_sorted left right pivot value sorted
+  rw [sorted_vec_get_equals_linear _ query sorted]
+  rw [linear_get_pivot_split left right pivot value query below above]
+  rw [← sorted_vec_get_equals_linear left query leftSorted,
+    ← sorted_vec_get_equals_linear right query rightSorted]
+
 end TradeLayerFormal
