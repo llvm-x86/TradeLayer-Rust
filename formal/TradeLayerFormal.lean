@@ -677,14 +677,14 @@ theorem previously_seen_txid_rejects_at_end
   rw [staged_batch_append]
   cases intermediate : stagedBatch e intervening with
   | none =>
-      simp [intermediate]
+      simp
   | some after =>
       have stillSeen : after.replay.seen last.network last.txid = true :=
         staged_batch_retains_existing_replay intervening e after
           last.network last.txid intermediate alreadySeen
       have rejected : stageTx after last = none := by
         simp [stageTx, stillSeen]
-      simp [intermediate, stagedBatch, rejected]
+      simp [stagedBatch, rejected]
 
 /-- Even with an arbitrarily long successful prefix of unrelated operations,
 a duplicate within one TradeLayer forces the entire batch to reject. -/
@@ -707,6 +707,7 @@ theorem nonadjacent_duplicate_txid_rejects_batch
         have suffixFails :=
           previously_seen_txid_rejects_at_end middle intervening last sameMarked
         simpa [stagedBatch, attempted] using suffixFails
-  simp [batchResult, stagingFails]
+  unfold batchResult
+  rw [stagingFails]
 
 end TradeLayerFormal
