@@ -44,7 +44,10 @@ mod tests {
             move_atoms(u128::MAX, u128::MAX - 1, 1),
             Ok((u128::MAX - 1, u128::MAX))
         );
-        assert_eq!(move_atoms(u128::MAX, u128::MAX, 1), Err(MoveError::Overflow));
+        assert_eq!(
+            move_atoms(u128::MAX, u128::MAX, 1),
+            Err(MoveError::Overflow)
+        );
     }
 }
 

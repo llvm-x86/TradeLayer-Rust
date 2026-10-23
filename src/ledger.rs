@@ -456,7 +456,10 @@ impl Ledger {
                     return Ok(());
                 }
                 let (from_after, to_after) = checked_move_for_property(
-                    id, from_before, self.available_atoms(id, &to), amount_atoms,
+                    id,
+                    from_before,
+                    self.available_atoms(id, &to),
+                    amount_atoms,
                 )?;
                 self.put_balance(id, from, from_after);
                 self.put_balance(id, to, to_after);
