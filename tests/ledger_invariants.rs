@@ -738,9 +738,7 @@ fn canonical_supply_audit_tracks_arbitrary_wallet_channel_and_pending_columns() 
     // Verify network-qualified byte keys against the actual heterogeneous
     // BTreeMap columns, without rebuilding keys through the source adapter.
     let proof_keys = ledger
-        .supply_proof_keys_unverified(
-            tradelayer_core::network_profile::TradeLayerMainnet::Litecoin,
-        )
+        .supply_proof_keys_unverified(tradelayer_core::network_profile::TradeLayerMainnet::Litecoin)
         .unwrap();
     assert_eq!(proof_keys.len(), 9);
     assert!(proof_keys.windows(2).all(|pair| pair[0].0 < pair[1].0));
@@ -779,9 +777,11 @@ fn canonical_supply_audit_tracks_arbitrary_wallet_channel_and_pending_columns() 
         expected_columns
     );
     assert_eq!(
-        reloaded.supply_proof_keys_unverified(
-            tradelayer_core::network_profile::TradeLayerMainnet::Litecoin,
-        ).unwrap(),
+        reloaded
+            .supply_proof_keys_unverified(
+                tradelayer_core::network_profile::TradeLayerMainnet::Litecoin,
+            )
+            .unwrap(),
         proof_keys
     );
 
