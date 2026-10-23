@@ -599,7 +599,9 @@ fn journal_sweep_preserves_other_property_and_rejects_wrong_receipt_atomically()
 
 #[test]
 fn canonical_supply_audit_tracks_arbitrary_wallet_channel_and_pending_columns() {
-    use tradelayer_core::ledger::{ChannelSide, SupplyAuditRow};
+    use tradelayer_core::ledger::{
+        ChannelSide, SupplyAuditRow, SupplyColumnRow, SupplyColumnSource,
+    };
 
     let mut ledger = Ledger::new();
     ledger
@@ -678,11 +680,43 @@ fn canonical_supply_audit_tracks_arbitrary_wallet_channel_and_pending_columns() 
         },
     ];
     assert_eq!(ledger.supply_audit_rows_unverified().unwrap(), expected);
+    let columns = ledger.supply_column_rows_unverified().unwrap();
+    let expected_columns = vec![
+        SupplyColumnRow { property: p(7), source: SupplyColumnSource::Available(a("alice")), atoms: 600 },
+        SupplyColumnRow { property: p(7), source: SupplyColumnSource::Available(a("bob")), atoms: 150 },
+        SupplyColumnRow { property: p(7), source: SupplyColumnSource::Available(a("carol")), atoms: 40 },
+        SupplyColumnRow { property: p(7), source: SupplyColumnSource::ChannelEscrow {
+            channel: a("chan"), side: ChannelSide::A,
+        }, atoms: 115 },
+        SupplyColumnRow { property: p(7), source: SupplyColumnSource::ChannelEscrow {
+            channel: a("chan"), side: ChannelSide::B,
+        }, atoms: 60 },
+        SupplyColumnRow { property: p(7), source: SupplyColumnSource::ReservedWithdrawal(tx(6)), atoms: 35 },
+        SupplyColumnRow { property: p(8), source: SupplyColumnSource::Available(a("alice")), atoms: 470 },
+        SupplyColumnRow { property: p(8), source: SupplyColumnSource::Available(a("bob")), atoms: 70 },
+        SupplyColumnRow { property: p(8), source: SupplyColumnSource::Available(a("carol")), atoms: 30 },
+    ];
+    assert_eq!(columns, expected_columns);
+    assert!(columns.windows(2).all(|pair| pair[0] < pair[1]));
+    assert!(columns.iter().all(|row| row.atoms > 0));
+    let mut grouped = std::collections::BTreeMap::new();
+    for row in &columns {
+        let amounts = grouped.entry(row.property).or_insert([0u128; 3]);
+        let group = match row.source {
+            SupplyColumnSource::Available(_) => 0,
+            SupplyColumnSource::ChannelEscrow { .. } => 1,
+            SupplyColumnSource::ReservedWithdrawal(_) => 2,
+        };
+        amounts[group] = amounts[group].checked_add(row.atoms).unwrap();
+    }
+    assert_eq!(grouped.get(&p(7)), Some(&[790, 175, 35]));
+    assert_eq!(grouped.get(&p(8)), Some(&[570, 0, 0]));
     assert_eq!(ledger.verify_conservation(), Ok(()));
     let snapshot = ledger.snapshot_bytes().unwrap();
     let reloaded = Ledger::from_snapshot_bytes(&snapshot).unwrap();
     assert_eq!(reloaded, ledger);
     assert_eq!(reloaded.supply_audit_rows_unverified().unwrap(), expected);
+    assert_eq!(reloaded.supply_column_rows_unverified().unwrap(), expected_columns);
 
     let immutable = ledger.clone();
     assert_eq!(ledger.settle_due_withdrawals_unverified(149), Ok(0));

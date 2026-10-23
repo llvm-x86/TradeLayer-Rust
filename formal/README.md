@@ -80,6 +80,8 @@ The live `Ledger::supply_audit_rows_unverified` is a read-only, property-ordered
 
 This stage strengthens the connection between the finite-model proof obligations and the Rust ledger's real state, while leaving a machine-checked equivalence between `BTreeMap` iteration and the abstract support list as an open obligation.
 
+The ledger also exports `supply_column_rows_unverified`, a sorted finite support of typed `SupplyColumnSource` keys and their positive atom counts. Its source tags distinguish available wallets, two channel-escrow sides and reserved withdrawal records; entries cannot alias across variants. The Rust test compares the exact nine canonical columns against an independent grouping of available, escrow and pending totals, including a snapshot reload. Lean's `taggedColumn` proof gives a collision-free numerical namespace across four source tags; injective encoding of the underlying Rust account/channel/transaction identifiers into Nat remains an explicit bridge requirement.
+
 ## Boundaries for the next phases
 
 1. **Rust-to-Lean refinement.** Build a pure checked-`u128` transition function with a Verus specification and relate it to the current `Ledger::apply` and `calculate_settlement_preview` implementations. Prove failure leaves the ledger unchanged, conservation through all map entries, journal single-use, and finite-`u128` arithmetic. Tests and matching numbers alone are evidence, not a proof of refinement.

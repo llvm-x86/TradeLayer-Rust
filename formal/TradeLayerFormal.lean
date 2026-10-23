@@ -1062,4 +1062,52 @@ theorem finite_burn_preserves_total
   dsimp [finiteBurn]
   omega
 
+
+/-!
+## Collision-free column namespaces
+
+The abstract finite-support proof above treats every accounting column as
+a distinct Nat. A namespace digit in {0,1,2,3} distinguishes available,
+channel-A, channel-B, and reserved-withdrawal columns. Each concrete
+identifier (owner, channel or TxId) still requires an injective
+representation in Nat for an executable Rust-to-Lean refinement.
+-/
+
+def taggedColumn (id tag : Nat) : Nat := 4 * id + tag
+
+theorem tagged_columns_are_disjoint
+    (idA idB tagA tagB : Nat)
+    (validA : tagA < 4) (validB : tagB < 4)
+    (differentTag : tagA ≠ tagB) :
+    taggedColumn idA tagA ≠ taggedColumn idB tagB := by
+  unfold taggedColumn
+  omega
+
+theorem tagged_columns_preserve_identifier
+    (idA idB tag : Nat) :
+    taggedColumn idA tag = taggedColumn idB tag → idA = idB := by
+  simp [taggedColumn]
+  omega
+
+def availableColumn (account : Nat) : Nat := taggedColumn account 0
+def escrowAColumn (channel : Nat) : Nat := taggedColumn channel 1
+def escrowBColumn (channel : Nat) : Nat := taggedColumn channel 2
+def reservedColumn (requestTxid : Nat) : Nat := taggedColumn requestTxid 3
+
+theorem available_does_not_alias_escrow_a (a c : Nat) :
+    availableColumn a ≠ escrowAColumn c := by
+  exact tagged_columns_are_disjoint a c 0 1 (by omega) (by omega) (by omega)
+
+theorem available_does_not_alias_reserved (a tx : Nat) :
+    availableColumn a ≠ reservedColumn tx := by
+  exact tagged_columns_are_disjoint a tx 0 3 (by omega) (by omega) (by omega)
+
+theorem escrow_columns_are_disjoint (a b : Nat) :
+    escrowAColumn a ≠ escrowBColumn b := by
+  exact tagged_columns_are_disjoint a b 1 2 (by omega) (by omega) (by omega)
+
+theorem reserved_does_not_alias_escrow_b (tx c : Nat) :
+    reservedColumn tx ≠ escrowBColumn c := by
+  exact tagged_columns_are_disjoint tx c 3 2 (by omega) (by omega) (by omega)
+
 end TradeLayerFormal

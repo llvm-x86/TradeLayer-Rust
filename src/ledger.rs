@@ -106,6 +106,22 @@ pub struct SupplyAuditRow {
     pub pending_withdrawal_atoms: u128,
 }
 
+/// Typed keys for each source of token supply; variants are disjoint.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum SupplyColumnSource {
+    Available(AccountId),
+    ChannelEscrow { channel: AccountId, side: ChannelSide },
+    ReservedWithdrawal(TxId),
+}
+
+/// The full atom amount in one canonical, typed accounting column.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct SupplyColumnRow {
+    pub property: PropertyId,
+    pub source: SupplyColumnSource,
+    pub atoms: u128,
+}
+
 /// Explicit ledger operations, intentionally separate from wire transaction
 /// parsing and from the chain's actual transaction-type authorization policy.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -627,6 +643,48 @@ impl Ledger {
                 )
             }
         }
+    }
+
+
+    /// Canonical finite support of the live ledger's supply columns.
+    ///
+    /// The different enum variants cannot alias. Output is ordered first
+    /// by property, then by the source variant and its native identifier.
+    /// Positive values and structural ownership constraints were checked
+    /// through verify_conservation. This is audit metadata only.
+    pub fn supply_column_rows_unverified(&self) -> Result<Vec<SupplyColumnRow>, LedgerError> {
+        self.verify_conservation()?;
+        let mut entries = Vec::new();
+        for ((&property, owner), &atoms) in &self.available {
+            entries.push(SupplyColumnRow {
+                property,
+                source: SupplyColumnSource::Available(owner.clone()),
+                atoms,
+            });
+        }
+        for (channel, book) in &self.channels {
+            for side in [ChannelSide::A, ChannelSide::B] {
+                for (&property, &atoms) in book.escrow(side) {
+                    entries.push(SupplyColumnRow {
+                        property,
+                        source: SupplyColumnSource::ChannelEscrow {
+                            channel: channel.clone(),
+                            side,
+                        },
+                        atoms,
+                    });
+                }
+            }
+        }
+        for (&txid, pending) in &self.pending_withdrawals {
+            entries.push(SupplyColumnRow {
+                property: pending.id,
+                source: SupplyColumnSource::ReservedWithdrawal(txid),
+                atoms: pending.atoms,
+            });
+        }
+        entries.sort();
+        Ok(entries)
     }
 
     /// Return canonical, property-ordered partitions of every minted unit.
