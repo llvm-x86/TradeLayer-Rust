@@ -1,0 +1,15 @@
+# name	notional_atoms	rate_bps_e4	positions_account_contracts_available	nominal_atoms	legacy_attempted_deltas	legacy_net_atoms	conserving_deltas_or_error	conserving_net_atoms	conserving_preview_balances
+positive_one_to_one	100000000	100000	alice:1:100000000,bob:-1:100000000	100000	alice:-100000,bob:100000	0	alice:-100000,bob:100000	0	alice:99900000,bob:100100000
+negative_one_to_one	100000000	-100000	alice:1:100000000,bob:-1:100000000	100000	alice:-100000,bob:100000	0	alice:100000,bob:-100000	0	alice:100100000,bob:99900000
+positive_weight_rounding	510	100000	longA:1:100,longB:1:100,longC:2:100,shortX:-4:100	3	longA:-1,longB:-1,longC:-2,shortX:3	-1	longA:-1,longB:-1,longC:-1,shortX:3	0	longA:99,longB:99,longC:99,shortX:103
+negative_weight_rounding	510	-100000	shortA:-1:100,shortB:-1:100,shortC:-2:100,longX:4:100	3	shortA:1,shortB:1,shortC:2,longX:-3	1	shortA:-1,shortB:-1,shortC:-1,longX:3	0	shortA:99,shortB:99,shortC:99,longX:103
+balanced_oi_rounding	510	100000	long:2:100,shortA:-1:100,shortB:-1:100	1	long:-1,shortA:1,shortB:1	1	long:-1,shortA:1,shortB:0	0	long:99,shortA:101,shortB:100
+positive_no_receivers	100000000	100000	long:2:100000000	200000	long:-200000	-200000	ERR:MissingCounterparty	-	ERR:MissingCounterparty
+negative_no_receivers	100000000	-100000	short:-2:100000000	200000	short:200000	200000	ERR:MissingCounterparty	-	ERR:MissingCounterparty
+no_positive_payers	100000000	100000	short:-4:100000000	0	short:0	0	short:0	0	short:100000000
+zero_rate	100000000	0	alice:1:100000000,bob:-1:100000000	0	alice:0,bob:0	0	alice:0,bob:0	0	alice:100000000,bob:100000000
+rounds_to_zero	1	100000	alice:2:100000000,bob:-2:100000000	0	alice:0,bob:0	0	alice:0,bob:0	0	alice:100000000,bob:100000000
+insufficient_long_balance	100000000	100000	long:1:1,short:-1:100000000	100000	long:-100000,short:100000	0	ERR:InsufficientAvailable	-	ERR:InsufficientAvailable
+positive_skew	510	100000	longA:1:100,longB:3:100,shortX:-4:100	3	longA:-1,longB:-2,shortX:3	0	longA:-1,longB:-2,shortX:3	0	longA:99,longB:98,shortX:103
+negative_skew	510	-100000	shortA:-1:100,shortB:-3:100,longX:4:100	3	shortA:1,shortB:2,longX:-3	0	shortA:-1,shortB:-2,longX:3	0	shortA:99,shortB:98,longX:103
+maximum_hourly_rate	100000000	125000	largeLong:5:5000000,largeShort:-5:5000000	625000	largeLong:-625000,largeShort:625000	0	largeLong:-625000,largeShort:625000	0	largeLong:4375000,largeShort:5625000
