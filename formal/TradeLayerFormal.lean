@@ -1849,4 +1849,81 @@ theorem assoc_move_refines_function
       simpa [isSender, Ne.symm different] using atQuery
     · simpa [isSender, isReceiver] using atQuery
 
+
+/-!
+## Stage 9: sorted vector lookup and canonical update semantics
+
+The production `OrderedColumns<K>` stores strictly increasing keys in a
+Vec and returns zero for missing balance columns. The following Nat-key
+model gives the ordered search/update semantics independently of allocator
+behavior. Rust's `Ord` comparison and library Vec/binary-search behavior
+remain explicit implementation trust boundaries.
+-/
+
+def sortedVecGet : List (Nat × Nat) → Nat → Nat
+  | [], _ => 0
+  | (stored, atoms) :: rest, key =>
+      if key < stored then 0
+      else if key = stored then atoms else sortedVecGet rest key
+
+def sortedVecPut : List (Nat × Nat) → Nat → Nat → List (Nat × Nat)
+  | [], key, amount =>
+      if amount = 0 then [] else [(key, amount)]
+  | (stored, atoms) :: rest, key, amount =>
+      if key < stored then
+        if amount = 0 then (stored, atoms) :: rest
+        else (key, amount) :: (stored, atoms) :: rest
+      else if key = stored then
+        if amount = 0 then rest
+        else (stored, amount) :: rest
+      else
+        (stored, atoms) :: sortedVecPut rest key amount
+
+def SortedVecKeys : List (Nat × Nat) → Prop
+  | [] => True
+  | (stored, _) :: rest =>
+      (∀ entry ∈ rest, stored < entry.1) ∧ SortedVecKeys rest
+
+theorem sorted_vec_read_below (rows : List (Nat × Nat))
+    (key lower : Nat)
+    (greater : ∀ entry ∈ rows, lower < entry.1)
+    (below : key ≤ lower) :
+    sortedVecGet rows key = 0 := by
+  cases rows with
+  | nil => rfl
+  | cons pair rest =>
+      rcases pair with ⟨stored, atoms⟩
+      have gt : lower < stored :=
+        greater (stored, atoms) (by simp)
+      have lt : key < stored := by omega
+      simp [sortedVecGet, lt]
+
+/-- The canonical zero-delete / positive-insert operation places or removes
+the selected key at its ordered position, even when that position is not the
+head of the vector. -/
+theorem sorted_vec_put_reads_written_key (rows : List (Nat × Nat))
+    (key amount : Nat) (sorted : SortedVecKeys rows) :
+    sortedVecGet (sortedVecPut rows key amount) key = amount := by
+  induction rows with
+  | nil =>
+      by_cases zero : amount = 0 <;>
+        simp [sortedVecPut, sortedVecGet, zero]
+  | cons pair rest ih =>
+      rcases pair with ⟨stored, prior⟩
+      obtain ⟨greater, restSorted⟩ := sorted
+      by_cases lt : key < stored
+      · by_cases zero : amount = 0
+        · simp [sortedVecPut, sortedVecGet, lt, zero]
+        · simp [sortedVecPut, sortedVecGet, lt, zero]
+      · by_cases equal : key = stored
+        · subst key
+          by_cases zero : amount = 0
+          · have restZero :
+                sortedVecGet rest stored = 0 :=
+              sorted_vec_read_below rest stored stored greater (by omega)
+            simp [sortedVecPut, sortedVecGet, lt, zero, restZero]
+          · simp [sortedVecPut, sortedVecGet, lt, zero]
+        · have restResult := ih restSorted
+          simpa [sortedVecPut, sortedVecGet, lt, equal] using restResult
+
 end TradeLayerFormal
