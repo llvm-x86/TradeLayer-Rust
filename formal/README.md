@@ -92,6 +92,12 @@ Lean's `finite_erase_zero_anywhere_preserves_validity` and `finite_insert_zero_a
 
 Lean's `column_total_permutation` and `column_move_conserves_under_reordering` prove that sorting or otherwise permuting the finite support has no effect on conservation. A new Kani harness checks arbitrary selection of either of two symbolic columns through the production canonical-update control flow, preserving the unrelated column's exact Option value. This remains a bounded backing-store proof with actual `BTreeMap` behavior exercised by the Rust tests.
 
+## Stage 7: concrete network-qualified column identity
+
+The Rust read-only `SupplyColumnProofKey` encodes four exact fields: declared network tag (Bitcoin=1, Litecoin=2, Dogecoin=3), nonzero property ID, source tag (available=0, escrow-A=1, escrow-B=2, withdrawal=3), and original identifier bytes. Wallet/channel identifiers use the validated ASCII bytes already stored in `AccountId`; withdrawal requests use the exact 32-byte `TxId`. `SupplyColumnRow::proof_key_unverified` and `Ledger::supply_proof_keys_unverified` provide these keys for state audits. The network tag is explicitly **caller supplied**, so this does not authenticate transaction provenance or active chain state.
+
+Lean's matching typed-source encoder (see `TypedColumnKey`) proves decoding the structured representation recovers the original network, property and exact identity bytes, implying no collisions between supported typed keys. A companion total correspondence theorem will relate finite typed support and the tagged representation. Rust regression tests verify the four tags, colliding raw bytes across different source domains, repeated property IDs across separate TradeLayers, and deterministic ordered output from a genuine ledger.
+
 ## Boundaries for the next phases
 
 1. **Rust-to-Lean refinement.** Build a pure checked-`u128` transition function with a Verus specification and relate it to the current `Ledger::apply` and `calculate_settlement_preview` implementations. Prove failure leaves the ledger unchanged, conservation through all map entries, journal single-use, and finite-`u128` arithmetic. Tests and matching numbers alone are evidence, not a proof of refinement.

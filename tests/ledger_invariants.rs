@@ -898,3 +898,88 @@ fn independent_transfer_permutations_produce_identical_canonical_support() {
     let roundtrip = Ledger::from_snapshot_bytes(&pruned.snapshot_bytes().unwrap()).unwrap();
     assert_eq!(roundtrip.supply_column_rows_unverified().unwrap(), records);
 }
+
+#[test]
+fn network_qualified_column_key_mapping_is_injective_for_supported_sources() {
+    use std::collections::BTreeSet;
+    use tradelayer_core::ledger::{
+        ChannelSide, SupplyColumnProofKey, SupplyColumnRow, SupplyColumnSource,
+    };
+    use tradelayer_core::network_profile::TradeLayerMainnet;
+
+    let account = a("same");
+    let tx_bytes = [b's'; 32];
+    let rows = [
+        SupplyColumnRow {
+            property: p(7),
+            source: SupplyColumnSource::Available(account.clone()),
+            atoms: 10,
+        },
+        SupplyColumnRow {
+            property: p(7),
+            source: SupplyColumnSource::ChannelEscrow {
+                channel: account.clone(),
+                side: ChannelSide::A,
+            },
+            atoms: 20,
+        },
+        SupplyColumnRow {
+            property: p(7),
+            source: SupplyColumnSource::ChannelEscrow {
+                channel: account.clone(),
+                side: ChannelSide::B,
+            },
+            atoms: 30,
+        },
+        SupplyColumnRow {
+            property: p(7),
+            source: SupplyColumnSource::ReservedWithdrawal(TxId::from_bytes(tx_bytes)),
+            atoms: 40,
+        },
+        SupplyColumnRow {
+            property: p(8),
+            source: SupplyColumnSource::Available(account),
+            atoms: 50,
+        },
+    ];
+    let mut keys = BTreeSet::<SupplyColumnProofKey>::new();
+    for network in [
+        TradeLayerMainnet::Bitcoin,
+        TradeLayerMainnet::Litecoin,
+        TradeLayerMainnet::Dogecoin,
+    ] {
+        for (index, row) in rows.iter().enumerate() {
+            let key = row.proof_key_unverified(network);
+            assert_eq!(key.network_tag, network.tag());
+            assert_eq!(key.property_id, row.property.get());
+            assert_eq!(key.source_tag, if index < 4 { index as u8 } else { 0 });
+            assert_eq!(
+                key.identifier_bytes,
+                if index == 3 { tx_bytes.to_vec() } else { b"same".to_vec() }
+            );
+            assert!(keys.insert(key), "source, property and network must be unique");
+        }
+    }
+    assert_eq!(keys.len(), 15);
+
+    let mut ledger = Ledger::new();
+    ledger
+        .apply(tx(1), create(7, PropertyKind::Fixed, 100))
+        .unwrap();
+    ledger.apply(tx(2), send(7, "alice", "same", 25)).unwrap();
+    for network in [
+        TradeLayerMainnet::Bitcoin,
+        TradeLayerMainnet::Litecoin,
+        TradeLayerMainnet::Dogecoin,
+    ] {
+        let projected = ledger.supply_proof_keys_unverified(network).unwrap();
+        assert_eq!(projected.len(), 2);
+        assert!(projected.windows(2).all(|pair| pair[0].0 < pair[1].0));
+        assert_eq!(projected.iter().map(|x| x.1).sum::<u128>(), 100);
+        assert_eq!(projected[0].0.identifier_bytes, b"alice");
+        assert_eq!(projected[1].0.identifier_bytes, b"same");
+        assert_eq!(projected[0].0.source_tag, 0);
+        assert_eq!(projected[1].0.source_tag, 0);
+        assert!(projected.iter().all(|(key, _)| key.network_tag == network.tag()));
+    }
+}

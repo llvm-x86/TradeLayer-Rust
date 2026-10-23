@@ -13,6 +13,8 @@
 use core::fmt;
 use std::collections::{BTreeMap, BTreeSet};
 
+use crate::network_profile::TradeLayerMainnet;
+
 /// Maximum opaque identifier length, matching the draft wire-v1 send field.
 pub const MAX_ACCOUNT_BYTES: usize = 90;
 
@@ -123,6 +125,46 @@ pub struct SupplyColumnRow {
     pub property: PropertyId,
     pub source: SupplyColumnSource,
     pub atoms: u128,
+}
+
+
+/** A network-qualified, typed-key representation for the formal audit.
+ * The network is caller declared and remains unauthenticated. */
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct SupplyColumnProofKey {
+    pub network_tag: u8,
+    pub property_id: u32,
+    pub source_tag: u8,
+    pub identifier_bytes: Vec<u8>,
+}
+
+impl SupplyColumnRow {
+    /// The 4 namespaces are disjoint even with identical identifier bytes.
+    /// Wallet and channel identifiers retain exact validated ASCII bytes;
+    /// withdrawal requests retain their exact 32-byte TxId. Identity is
+    /// scoped by the caller-provided network (Bitcoin=1, Litecoin=2,
+    /// Dogecoin=3). Neither a signature nor chain history is checked here.
+    pub fn proof_key_unverified(&self, network: TradeLayerMainnet) -> SupplyColumnProofKey {
+        let (source_tag, identifier_bytes) = match &self.source {
+            SupplyColumnSource::Available(owner) =>
+                (0u8, owner.as_str().as_bytes().to_vec()),
+            SupplyColumnSource::ChannelEscrow { channel, side } => (
+                match side {
+                    ChannelSide::A => 1u8,
+                    ChannelSide::B => 2u8,
+                },
+                channel.as_str().as_bytes().to_vec(),
+            ),
+            SupplyColumnSource::ReservedWithdrawal(txid) =>
+                (3u8, txid.as_bytes().to_vec()),
+        };
+        SupplyColumnProofKey {
+            network_tag: network.tag(),
+            property_id: self.property.get(),
+            source_tag,
+            identifier_bytes,
+        }
+    }
 }
 
 /// Explicit ledger operations, intentionally separate from wire transaction
@@ -642,6 +684,21 @@ impl Ledger {
                 )
             }
         }
+    }
+
+    /// A canonical audit of supply-bearing keys with exact source bytes.
+    /// These keys are scoped to a *declared* network, not verified chain data.
+    pub fn supply_proof_keys_unverified(
+        &self,
+        network: TradeLayerMainnet,
+    ) -> Result<Vec<(SupplyColumnProofKey, u128)>, LedgerError> {
+        let mut entries: Vec<_> = self
+            .supply_column_rows_unverified()?
+            .into_iter()
+            .map(|row| (row.proof_key_unverified(network), row.atoms))
+            .collect();
+        entries.sort_by(|a, b| a.0.cmp(&b.0));
+        Ok(entries)
     }
 
     /// Canonical finite support of the live ledger's supply columns.
