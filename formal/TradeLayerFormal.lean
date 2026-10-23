@@ -3646,11 +3646,8 @@ theorem native_account_sorted_embeds_in_nat (rows : List (NativeAccountKey × Na
         exact valid entry (List.mem_cons.mpr (Or.inr member))
       obtain ⟨less, restSorted⟩ := sorted
       have tailProof := ih restSorted restValid
-      change
-        (∀ entry ∈ rest.map
-            (fun record => (encodeNativeAccount record.1, record.2)),
-          encodeNativeAccount key < entry.1) ∧
-          SortedVecKeys (encodeNativeRows rest)
+      simp only [encodeNativeRows, List.map_cons, SortedVecKeys]
+        at tailProof ⊢
       constructor
       · intro encoded member
         rcases List.mem_map.mp member with ⟨source, inRest, rfl⟩
