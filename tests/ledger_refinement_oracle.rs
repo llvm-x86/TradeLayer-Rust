@@ -685,7 +685,7 @@ fn vector_oracle_refines_heterogeneous_rust_maps_through_randomized_operations()
             let expected_mature = spec.mature(height);
             let actual_mature = ledger.settle_due_withdrawals_unverified(height);
             assert_eq!(
-                actual_mature.ok(),
+                actual_mature.as_ref().ok().copied(),
                 expected_mature,
                 "withdrawal maturity mismatch at {step}"
             );
