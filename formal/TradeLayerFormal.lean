@@ -598,4 +598,115 @@ theorem valid_prefix_then_rejection_rolls_back
     simp [stagedBatch, rejected]
   simp [batchResult, wholeFails]
 
+
+/-- Concrete transfer candidate sourced from the same checked Nat arithmetic
+specification as the Kani-verified Rust debit/credit kernel. -/
+def directSendProposal (amount : Nat) (s : Portfolio) : Option Portfolio :=
+  match checkedMove s.alice s.bob amount with
+  | .error _ => none
+  | .ok (nextA, nextB) =>
+      some {s with alice := nextA, bob := nextB}
+
+theorem direct_send_proposal_refines_accounting
+    (s after : Portfolio) (amount : Nat)
+    (success : directSendProposal amount s = some after) :
+    AccountingStep s after := by
+  cases arithmetic : checkedMove s.alice s.bob amount with
+  | error why =>
+      simp [directSendProposal, arithmetic] at success
+  | ok columns =>
+      rcases columns with ⟨nextA, nextB⟩
+      have updated : {s with alice := nextA, bob := nextB} = after := by
+        simpa [directSendProposal, arithmetic] using success
+      obtain ⟨positive, funded, creditFits, debitEq, creditEq⟩ :=
+        checked_move_success_is_exact s.alice s.bob amount nextA nextB arithmetic
+      rw [← updated]
+      simpa [debitEq, creditEq] using
+        (AccountingStep.send s amount positive funded creditFits)
+
+/-- The proof-carrying operation is constructed from an actual checked
+transfer specification. Other protocol opcodes need separate refinements. -/
+def certifiedDirectSend (net : Mainnet) (txid amount : Nat) : CertifiedBatchTx :=
+  { network := net
+    txid := txid
+    run := directSendProposal amount
+    sound := by
+      intro s after accepted
+      exact direct_send_proposal_refines_accounting s after amount accepted }
+
+theorem zero_direct_send_rejected (e : Engine) (net : Mainnet) (txid : Nat) :
+    stageTx e (certifiedDirectSend net txid 0) = none := by
+  simp [stageTx, certifiedDirectSend, directSendProposal, checkedMove]
+
+theorem stage_tx_retains_existing_replay (e after : Engine)
+    (tx : CertifiedBatchTx) (net : Mainnet) (txid : Nat)
+    (accepted : stageTx e tx = some after)
+    (seen : e.replay.seen net txid = true) :
+    after.replay.seen net txid = true := by
+  obtain ⟨updated, _, eq⟩ := stage_tx_effect e after tx accepted
+  subst after
+  simp [finish, mark, seen]
+
+theorem staged_batch_retains_existing_replay (txs : List CertifiedBatchTx) :
+    ∀ (e after : Engine) (net : Mainnet) (txid : Nat),
+      stagedBatch e txs = some after →
+      e.replay.seen net txid = true →
+      after.replay.seen net txid = true := by
+  induction txs with
+  | nil =>
+      intro e after net txid accepted seen
+      have same : e = after := by simpa [stagedBatch] using accepted
+      rw [← same]
+      exact seen
+  | cons tx tail ih =>
+      intro e after net txid accepted seen
+      cases one : stageTx e tx with
+      | none =>
+          simp [stagedBatch, one] at accepted
+      | some middle =>
+          have restAccepted : stagedBatch middle tail = some after := by
+            simpa [stagedBatch, one] using accepted
+          exact ih middle after net txid restAccepted
+            (stage_tx_retains_existing_replay e middle tx net txid one seen)
+
+theorem previously_seen_txid_rejects_at_end
+    (e : Engine) (intervening : List CertifiedBatchTx)
+    (last : CertifiedBatchTx)
+    (alreadySeen : e.replay.seen last.network last.txid = true) :
+    stagedBatch e (intervening ++ [last]) = none := by
+  rw [staged_batch_append]
+  cases intermediate : stagedBatch e intervening with
+  | none =>
+      simp [intermediate]
+  | some after =>
+      have stillSeen : after.replay.seen last.network last.txid = true :=
+        staged_batch_retains_existing_replay intervening e after
+          last.network last.txid intermediate alreadySeen
+      have rejected : stageTx after last = none := by
+        simp [stageTx, stillSeen]
+      simp [intermediate, stagedBatch, rejected]
+
+/-- Even with an arbitrarily long successful prefix of unrelated operations,
+a duplicate within one TradeLayer forces the entire batch to reject. -/
+theorem nonadjacent_duplicate_txid_rejects_batch
+    (e : Engine) (first last : CertifiedBatchTx)
+    (intervening : List CertifiedBatchTx)
+    (sameNet : last.network = first.network)
+    (sameTxid : last.txid = first.txid) :
+    batchResult e (first :: intervening ++ [last]) = (e, false) := by
+  have stagingFails :
+      stagedBatch e (first :: intervening ++ [last]) = none := by
+    cases attempted : stageTx e first with
+    | none =>
+        simp [stagedBatch, attempted]
+    | some middle =>
+        have marked : middle.replay.seen first.network first.txid = true :=
+          stage_tx_marks_replay e middle first attempted
+        have sameMarked : middle.replay.seen last.network last.txid = true := by
+          simpa [sameNet, sameTxid] using marked
+        have suffixFails :=
+          previously_seen_txid_rejects_at_end middle intervening last sameMarked
+        simpa [stagedBatch, attempted] using suffixFails
+  simp [batchResult, stagingFails]
+
 end TradeLayerFormal

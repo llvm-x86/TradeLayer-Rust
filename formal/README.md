@@ -60,6 +60,8 @@ Additional Rust integration tests run the **actual ledger** and assert byte-for-
 
 Lean's `CertifiedBatchTx` states the refinement premise each accepted individual operation must meet; `stagedBatch` iterates these operations and rejects duplicate txids before publication. Kernel theorems prove arbitrary finite accepted batch histories preserve conservation and bounds across the three separate TradeLayers, while a rejected batch restores every balance/replay field to the original live state. `valid_prefix_then_rejection_rolls_back` applies even when earlier operations modified the staged candidate. These are abstract proofs whose mapping to the actual Rust `Ledger` collections still requires a refinement argument.
 
+The concrete `certifiedDirectSend` operation now derives its `AccountingStep` witness from `checkedMove` rather than taking it as a free external premise. A chain-origin/actor validator and the actual Rust map projection must still be connected for an end-to-end theorem. The `nonadjacent_duplicate_txid_rejects_batch` theorem covers repeats separated by an arbitrary list of operations, provided their network namespace and transaction identifier match. The proof uses monotonic replay-marker retention across successful intermediate steps.
+
 ## Boundaries for the next phases
 
 1. **Rust-to-Lean refinement.** Build a pure checked-`u128` transition function with a Verus specification and relate it to the current `Ledger::apply` and `calculate_settlement_preview` implementations. Prove failure leaves the ledger unchanged, conservation through all map entries, journal single-use, and finite-`u128` arithmetic. Tests and matching numbers alone are evidence, not a proof of refinement.
