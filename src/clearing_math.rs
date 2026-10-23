@@ -183,8 +183,7 @@ pub fn mark_to_mark_pnl_atoms(
             PnlRounding::ExactRational => {
                 let mut numerator_factors =
                     [delta.unsigned_abs(), contracts, notional, ATOMS_PER_UNIT];
-                let mut denominator_factors =
-                    [u128::from(from_price_e8), u128::from(to_price_e8)];
+                let mut denominator_factors = [u128::from(from_price_e8), u128::from(to_price_e8)];
                 reduced_ratio_round_half_up(&mut numerator_factors, &mut denominator_factors)?
             }
             PnlRounding::Legacy20DecimalPlaces => {
