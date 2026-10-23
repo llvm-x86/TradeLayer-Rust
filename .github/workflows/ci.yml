@@ -1,8 +1,11 @@
 name: Rust CI
 
 on:
+  # Feature branches run CI on pull requests; push runs protect main.
   push:
+    branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
