@@ -817,8 +817,10 @@ fn independent_transfer_permutations_produce_identical_canonical_support() {
 
     fn init() -> Ledger {
         let mut l = Ledger::new();
-        l.apply(tx(1), create(41, PropertyKind::Fixed, 1000)).unwrap();
-        l.apply(tx(2), create(42, PropertyKind::Managed, 500)).unwrap();
+        l.apply(tx(1), create(41, PropertyKind::Fixed, 1000))
+            .unwrap();
+        l.apply(tx(2), create(42, PropertyKind::Managed, 500))
+            .unwrap();
         l
     }
     let sends = [
@@ -830,36 +832,67 @@ fn independent_transfer_permutations_produce_identical_canonical_support() {
     let mut forward = init();
     let mut reverse = init();
     for &(t, recipient, atoms) in &sends {
-        forward.apply(tx(t), send(41, "alice", recipient, atoms)).unwrap();
+        forward
+            .apply(tx(t), send(41, "alice", recipient, atoms))
+            .unwrap();
     }
     for &(t, recipient, atoms) in sends.iter().rev() {
-        reverse.apply(tx(t), send(41, "alice", recipient, atoms)).unwrap();
+        reverse
+            .apply(tx(t), send(41, "alice", recipient, atoms))
+            .unwrap();
     }
     assert_eq!(forward, reverse);
-    assert_eq!(forward.supply_column_rows_unverified().unwrap(),
+    assert_eq!(
+        forward.supply_column_rows_unverified().unwrap(),
         vec![
-            SupplyColumnRow { property: p(41),
-                source: SupplyColumnSource::Available(a("alice")), atoms: 500 },
-            SupplyColumnRow { property: p(41),
-                source: SupplyColumnSource::Available(a("alpha")), atoms: 150 },
-            SupplyColumnRow { property: p(41),
-                source: SupplyColumnSource::Available(a("bob")), atoms: 50 },
-            SupplyColumnRow { property: p(41),
-                source: SupplyColumnSource::Available(a("mike")), atoms: 100 },
-            SupplyColumnRow { property: p(41),
-                source: SupplyColumnSource::Available(a("zulu")), atoms: 200 },
-            SupplyColumnRow { property: p(42),
-                source: SupplyColumnSource::Available(a("alice")), atoms: 500 },
-        ]);
+            SupplyColumnRow {
+                property: p(41),
+                source: SupplyColumnSource::Available(a("alice")),
+                atoms: 500
+            },
+            SupplyColumnRow {
+                property: p(41),
+                source: SupplyColumnSource::Available(a("alpha")),
+                atoms: 150
+            },
+            SupplyColumnRow {
+                property: p(41),
+                source: SupplyColumnSource::Available(a("bob")),
+                atoms: 50
+            },
+            SupplyColumnRow {
+                property: p(41),
+                source: SupplyColumnSource::Available(a("mike")),
+                atoms: 100
+            },
+            SupplyColumnRow {
+                property: p(41),
+                source: SupplyColumnSource::Available(a("zulu")),
+                atoms: 200
+            },
+            SupplyColumnRow {
+                property: p(42),
+                source: SupplyColumnSource::Available(a("alice")),
+                atoms: 500
+            },
+        ]
+    );
     // Deleting a middle BTreeMap entry and introducing a new lower-sorting
     // account changes support at those keys only.
     let mut pruned = forward.clone();
-    pruned.apply(tx(7), send(41, "bob", "aardvark", 50)).unwrap();
+    pruned
+        .apply(tx(7), send(41, "bob", "aardvark", 50))
+        .unwrap();
     let records = pruned.supply_column_rows_unverified().unwrap();
     assert!(records.iter().all(|r| r.atoms != 0));
-    assert!(!records.iter().any(|r| r.source == SupplyColumnSource::Available(a("bob"))));
-    assert!(records.iter().any(|r| r.source == SupplyColumnSource::Available(a("aardvark"))
-        && r.property == p(41) && r.atoms == 50));
+    assert!(!records
+        .iter()
+        .any(|r| r.source == SupplyColumnSource::Available(a("bob"))));
+    assert!(records
+        .iter()
+        .any(|r| r.source == SupplyColumnSource::Available(a("aardvark"))
+            && r.property == p(41)
+            && r.atoms == 50));
     assert_eq!(pruned.available_atoms(p(42), &a("alice")), 500);
     assert_eq!(pruned.verify_conservation(), Ok(()));
     let roundtrip = Ledger::from_snapshot_bytes(&pruned.snapshot_bytes().unwrap()).unwrap();

@@ -48,13 +48,17 @@ mod tests {
         put_nonzero(&mut map, 40, 17);
         put_nonzero(&mut map, 5, 19);
         put_nonzero(&mut map, 30, 23);
-        assert_eq!(map.iter().map(|(&k, &v)| (k, v)).collect::<Vec<_>>(),
-            [(5, 19), (10, 7), (30, 23), (40, 17), (50, 13)]);
+        assert_eq!(
+            map.iter().map(|(&k, &v)| (k, v)).collect::<Vec<_>>(),
+            [(5, 19), (10, 7), (30, 23), (40, 17), (50, 13)]
+        );
         put_nonzero(&mut map, 30, 0);
         put_nonzero(&mut map, 5, 0);
         put_nonzero(&mut map, 99, 0);
-        assert_eq!(map.iter().map(|(&k, &v)| (k, v)).collect::<Vec<_>>(),
-            [(10, 7), (40, 17), (50, 13)]);
+        assert_eq!(
+            map.iter().map(|(&k, &v)| (k, v)).collect::<Vec<_>>(),
+            [(10, 7), (40, 17), (50, 13)]
+        );
         assert!(map.values().all(|&v| v > 0));
     }
 
@@ -117,7 +121,10 @@ mod kani_proofs {
             unrelated: original_other,
         };
         put_canonical(&mut state, 1u8, amount);
-        assert_eq!(state.selected, if amount == 0 { None } else { Some(amount) });
+        assert_eq!(
+            state.selected,
+            if amount == 0 { None } else { Some(amount) }
+        );
         assert_eq!(state.unrelated, original_other);
         if let Some(stored) = state.selected {
             assert!(stored > 0);
