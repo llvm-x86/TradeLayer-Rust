@@ -42,8 +42,15 @@ class EvidenceError(Exception):
     pass
 
 
-class RPCMethodNotFound(EvidenceError):
-    """JSON-RPC -32601: the node predates the method. Transport loss is NOT this."""
+class RPCResponseError(EvidenceError):
+    """The node answered with a JSON-RPC error object; transport loss is NOT this."""
+    def __init__(self, message: str, code: object):
+        super().__init__(message)
+        self.code = code
+
+
+class RPCMethodNotFound(RPCResponseError):
+    """JSON-RPC -32601: the node predates the method."""
 
 
 def require_hash(value: object, name: str) -> str:
@@ -269,9 +276,17 @@ class LitecoinRPC:
             raise EvidenceError("unsupported RPC method")
         data = json.dumps({"jsonrpc": "1.0", "id": "tradelayer-evidence", "method": method, "params": params or []}).encode()
         req = urllib.request.Request(self.url, data=data, headers={"Content-Type": "application/json", "Authorization": self.auth}, method="POST")
+        http_error = False
         try:
             with self.opener.open(req, timeout=30) as resp:
                 payload = resp.read(MAX_RESPONSE_BYTES + 1)
+        except urllib.error.HTTPError as err:
+            # Core reports JSON-RPC errors as HTTP 400/404/500 with a JSON body;
+            # 401/403 (credentials) and anything else stay transport failures.
+            if err.code not in (400, 404, 500):
+                raise EvidenceError(f"local RPC failed ({method}); verify node and credentials") from err
+            payload = err.read(MAX_RESPONSE_BYTES + 1)
+            http_error = True
         except (urllib.error.URLError, OSError) as err:
             raise EvidenceError(f"local RPC failed ({method}); verify node and credentials") from err
         if len(payload) > MAX_RESPONSE_BYTES:
@@ -284,9 +299,12 @@ class LitecoinRPC:
             raise EvidenceError("invalid RPC response")
         error = response.get("error")
         if error is not None:
-            if isinstance(error, dict) and error.get("code") == -32601:
-                raise RPCMethodNotFound(f"RPC method {method} not available on this node")
-            raise EvidenceError(f"RPC error in {method}; inspect your node logs")
+            code = error.get("code") if isinstance(error, dict) else None
+            if code == -32601:
+                raise RPCMethodNotFound(f"RPC method {method} not available on this node", code)
+            raise RPCResponseError(f"RPC error in {method}; inspect your node logs", code)
+        if http_error:
+            raise EvidenceError(f"local RPC failed ({method}); HTTP error without RPC error object")
         return response.get("result")
 
 

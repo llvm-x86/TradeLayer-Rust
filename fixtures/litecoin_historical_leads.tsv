@@ -1,0 +1,20 @@
+# Historical TradeLayer Litecoin LEADS from patrickdugan/tradelayer.js@dca0888b827c5bc28fa9189bc9e1d507f5c5670c.
+# UNVERIFIED: txids/heights appear in legacy scripts/tests only. Network is inferred from the file (address HRP, library, RPC port) and may be wrong.
+# A lead becomes evidence only after scripts/litecoin_resolve_leads.py resolves it on a node whose genesis matches pinned chainparams.
+# lead_id	claimed_network	network_basis	txid	claimed_height	source	role
+T1	test	tltc1/litecoin client, port 18332	883cf77e4d1f5e32969849ca7db9b626f5363af9edf866972de2076313df7f95	3432676	tests/txScanTest.js:25,126	txid searched for while scanning the claimed height
+T2	test	litecoin client, port 18332	bc395db7a7a11b42e9711e192a860da2fffe64955cae6dd673e267532f328b3d	3496378	tests/decoderTest.js:99,13	fetched with the claimed height's block hash; comment says replace with your txId
+T3	test	tltc1 address in file	86d1520536b05771904095e22e2744e86fd6f986a558f070f4488c0f01d0d821	-	tests/cancelSell.js:22	resting BID order txid to cancel
+T4	test	tltc1 address in file	8b146ed06d51a7856e3f27ba1d0d80229b34885cbc63784a2c1051de1ccdc37b	-	tests/cancelTxTest.js:25	cancel test txid; comment says replace with actual
+T5	test	litecoin client, port 18332	763db4ffd18c7c0839b8e7532907db2b48e10da5c08b28874c249aa870a505aa	-	tests/testGetTx.js:23	getrawtransaction test target
+T6	test	litecoin client, port 18332	5b0b0c97398dfcfc62c41f80c4f1c64d5220bd3a9e99d3a68a1ed514b93c6ab0	-	oldTests/testGetRaw.js:18	getrawtransaction test target
+T7	test	litecoin client, port 18332	e2c24ba7e7694cfdc3895e5690ab13b7a8dd8f061ae91fd6e58d896a6cf74737	-	oldTests/testGetRaw.js:19	getrawtransaction test target
+T8	test	litecoin client, port 18332	3a9c8d7ddb4432f36d6d3d858354fa22acbee9e95bb512dc097ffb456c0d357a	-	oldTests/testGetRaw.js:20	getrawtransaction test target
+T9	test	litecoin client, port 18332	19709105715a195f03cdb05cedb38b14f8d215418dc2ef416e083b40021e6fee	-	oldTests/testGetRaw.js:21	getrawtransaction test target
+T10	test	tltc1/bitcore-lib-ltc, port 18332	57dbb47d8db6249b720421d78052e6f168664f3c062f1fbe187270ff5edd4dc5	-	oldTests/optxtest.js:48	UTXO spent by an OP_RETURN test transaction
+T11	test	tltc1/bitcore-lib-ltc	76a47f97d0814d7bfdf974d03e1bfd1603c75b3038f531a41d61f5ed61fe1b8e	-	utils/dustBatch.js:36	UTXO spent by a dust batch
+T12	test	litecoin client, port 18332	0513576fa72ffdd721176dfc5a971af50958102070f55fce6d50aa604c6d0cb0	-	oldTests/decodeTest.js:47	wallet gettransaction target
+M1	main	file name; bitcore-lib-ltc	a750adc0f1801f4848e529d3d0c8478c20b384d0688486b318c9dc3ef11be60b	-	utils/activateMainnet.js:18	UTXO spent by a mainnet activation transaction
+M2	main	ltc1 address in file; bitcore-lib-ltc	ae5ca8a023576e90a661685b8ca16a98abecd75fb5e3473b60f53413f150de11	-	utils/sendMainnet.js:18	UTXO spent by a mainnet send
+U1	unknown	litecoin client, port 8332 (Bitcoin's default port)	85f459ae3422aff3e01c2ba240605f997befd2a639d87b3b72b5456a8aeaf610	-	oldTests/getRawTxTest.js:11	getrawtransaction test target
+U2	unknown	litecoin client, port 8332 (Bitcoin's default port)	70d0cc07326bd1c55dbada54217d211933f1eef59fefd869aa12dfeb9fd6347d	-	oldTests/testOPReturn.js:16	OP_RETURN decoding test target

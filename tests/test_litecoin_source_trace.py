@@ -257,7 +257,7 @@ class NodeInspectionTests(unittest.TestCase):
 
         def no_index(method, params=None):
             if method == "getindexinfo":
-                raise collector.RPCMethodNotFound("absent")
+                raise collector.RPCMethodNotFound("absent", -32601)
             return original(method, params)
         node.call = no_index
         self.assertEqual(trace.inspect_node(node, "test")["getindexinfo"], "unavailable")
