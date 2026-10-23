@@ -58,6 +58,17 @@ jobs:
         run: python3 -m unittest discover -s tests -p test_litecoin_replay_inputs.py -v
       - name: Legacy JS replay harness unit tests (no legacy dependencies; synthetic records)
         run: node tests/test_legacy_js_replay.cjs
+      - name: Stage 23C Rust authentication of a SYNTHETIC source trace matches node-reported addresses
+        run: |
+          tmp_dir="$(mktemp -d)"
+          trap 'rm -rf "$tmp_dir"' EXIT
+          python3 tests/synthetic_ltc_chain.py "$tmp_dir"
+          python3 scripts/export_ltc_evidence.py --manifest "$tmp_dir/manifest.json" \
+            --corpus "$tmp_dir/corpus.tsv" --output "$tmp_dir/export.tsv"
+          cargo run --locked --bin tradelayer-ltc-authenticate -- "$tmp_dir/export.tsv" > "$tmp_dir/rust-auth.tsv"
+          python3 scripts/export_ltc_evidence.py --compare "$tmp_dir/rust-auth.tsv" \
+            --manifest "$tmp_dir/manifest.json" > "$tmp_dir/compare.json"
+          python3 -c "import json,sys; c=json.load(open(sys.argv[1]))['counts']; assert c == {'MATCH': 3}, c" "$tmp_dir/compare.json"
       - name: Legacy comparison integration tests (fake decoder only)
         run: node tests/test_compare_legacy.cjs
       - name: Rust diagnostic export smoke test

@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT / "tests"))
 import collect_litecoin_rpc as base  # noqa: E402
+import export_ltc_evidence as exporter  # noqa: E402
 import litecoin_record_rpc as recorder  # noqa: E402
 import synthetic_ltc_chain as synthetic  # noqa: E402
 
@@ -55,6 +56,40 @@ class SyntheticChainTests(unittest.TestCase):
         self.assertIn("never chain evidence", manifest["SYNTHETIC"])
         self.assertEqual(report["scrypt_header_check"], "skipped")
         self.assertEqual(manifest["node_inspection"]["subversion"], "/synthetic-fake-rpc/")
+
+
+class ExportCompareTests(unittest.TestCase):
+    def fixture(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            synthetic.write_fixture(Path(tmp), synthetic.DEFAULT_PAYLOADS)
+            return (json.loads((Path(tmp) / "manifest.json").read_text()),
+                    (Path(tmp) / "corpus.tsv").read_text())
+
+    def test_export_lines_carry_raw_bytes_only(self):
+        manifest, corpus = self.fixture()
+        lines = exporter.export(manifest, corpus).splitlines()
+        self.assertTrue(lines[0].startswith("# litecoin-evidence-export-v1\ttest\t3082500\t"))
+        self.assertEqual([l.split("\t")[0] for l in lines[1:]], ["H", "C", "C", "C"])
+        self.assertNotIn("tltc1", "\n".join(lines))  # no node-decoded addresses
+        with self.assertRaises(base.EvidenceError):
+            exporter.export(dict(manifest, network="litecoin-regtest"), corpus)
+
+    def test_compare_classifies_each_outcome(self):
+        manifest, _ = self.fixture()
+        txids = [c["txid"] for c in manifest["transactions"]]
+        ok_refs = f"1:{synthetic.RECIPIENT}"
+        rows = [
+            "# header",
+            "\t".join([txids[0], "h", "1", "m", f"single:{synthetic.ADMIN}", "true", ok_refs, ok_refs]),
+            "\t".join([txids[1], "h", "2", "m", "ambiguous", "false", ok_refs, ok_refs]),
+            "REJECTED\t3082500\tNotInAttestedChain",
+        ]
+        result = exporter.compare("\n".join(rows), manifest)
+        self.assertEqual(result["counts"], {"MATCH": 1, "MISMATCH": 1, "NOT_AUTHENTICATED": 1})
+        self.assertEqual(len(result["rejected_blocks"]), 1)
+        self.assertFalse(result["records"][1]["fields"]["sender"])
+        self.assertEqual(exporter.expected_sender({"status": "schema-conflict"}), "conflict:schema-conflict")
+        self.assertEqual(exporter.expected_sender({"status": "unresolved"}), "none")
 
 
 if __name__ == "__main__":
