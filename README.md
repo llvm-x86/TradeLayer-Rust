@@ -16,6 +16,18 @@ cargo clippy --all-targets --locked -- -D warnings
 
 The toolchain is pinned in `rust-toolchain.toml` and the crate has **zero third-party dependencies**. `Cargo.lock` is committed.
 
+## Stage 23B/23C: Litecoin replay evidence and replay gate (research)
+
+Tooling to take a locally trusted, synced, unpruned Litecoin Core node with
+txindex from read-only inspection through lead resolution, source-traced
+collection, offline re-verification (headers, Merkle positions, parents,
+per-header Scrypt target), networkless replay through the pinned legacy
+JavaScript, and Rust re-derivation of actors from script bytes. The
+`litecoin_evidence` module authenticates evidence bytes; its Stage 23C gate
+still blocks every path into Litecoin's `JointChainState`. **No node-backed
+Litecoin data has been collected yet;** all current counts are synthetic.
+See [Stage 23 Litecoin replay](docs/STAGE_23_LITECOIN_REPLAY.md).
+
 ## Stage 22: One ledger per TradeLayer for registry and spot replay
 
 The new `JointProtocolState` owns a single `SpotExchange` whose token

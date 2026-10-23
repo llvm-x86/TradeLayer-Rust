@@ -104,6 +104,10 @@ python3 -m unittest discover -s tests -p test_collect_litecoin_rpc.py -v
 
 ## Next gate: replay authorization
 
+Stage 23B/23C tooling, legacy findings and the current gate are in
+[STAGE_23_LITECOIN_REPLAY.md](STAGE_23_LITECOIN_REPLAY.md). The section below
+is the original Stage 23A statement of the gate.
+
 Complete a **typed JS validity trace** against the same historical network
 window, including activation order, property assignment, amounts, reference
 selection, outpoint/signature-derived identity, and handling of every
