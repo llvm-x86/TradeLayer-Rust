@@ -21,7 +21,8 @@ fn parse_positions(raw: &str) -> Vec<FundingPosition> {
 }
 
 fn deltas(audit: &tradelayer_core::funding_audit::FundingProjection) -> String {
-    audit.deltas
+    audit
+        .deltas
         .iter()
         .map(|row| format!("{}:{}", row.account, row.delta_atoms))
         .collect::<Vec<_>>()
@@ -30,7 +31,8 @@ fn deltas(audit: &tradelayer_core::funding_audit::FundingProjection) -> String {
 
 fn previews(audit: &tradelayer_core::funding_audit::FundingProjection) -> String {
     let balances = audit.simulated_available_atoms.as_ref().unwrap();
-    audit.deltas
+    audit
+        .deltas
         .iter()
         .zip(balances)
         .map(|(row, amount)| format!("{}:{amount}", row.account))
@@ -58,17 +60,14 @@ fn pinned_synthetic_bigint_oracle_matches_both_projections() {
         assert_eq!(legacy.net_atoms.to_string(), columns[6], "{name}");
         assert!(legacy.simulated_available_atoms.is_none());
 
-        let proposed = audit_funding(
-            &positions,
-            notional,
-            rate,
-            FundingMode::ConservingProposal,
-        );
+        let proposed = audit_funding(&positions, notional, rate, FundingMode::ConservingProposal);
         if let Some(problem) = columns[7].strip_prefix("ERR:") {
             let error = proposed.unwrap_err();
             match problem {
                 "MissingCounterparty" => assert_eq!(error, FundingAuditError::MissingCounterparty),
-                "InsufficientAvailable" => assert!(matches!(error, FundingAuditError::InsufficientAvailable(_))),
+                "InsufficientAvailable" => {
+                    assert!(matches!(error, FundingAuditError::InsufficientAvailable(_)))
+                }
                 _ => panic!("unexpected fixture error: {problem}"),
             }
         } else {
@@ -97,13 +96,20 @@ fn pinned_synthetic_bigint_oracle_matches_both_projections() {
 fn legacy_negative_rate_reverses_payers_and_can_create_or_burn_atoms() {
     let pair = parse_positions("long:1:100000000,short:-1:100000000");
     let legacy = audit_funding(&pair, 100_000_000, -100_000, FundingMode::LegacySigned).unwrap();
-    let proposed = audit_funding(&pair, 100_000_000, -100_000, FundingMode::ConservingProposal).unwrap();
+    let proposed = audit_funding(
+        &pair,
+        100_000_000,
+        -100_000,
+        FundingMode::ConservingProposal,
+    )
+    .unwrap();
     assert_eq!(deltas(&legacy), "long:-100000,short:100000");
     assert_eq!(deltas(&proposed), "long:100000,short:-100000");
 
     let positions = parse_positions("shortA:-1:100,shortB:-1:100,shortC:-2:100,longX:4:100");
     let legacy = audit_funding(&positions, 510, -100_000, FundingMode::LegacySigned).unwrap();
-    let repaired = audit_funding(&positions, 510, -100_000, FundingMode::ConservingProposal).unwrap();
+    let repaired =
+        audit_funding(&positions, 510, -100_000, FundingMode::ConservingProposal).unwrap();
     assert_eq!(legacy.net_atoms, 1);
     assert_eq!(repaired.net_atoms, 0);
     assert_eq!(repaired.nominal_atoms, 3);
@@ -147,11 +153,7 @@ fn every_signed_rate_conserves_proposed_balances_on_bounded_grid() {
                     audit_funding(&p, 9_001, rate, FundingMode::ConservingProposal).unwrap();
                 assert_eq!(proposed.net_atoms, 0);
                 let before: u128 = p.iter().map(|item| item.available_atoms).sum();
-                let after: u128 = proposed
-                    .simulated_available_atoms
-                    .unwrap()
-                    .iter()
-                    .sum();
+                let after: u128 = proposed.simulated_available_atoms.unwrap().iter().sum();
                 assert_eq!(before, after);
                 if rate < 0 && proposed.nominal_atoms > 0 {
                     assert!(proposed.deltas[1].delta_atoms < 0);
@@ -205,7 +207,12 @@ fn adversarial_inputs_fail_closed_without_side_effects() {
     );
     let extremes = parse_positions("long:9223372036854775807:0,short:-9223372036854775807:0");
     assert_eq!(
-        audit_funding(&extremes, u64::MAX, i64::MAX, FundingMode::ConservingProposal),
+        audit_funding(
+            &extremes,
+            u64::MAX,
+            i64::MAX,
+            FundingMode::ConservingProposal
+        ),
         Err(FundingAuditError::ArithmeticOverflow)
     );
 }
