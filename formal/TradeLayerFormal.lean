@@ -3168,8 +3168,20 @@ theorem sorted_vec_hit_at_lower_bound
           have tailHit : sortedVecGet tail query ≠ 0 := by
             simpa [sortedVecGet, smaller, equal] using hit
           have tailIndex := ih tailSorted tailHit
-          simpa [columnAt, columnCountBefore, later, sortedVecGet,
-            smaller, equal] using tailIndex
+          have oneStep :
+              columnAt ((stored, atoms) :: tail)
+                (1 + columnCountBefore tail query) =
+              columnAt tail (columnCountBefore tail query) := by
+            rw [Nat.add_comm 1 (columnCountBefore tail query)]
+            rfl
+          have indexed :
+              columnAt ((stored, atoms) :: tail)
+                (1 + columnCountBefore tail query) =
+              some (query, sortedVecGet tail query) := by
+            rw [oneStep]
+            exact tailIndex
+          simpa [columnCountBefore, later, sortedVecGet,
+            smaller, equal] using indexed
 
 /-- The canonical Rust balance map never stores zero values. Thus an
 absent lookup can be represented by None and a present lookup by the
