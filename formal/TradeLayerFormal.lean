@@ -3730,11 +3730,12 @@ a machine-level proof of Rust Ord, binary_search_by or Vec shifts.
 
 /-- Independently count native composite keys preceding a query, without
 constructing any numeric ranks or binary-search trees. -/
-def nativeAccountCountBefore :
+noncomputable def nativeAccountCountBefore :
     List (NativeAccountKey × Nat) → NativeAccountKey → Nat
   | [], _ => 0
-  | (key, _) :: tail, query =>
-      (if NativeAccountLess key query then 1 else 0) +
+  | (key, _) :: tail, query => by
+      classical
+      exact (if NativeAccountLess key query then 1 else 0) +
         nativeAccountCountBefore tail query
 
 theorem native_account_lower_bound_count_refines
@@ -3745,6 +3746,7 @@ theorem native_account_lower_bound_count_refines
       columnCountBefore (encodeNativeRows rows)
           (encodeNativeAccount query) =
         nativeAccountCountBefore rows query := by
+  classical
   induction rows with
   | nil =>
       intro query _ _
