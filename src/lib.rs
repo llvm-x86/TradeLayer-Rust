@@ -10,6 +10,7 @@ pub mod bitcoin_forks; // Bounded greatest-work selection among observed header 
 pub mod bitcoin_inclusion; // Bitcoin SHA256d header and tx Merkle checks; no full consensus.
 pub mod chain; // Trust-boundary and reversible block progression, prototype only.
 mod codec; // Bounded, checksummed snapshot codec.
+mod checked_amounts; // Bit-precise checked debit/credit arithmetic; Kani proof harnesses.
 pub mod execution; // Prototype unified registry+ledger replay; input unverified.
 mod hash256; // Offline SHA-256d txid fingerprints; not trusted consensus.
 pub mod joint; // Stage 22 independent registry + sole spot-owned ledger in one mixed state.

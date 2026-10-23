@@ -140,12 +140,10 @@ impl Ledger {
         }
         let state = self.channels.entry(channel.clone()).or_default();
         state.claim(&channel, side, &from)?;
-        let after = state
-            .atoms(side, id)
-            .checked_add(amount_atoms)
-            .ok_or(LedgerError::ArithmeticOverflow)?;
-        state.put(side, id, after);
-        self.put_balance(id, from, balance - amount_atoms);
+        let (debit_after, credit_after) =
+            checked_move_for_property(id, balance, state.atoms(side, id), amount_atoms)?;
+        state.put(side, id, credit_after);
+        self.put_balance(id, from, debit_after);
         Ok(())
     }
 
@@ -216,15 +214,13 @@ impl Ledger {
         }
         let to = self.channels.entry(to_channel.clone()).or_default();
         to.claim(&to_channel, to_side, &owner)?;
-        let after = to
-            .atoms(to_side, id)
-            .checked_add(amount_atoms)
-            .ok_or(LedgerError::ArithmeticOverflow)?;
-        to.put(to_side, id, after);
+        let (debit_after, credit_after) =
+            checked_move_for_property(id, balance, to.atoms(to_side, id), amount_atoms)?;
+        to.put(to_side, id, credit_after);
         self.channels
             .get_mut(&from_channel)
             .expect("verified channel")
-            .put(from_side, id, balance - amount_atoms);
+            .put(from_side, id, debit_after);
         Ok(())
     }
 

@@ -268,11 +268,12 @@ impl Ledger {
             recomputed.net_atoms,
         )?;
         let receiving_side = recomputed.payer_side.other();
-        let receiver = state
-            .atoms(receiving_side, receipt.property)
-            .checked_add(recomputed.net_atoms)
-            .ok_or(LedgerError::ArithmeticOverflow)?;
-        let payer = state.atoms(recomputed.payer_side, receipt.property) - recomputed.net_atoms;
+        let (payer, receiver) = checked_move_for_property(
+            receipt.property,
+            state.atoms(recomputed.payer_side, receipt.property),
+            state.atoms(receiving_side, receipt.property),
+            recomputed.net_atoms,
+        )?;
         state.put(receiving_side, receipt.property, receiver);
         state.put(recomputed.payer_side, receipt.property, payer);
         for (claim_txid, _) in selected {

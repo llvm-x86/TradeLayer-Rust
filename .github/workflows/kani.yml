@@ -1,0 +1,44 @@
+name: Kani checked accounting
+
+on:
+  pull_request:
+    paths:
+      - "src/checked_amounts.rs"
+      - "src/ledger.rs"
+      - "src/ledger_channels_impl.rs"
+      - "src/ledger_settlement_impl.rs"
+      - "src/lib.rs"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/kani.yml"
+  push:
+    branches: [main]
+    paths:
+      - "src/checked_amounts.rs"
+      - "src/ledger.rs"
+      - "src/ledger_channels_impl.rs"
+      - "src/ledger_settlement_impl.rs"
+      - "src/lib.rs"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/kani.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: kani-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  bitprecise:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Symbolically verify the production checked amount kernel
+        uses: model-checking/kani-github-action@f838096619a707b0f6b2118cf435eaccfa33e51f # v1.1
+        with:
+          kani-version: "0.68.0"
+          command: cargo-kani

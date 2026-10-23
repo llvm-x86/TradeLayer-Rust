@@ -288,4 +288,100 @@ theorem committed_leaves_other_ledger_untouched
       rw [← h]
       simp [finish, different]
 
+/-!
+## Checked debit/credit refinement target
+
+This defines the exact three rejection guards used by the production Rust
+`checked_amounts::move_atoms` function. Kani separately checks the *actual
+Rust function* over all u128 input triples. The two checkers have independent
+semantics; their agreement is made reviewable through the guard sequence and
+the Rust source. No compiler-correctness or cross-language linking theorem
+is assumed.
+-/
+
+inductive MoveRejection where
+  | zero
+  | insufficient
+  | overflow
+  deriving Repr, DecidableEq
+
+def checkedMove (debit credit amount : Nat) :
+    Except MoveRejection (Nat × Nat) :=
+  if amount = 0 then .error .zero
+  else if debit < amount then .error .insufficient
+  else if maxU128 < credit + amount then .error .overflow
+  else .ok (debit - amount, credit + amount)
+
+theorem checked_move_valid (debit credit amount : Nat)
+    (positive : 0 < amount) (funded : amount ≤ debit)
+    (creditFits : credit + amount ≤ maxU128) :
+    checkedMove debit credit amount =
+      .ok (debit - amount, credit + amount) := by
+  have nz : amount ≠ 0 := by omega
+  have enough : ¬ debit < amount := by omega
+  have fits : ¬ maxU128 < credit + amount := by omega
+  simp [checkedMove, nz, enough, fits]
+
+theorem checked_move_zero (debit credit : Nat) :
+    checkedMove debit credit 0 = .error .zero := by
+  simp [checkedMove]
+
+theorem checked_move_insufficient (debit credit amount : Nat)
+    (positive : 0 < amount) (unfunded : debit < amount) :
+    checkedMove debit credit amount = .error .insufficient := by
+  have nz : amount ≠ 0 := by omega
+  simp [checkedMove, nz, unfunded]
+
+theorem checked_move_overflow (debit credit amount : Nat)
+    (positive : 0 < amount) (funded : amount ≤ debit)
+    (overflow : maxU128 < credit + amount) :
+    checkedMove debit credit amount = .error .overflow := by
+  have nz : amount ≠ 0 := by omega
+  have enough : ¬ debit < amount := by omega
+  simp [checkedMove, nz, enough, overflow]
+
+theorem checked_move_success_is_exact (debit credit amount afterDebit afterCredit : Nat)
+    (accepted : checkedMove debit credit amount =
+      .ok (afterDebit, afterCredit)) :
+    0 < amount ∧ amount ≤ debit ∧
+    credit + amount ≤ maxU128 ∧
+    afterDebit = debit - amount ∧ afterCredit = credit + amount := by
+  unfold checkedMove at accepted
+  by_cases hz : amount = 0
+  · simp [hz] at accepted
+  · by_cases hf : debit < amount
+    · simp [hz, hf] at accepted
+    · by_cases ho : maxU128 < credit + amount
+      · simp [hz, hf, ho] at accepted
+      · have pairs : (debit - amount, credit + amount) =
+            (afterDebit, afterCredit) := by
+          simpa [hz, hf, ho] using accepted
+        rcases Prod.mk.inj pairs with ⟨hDebit, hCredit⟩
+        constructor
+        · omega
+        constructor
+        · omega
+        constructor
+        · omega
+        constructor
+        · omega
+        · omega
+
+theorem checked_move_preserves_sum (debit credit amount afterDebit afterCredit : Nat)
+    (accepted : checkedMove debit credit amount =
+      .ok (afterDebit, afterCredit)) :
+    afterDebit + afterCredit = debit + credit := by
+  obtain ⟨_, funded, _, debitEq, creditEq⟩ :=
+    checked_move_success_is_exact debit credit amount afterDebit afterCredit accepted
+  omega
+
+theorem checked_move_preserves_u128 (debit credit amount afterDebit afterCredit : Nat)
+    (boundedDebit : debit ≤ maxU128) (boundedCredit : credit ≤ maxU128)
+    (accepted : checkedMove debit credit amount =
+      .ok (afterDebit, afterCredit)) :
+    afterDebit ≤ maxU128 ∧ afterCredit ≤ maxU128 := by
+  obtain ⟨_, funded, fits, debitEq, creditEq⟩ :=
+    checked_move_success_is_exact debit credit amount afterDebit afterCredit accepted
+  omega
+
 end TradeLayerFormal

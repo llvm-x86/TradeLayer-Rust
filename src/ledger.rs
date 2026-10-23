@@ -268,6 +268,26 @@ impl fmt::Display for LedgerError {
 
 impl std::error::Error for LedgerError {}
 
+/// Error-preserving adapter from the Kani-checked arithmetic kernel to
+/// LedgerError. Account identity and chain authorization stay with callers.
+fn checked_move_for_property(
+    id: PropertyId,
+    debit: u128,
+    credit: u128,
+    amount: u128,
+) -> Result<(u128, u128), LedgerError> {
+    use crate::checked_amounts::{move_atoms, MoveError};
+    move_atoms(debit, credit, amount).map_err(|err| match err {
+        MoveError::Zero => LedgerError::ZeroAmount,
+        MoveError::Insufficient => LedgerError::InsufficientAvailable {
+            property: id,
+            available: debit,
+            requested: amount,
+        },
+        MoveError::Overflow => LedgerError::ArithmeticOverflow,
+    })
+}
+
 /// BTree collections keep iteration and equality independent of HashMap seeds.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Ledger {
@@ -435,11 +455,10 @@ impl Ledger {
                 if from == to {
                     return Ok(());
                 }
-                let to_after = self
-                    .available_atoms(id, &to)
-                    .checked_add(amount_atoms)
-                    .ok_or(LedgerError::ArithmeticOverflow)?;
-                self.put_balance(id, from, from_before - amount_atoms);
+                let (from_after, to_after) = checked_move_for_property(
+                    id, from_before, self.available_atoms(id, &to), amount_atoms,
+                )?;
+                self.put_balance(id, from, from_after);
                 self.put_balance(id, to, to_after);
                 Ok(())
             }
