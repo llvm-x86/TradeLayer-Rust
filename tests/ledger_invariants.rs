@@ -907,8 +907,8 @@ fn network_qualified_column_key_mapping_is_injective_for_supported_sources() {
     };
     use tradelayer_core::network_profile::TradeLayerMainnet;
 
-    let account = a("same");
     let tx_bytes = [b's'; 32];
+    let account = a(std::str::from_utf8(&tx_bytes).unwrap());
     let rows = [
         SupplyColumnRow {
             property: p(7),
@@ -955,11 +955,16 @@ fn network_qualified_column_key_mapping_is_injective_for_supported_sources() {
             assert_eq!(key.source_tag, if index < 4 { index as u8 } else { 0 });
             assert_eq!(
                 key.identifier_bytes,
-                if index == 3 { tx_bytes.to_vec() } else { b"same".to_vec() }
+                tx_bytes.to_vec()
             );
-            assert!(keys.insert(key), "source, property and network must be unique");
+            assert!(
+                keys.insert(key),
+                "source, property and network must be unique"
+            );
         }
     }
+    // Identical 32-byte identifier bytes across all four source kinds
+    // remain distinct solely through their typed source tags.
     assert_eq!(keys.len(), 15);
 
     let mut ledger = Ledger::new();
@@ -980,6 +985,8 @@ fn network_qualified_column_key_mapping_is_injective_for_supported_sources() {
         assert_eq!(projected[1].0.identifier_bytes, b"same");
         assert_eq!(projected[0].0.source_tag, 0);
         assert_eq!(projected[1].0.source_tag, 0);
-        assert!(projected.iter().all(|(key, _)| key.network_tag == network.tag()));
+        assert!(projected
+            .iter()
+            .all(|(key, _)| key.network_tag == network.tag()));
     }
 }

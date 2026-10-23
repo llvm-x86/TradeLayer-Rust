@@ -127,7 +127,6 @@ pub struct SupplyColumnRow {
     pub atoms: u128,
 }
 
-
 /** A network-qualified, typed-key representation for the formal audit.
  * The network is caller declared and remains unauthenticated. */
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -146,8 +145,7 @@ impl SupplyColumnRow {
     /// Dogecoin=3). Neither a signature nor chain history is checked here.
     pub fn proof_key_unverified(&self, network: TradeLayerMainnet) -> SupplyColumnProofKey {
         let (source_tag, identifier_bytes) = match &self.source {
-            SupplyColumnSource::Available(owner) =>
-                (0u8, owner.as_str().as_bytes().to_vec()),
+            SupplyColumnSource::Available(owner) => (0u8, owner.as_str().as_bytes().to_vec()),
             SupplyColumnSource::ChannelEscrow { channel, side } => (
                 match side {
                     ChannelSide::A => 1u8,
@@ -155,8 +153,7 @@ impl SupplyColumnRow {
                 },
                 channel.as_str().as_bytes().to_vec(),
             ),
-            SupplyColumnSource::ReservedWithdrawal(txid) =>
-                (3u8, txid.as_bytes().to_vec()),
+            SupplyColumnSource::ReservedWithdrawal(txid) => (3u8, txid.as_bytes().to_vec()),
         };
         SupplyColumnProofKey {
             network_tag: network.tag(),
