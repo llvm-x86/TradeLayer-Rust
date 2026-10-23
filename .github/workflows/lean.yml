@@ -5,12 +5,18 @@ on:
     paths:
       - "formal/**"
       - ".github/workflows/lean.yml"
+  # Feature branches are checked through pull_request; avoid a second
+  # push-triggered run (and a second failure notification) per commit.
   push:
-    branches: [main, "formal/**"]
+    branches: [main]
     paths:
       - "formal/**"
       - ".github/workflows/lean.yml"
   workflow_dispatch:
+
+concurrency:
+  group: lean-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
