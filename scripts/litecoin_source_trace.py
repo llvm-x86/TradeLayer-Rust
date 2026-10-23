@@ -49,7 +49,7 @@ def transaction_layout(hex_value: str) -> tuple[list[tuple[str, int]], list[tupl
     raw = bytes.fromhex(hex_value)
     cur = base.Cursor(raw)
     cur.read(4)
-    if raw[4:6] == b"\\x00\\x01":
+    if raw[4:6] == b"\x00\x01":
         cur.read(2)
         has_witness = True
     else:
@@ -114,7 +114,7 @@ def check_output(decoded: dict, n: int, raw_output: tuple[int, str]) -> dict:
     if not isinstance(decoded, dict) or decoded.get("n") != n:
         raise base.EvidenceError("decoded vout position mismatch")
     script = decoded.get("scriptPubKey")
-    if not isinstance(script, dict) or script.get("hex", "").lower() != raw_output[1]:
+    if not isinstance(script, dict) or not isinstance(script.get("hex"), str) or script["hex"].lower() != raw_output[1]:
         raise base.EvidenceError("decoded script differs from original output bytes")
     if require_satoshis(decoded.get("value")) != raw_output[0]:
         raise base.EvidenceError("decoded value differs from original output bytes")
@@ -193,7 +193,7 @@ def augment_with_sources(rpc, tsv: str, manifest: dict) -> dict:
     known = {}
     for line in tsv.splitlines():
         if line and not line.startswith("#"):
-            parts = line.split("\\t")
+            parts = line.split("\t")
             if len(parts) != 6:
                 raise base.EvidenceError("invalid candidate TSV")
             if parts[4] in known:
@@ -208,7 +208,7 @@ def augment_with_sources(rpc, tsv: str, manifest: dict) -> dict:
         bh = base.require_hash(candidate["blockhash"], "candidate block")
         txid = base.require_hash(candidate["txid"], "candidate txid")
         row = known.get(txid)
-        if row is None or row[2] != str(height) or row[3] != bh:
+        if row is None or row[0] != candidate["label"] or row[2] != str(height) or row[3] != bh:
             raise base.EvidenceError("candidate corpus order/provenance mismatch")
         if bh not in cached_blocks:
             cached_blocks[bh] = checked_block(rpc, bh, height, manifest["min_confirmations"], 2)
@@ -292,7 +292,7 @@ def main(argv=None) -> int:
                                          args.end_height, args.min_confirmations)
         manifest = augment_with_sources(rpc, tsv, manifest)
         base.atomic_write(args.output, tsv)
-        base.atomic_write(args.manifest, json.dumps(manifest, indent=2, sort_keys=True) + "\\n")
+        base.atomic_write(args.manifest, json.dumps(manifest, indent=2, sort_keys=True) + "\n")
         print(f"Scanned {manifest['blocks_scanned']} blocks, traced "
               f"{manifest['transactions_selected']} candidates; joint replay remains denied")
         return 0
