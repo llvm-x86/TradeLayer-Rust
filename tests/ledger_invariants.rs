@@ -702,7 +702,7 @@ fn canonical_supply_audit_tracks_arbitrary_wallet_channel_and_pending_columns() 
     let mut grouped = std::collections::BTreeMap::new();
     for row in &columns {
         let amounts = grouped.entry(row.property).or_insert([0u128; 3]);
-        let group = match row.source {
+        let group = match &row.source {
             SupplyColumnSource::Available(_) => 0,
             SupplyColumnSource::ChannelEscrow { .. } => 1,
             SupplyColumnSource::ReservedWithdrawal(_) => 2,
