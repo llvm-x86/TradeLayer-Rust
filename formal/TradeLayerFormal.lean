@@ -2373,23 +2373,24 @@ theorem canonical_sorted_columns_extensional_unique :
           have firstPositive : 0 < firstAtoms := canonLeft.2.1
           have secondPositive : 0 < secondAtoms := canonRight.2.1
           have sameKey : first = second := by
-            by_contra different
-            by_cases smaller : first < second
-            · have same := agree first
-              have skip : sortedVecGet ((second, secondAtoms) :: tail) first = 0 := by
-                simp [sortedVecGet, smaller]
-              have found : sortedVecGet ((first, firstAtoms) :: rest) first =
-                  firstAtoms := by simp [sortedVecGet]
-              rw [found, skip] at same
-              omega
-            · have greater : second < first := by omega
-              have same := agree second
-              have skip : sortedVecGet ((first, firstAtoms) :: rest) second = 0 := by
-                simp [sortedVecGet, greater]
-              have found : sortedVecGet ((second, secondAtoms) :: tail) second =
-                  secondAtoms := by simp [sortedVecGet]
-              rw [skip, found] at same
-              omega
+            by_cases equal : first = second
+            · exact equal
+            · by_cases smaller : first < second
+              · have same := agree first
+                have skip : sortedVecGet ((second, secondAtoms) :: tail) first = 0 := by
+                  simp [sortedVecGet, smaller]
+                have found : sortedVecGet ((first, firstAtoms) :: rest) first =
+                    firstAtoms := by simp [sortedVecGet]
+                rw [found, skip] at same
+                omega
+              · have greater : second < first := by omega
+                have same := agree second
+                have skip : sortedVecGet ((first, firstAtoms) :: rest) second = 0 := by
+                  simp [sortedVecGet, greater]
+                have found : sortedVecGet ((second, secondAtoms) :: tail) second =
+                    secondAtoms := by simp [sortedVecGet]
+                rw [skip, found] at same
+                omega
           subst second
           have sameAtoms : firstAtoms = secondAtoms := by
             have same := agree first
