@@ -48,12 +48,28 @@ fn source_independent_node_vectors_match_realtime_and_catchup() {
         let projection =
             project_end_block(path, fields[2].parse().unwrap(), &parse_txs(fields[3])).unwrap();
         let label = fields[0];
-        assert_eq!(projection.funding_bucket, fields[4].parse().unwrap(), "{label}");
-        assert_eq!(projection.other_bucket, fields[5].parse().unwrap(), "{label}");
+        assert_eq!(
+            projection.funding_bucket,
+            fields[4].parse().unwrap(),
+            "{label}"
+        );
+        assert_eq!(
+            projection.other_bucket,
+            fields[5].parse().unwrap(),
+            "{label}"
+        );
         assert_eq!(projection.clearing_called, enabled(fields[6]), "{label}");
-        assert_eq!(projection.funding_height_eligible, enabled(fields[7]), "{label}");
+        assert_eq!(
+            projection.funding_height_eligible,
+            enabled(fields[7]),
+            "{label}"
+        );
         assert_eq!(projection.funding_attempted, enabled(fields[8]), "{label}");
-        assert_eq!(projection.withdrawals_attempted, enabled(fields[9]), "{label}");
+        assert_eq!(
+            projection.withdrawals_attempted,
+            enabled(fields[9]),
+            "{label}"
+        );
         rows += 1;
     }
     assert_eq!(rows, 32);
@@ -88,12 +104,16 @@ fn funding_only_or_invalid_other_trades_trigger_different_clearing() {
         already_processed: false,
         valid_before_logic: false,
     }];
-    assert!(project_end_block(ReplayPath::CatchUp, 240, &invalid)
-        .unwrap()
-        .funding_attempted);
-    assert!(!project_end_block(ReplayPath::RealTime, 240, &invalid)
-        .unwrap()
-        .funding_attempted);
+    assert!(
+        project_end_block(ReplayPath::CatchUp, 240, &invalid)
+            .unwrap()
+            .funding_attempted
+    );
+    assert!(
+        !project_end_block(ReplayPath::RealTime, 240, &invalid)
+            .unwrap()
+            .funding_attempted
+    );
 }
 
 #[test]
