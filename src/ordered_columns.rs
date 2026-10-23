@@ -104,6 +104,36 @@ mod tests {
         }
     }
 
+
+    #[test]
+    fn canonical_write_matches_tree_on_zero_and_nonzero_balances() {
+        let mut baseline = BTreeMap::new();
+        let mut actual = OrderedColumns::<(u16, u16)>::default();
+        let mut seed = 0xb1a5_2026_00ff_1234u64;
+        for step in 0u64..3000 {
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
+            let key = (((seed >> 14) % 9) as u16, ((seed >> 29) % 23) as u16);
+            let atoms = if step.is_multiple_of(7) {
+                0u128
+            } else {
+                u128::from(((seed >> 6) % 600) as u16 + 1)
+            };
+            crate::canonical_columns::put_nonzero(&mut actual, key, atoms);
+            if atoms == 0 {
+                baseline.remove(&key);
+            } else {
+                baseline.insert(key, atoms);
+            }
+            assert!(actual.has_strict_keys());
+            assert_eq!(actual.len(), baseline.len());
+            assert_eq!(
+                actual.iter().map(|(k, v)| (*k, *v)).collect::<Vec<_>>(),
+                baseline.iter().map(|(k, v)| (*k, *v)).collect::<Vec<_>>()
+            );
+            assert!(actual.iter().all(|(_, atoms)| *atoms != 0));
+        }
+    }
+
     #[test]
     fn front_middle_end_insert_replace_and_delete() {
         let mut map = OrderedColumns::<u16>::default();

@@ -358,7 +358,8 @@ fn checked_move_for_property(
     })
 }
 
-/// BTree collections keep iteration and equality independent of HashMap seeds.
+/// Sorted vector columns and the remaining BTree collections provide stable
+/// iteration and structural equality independent of HashMap seeds.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Ledger {
     properties: BTreeMap<PropertyId, Property>,
