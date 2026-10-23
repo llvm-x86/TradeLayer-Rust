@@ -72,7 +72,8 @@ impl core::fmt::Display for FundingAuditError {
 impl std::error::Error for FundingAuditError {}
 
 fn multiply(a: u128, b: u128) -> Result<u128, FundingAuditError> {
-    a.checked_mul(b).ok_or(FundingAuditError::ArithmeticOverflow)
+    a.checked_mul(b)
+        .ok_or(FundingAuditError::ArithmeticOverflow)
 }
 
 fn half_up(numerator: u128, denominator: u128) -> Result<u128, FundingAuditError> {
@@ -82,7 +83,9 @@ fn half_up(numerator: u128, denominator: u128) -> Result<u128, FundingAuditError
     let quotient = numerator / denominator;
     let remainder = numerator % denominator;
     if remainder >= denominator - remainder {
-        quotient.checked_add(1).ok_or(FundingAuditError::ArithmeticOverflow)
+        quotient
+            .checked_add(1)
+            .ok_or(FundingAuditError::ArithmeticOverflow)
     } else {
         Ok(quotient)
     }
@@ -92,7 +95,12 @@ fn weight(position: &FundingPosition) -> u128 {
     u128::from(position.contracts.unsigned_abs())
 }
 
-fn add_signed(deltas: &mut [i128], idx: usize, atoms: u128, negative: bool) -> Result<(), FundingAuditError> {
+fn add_signed(
+    deltas: &mut [i128],
+    idx: usize,
+    atoms: u128,
+    negative: bool,
+) -> Result<(), FundingAuditError> {
     let amount = i128::try_from(atoms).map_err(|_| FundingAuditError::ArithmeticOverflow)?;
     let amount = if negative { -amount } else { amount };
     deltas[idx] = deltas[idx]
@@ -154,16 +162,18 @@ fn hamilton_distribution(
     let remaining = total
         .checked_sub(allocated)
         .ok_or(FundingAuditError::ArithmeticOverflow)?;
-    let remaining = usize::try_from(remaining).map_err(|_| FundingAuditError::ArithmeticOverflow)?;
+    let remaining =
+        usize::try_from(remaining).map_err(|_| FundingAuditError::ArithmeticOverflow)?;
     if remaining > shares.len() {
         return Err(FundingAuditError::ArithmeticOverflow);
     }
     let mut order: Vec<usize> = (0..shares.len()).collect();
     order.sort_by(|&a, &b| {
-        shares[b]
-            .2
-            .cmp(&shares[a].2)
-            .then_with(|| positions[shares[a].0].account.cmp(&positions[shares[b].0].account))
+        shares[b].2.cmp(&shares[a].2).then_with(|| {
+            positions[shares[a].0]
+                .account
+                .cmp(&positions[shares[b].0].account)
+        })
     });
     for &idx in order.iter().take(remaining) {
         shares[idx].1 = shares[idx]
@@ -171,7 +181,10 @@ fn hamilton_distribution(
             .checked_add(1)
             .ok_or(FundingAuditError::ArithmeticOverflow)?;
     }
-    Ok(shares.into_iter().map(|(idx, atoms, _)| (idx, atoms)).collect())
+    Ok(shares
+        .into_iter()
+        .map(|(idx, atoms, _)| (idx, atoms))
+        .collect())
 }
 
 fn projection(
@@ -195,11 +208,15 @@ fn projection(
                 position
                     .available_atoms
                     .checked_sub(delta.unsigned_abs())
-                    .ok_or_else(|| FundingAuditError::InsufficientAvailable(position.account.clone()))?
+                    .ok_or_else(|| {
+                        FundingAuditError::InsufficientAvailable(position.account.clone())
+                    })?
             } else {
                 position
                     .available_atoms
-                    .checked_add(u128::try_from(delta).map_err(|_| FundingAuditError::ArithmeticOverflow)?)
+                    .checked_add(
+                        u128::try_from(delta).map_err(|_| FundingAuditError::ArithmeticOverflow)?,
+                    )
                     .ok_or(FundingAuditError::ArithmeticOverflow)?
             };
             preview.push(balance);
