@@ -1701,4 +1701,152 @@ theorem encoded_column_move_preserves_total
   exact typed_column_move_preserves_total support amounts sender recipient
     amount unique senderPresent recipientPresent distinct funded
 
+
+/-!
+## Stage 8: a key/value association-map refinement contract
+
+These definitions model the *observable* pointwise behavior of a map of
+network-qualified typed keys to atomic amounts. Unlike Rust's BTreeMap, the
+simple list implementation is independent of tree balancing, allocation and
+iteration order. The lemmas prove a left-to-right abstraction relation for
+arbitrary finite lists (including malformed duplicates); they are NOT a proof
+of std::BTreeMap internals or full Ledger::execute correctness.
+-/
+
+/-- Return zero for absent entries, like Ledger::available_atoms. -/
+def assocColumnGet : List (EncodedColumnKey × Nat) →
+    EncodedColumnKey → Nat
+  | [], _ => 0
+  | (stored, atoms) :: rest, key =>
+      if stored = key then atoms else assocColumnGet rest key
+
+/-- Erase ALL matching keys, including duplicates in malformed input. -/
+def assocColumnErase : List (EncodedColumnKey × Nat) →
+    EncodedColumnKey → List (EncodedColumnKey × Nat)
+  | [], _ => []
+  | (stored, atoms) :: rest, key =>
+      if stored = key then assocColumnErase rest key
+      else (stored, atoms) :: assocColumnErase rest key
+
+/-- The production nonzero rule: zero removes, positive replaces or inserts.
+This uses a front insertion; sorting the output is a separate map contract. -/
+def assocColumnPut (rows : List (EncodedColumnKey × Nat))
+    (key : EncodedColumnKey) (atoms : Nat) :
+    List (EncodedColumnKey × Nat) :=
+  if atoms = 0 then assocColumnErase rows key
+  else (key, atoms) :: assocColumnErase rows key
+
+theorem assoc_erase_get_self
+    (rows : List (EncodedColumnKey × Nat)) (key : EncodedColumnKey) :
+    assocColumnGet (assocColumnErase rows key) key = 0 := by
+  induction rows with
+  | nil => rfl
+  | cons pair rest ih =>
+      rcases pair with ⟨stored, atoms⟩
+      by_cases equal : stored = key
+      · simp [assocColumnErase, assocColumnGet, equal, ih]
+      · simp [assocColumnErase, assocColumnGet, equal, ih]
+
+theorem assoc_erase_get_other
+    (rows : List (EncodedColumnKey × Nat))
+    (erased query : EncodedColumnKey) (different : query ≠ erased) :
+    assocColumnGet (assocColumnErase rows erased) query =
+      assocColumnGet rows query := by
+  induction rows with
+  | nil => rfl
+  | cons pair rest ih =>
+      rcases pair with ⟨stored, atoms⟩
+      by_cases equal : stored = erased
+      · subst stored
+        simp [assocColumnErase, assocColumnGet, Ne.symm different, ih]
+      · simp [assocColumnErase, assocColumnGet, equal, ih]
+
+theorem assoc_put_get_self
+    (rows : List (EncodedColumnKey × Nat))
+    (key : EncodedColumnKey) (atoms : Nat) :
+    assocColumnGet (assocColumnPut rows key atoms) key = atoms := by
+  by_cases zero : atoms = 0
+  · subst atoms
+    simp [assocColumnPut, assoc_erase_get_self]
+  · simp [assocColumnPut, zero, assocColumnGet]
+
+theorem assoc_put_get_other
+    (rows : List (EncodedColumnKey × Nat))
+    (key other : EncodedColumnKey) (atoms : Nat)
+    (different : other ≠ key) :
+    assocColumnGet (assocColumnPut rows key atoms) other =
+      assocColumnGet rows other := by
+  by_cases zero : atoms = 0
+  · simp [assocColumnPut, zero,
+      assoc_erase_get_other rows key other different]
+  · simp [assocColumnPut, zero, assocColumnGet,
+      Ne.symm different, assoc_erase_get_other rows key other different]
+
+/-- A map refinement is pointwise equality of all stored amounts.
+No ordering hypothesis is needed because key behavior is extensional. -/
+def AssocColumnRepresents
+    (rows : List (EncodedColumnKey × Nat))
+    (amounts : EncodedColumnKey → Nat) : Prop :=
+  ∀ key, assocColumnGet rows key = amounts key
+
+/-- The association-map implementation refines functional assignment at
+ANY typed key, for arbitrary old maps and inserted/removed amounts. -/
+theorem assoc_put_refines_function
+    (rows : List (EncodedColumnKey × Nat))
+    (amounts : EncodedColumnKey → Nat)
+    (key : EncodedColumnKey) (atoms : Nat)
+    (good : AssocColumnRepresents rows amounts) :
+    AssocColumnRepresents (assocColumnPut rows key atoms)
+        (fun query => if query = key then atoms else amounts query) := by
+  intro query
+  by_cases same : query = key
+  · subst query
+    simpa [AssocColumnRepresents] using
+      assoc_put_get_self rows key atoms
+  · have other := assoc_put_get_other rows key query atoms same
+    simpa [AssocColumnRepresents, same, good query] using other
+
+/-- Transaction-style two-column update, identical to a sequence of two
+canonical map writes after funding/overflow validation. -/
+def assocColumnMove (rows : List (EncodedColumnKey × Nat))
+    (sender receiver : EncodedColumnKey) (atoms : Nat) :
+    List (EncodedColumnKey × Nat) :=
+  let debit := assocColumnGet rows sender
+  let credit := assocColumnGet rows receiver
+  let first := assocColumnPut rows sender (debit - atoms)
+  assocColumnPut first receiver (credit + atoms)
+
+/-- Proof that the two-column update has exact source, destination and frame
+semantics; note the sender and receiver must be distinct. -/
+theorem assoc_move_refines_function
+    (rows : List (EncodedColumnKey × Nat))
+    (amounts : EncodedColumnKey → Nat)
+    (sender receiver : EncodedColumnKey) (atoms : Nat)
+    (good : AssocColumnRepresents rows amounts)
+    (different : sender ≠ receiver) :
+    AssocColumnRepresents (assocColumnMove rows sender receiver atoms)
+      (fun query =>
+        if query = sender then amounts sender - atoms
+        else if query = receiver then amounts receiver + atoms
+        else amounts query) := by
+  have debit : assocColumnGet rows sender = amounts sender := good sender
+  have credit : assocColumnGet rows receiver = amounts receiver := good receiver
+  unfold assocColumnMove
+  rw [debit, credit]
+  have first := assoc_put_refines_function rows amounts sender
+    (amounts sender - atoms) good
+  have second := assoc_put_refines_function
+    (assocColumnPut rows sender (amounts sender - atoms))
+    (fun query => if query = sender then amounts sender - atoms else amounts query)
+    receiver (amounts receiver + atoms) first
+  intro query
+  have atQuery := second query
+  by_cases isSender : query = sender
+  · subst query
+    simpa [different, Ne.symm different] using atQuery
+  · by_cases isReceiver : query = receiver
+    · subst query
+      simpa [isSender, Ne.symm different] using atQuery
+    · simpa [isSender, isReceiver] using atQuery
+
 end TradeLayerFormal
