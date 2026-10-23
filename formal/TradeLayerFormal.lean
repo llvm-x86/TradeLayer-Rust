@@ -3823,4 +3823,175 @@ theorem native_midpoint_lower_bound_is_within_support
     (encodeNativeRows rows) (encodeNativeAccount query) sorted
   simpa [encodeNativeRows] using bounded
 
+
+/-!
+## Stage 15: positional Vec write semantics at the verified lower bound
+
+The production OrderedColumns::insert/remove uses binary search to find
+an index, then updates precisely that Vec location. The following
+independent index-recursive list operation models positional insertion,
+replacement or deletion. The proofs below establish exact correspondence
+to the canonical sorted-map update for arbitrary finite list lengths.
+
+This verifies the *mathematical positional algorithm*. It does not
+establish compiler/runtime correctness of Rust Vec::insert/remove.
+-/
+
+/-- Write a balance at a zero-based insertion index. At the selected slot,
+replace when the key exists, otherwise insert; a zero deletes the selected
+key if present and leaves the list alone if absent. -/
+def indexedColumnPut : Nat → List (Nat × Nat) → Nat → Nat →
+    List (Nat × Nat)
+  | 0, [], key, amount =>
+      if amount = 0 then [] else [(key, amount)]
+  | 0, (stored, old) :: tail, key, amount =>
+      if stored = key then
+        if amount = 0 then tail else (stored, amount) :: tail
+      else if amount = 0 then (stored, old) :: tail
+      else (key, amount) :: (stored, old) :: tail
+  | _ + 1, [], _, _ => []
+  | index + 1, (stored, old) :: tail, key, amount =>
+      (stored, old) :: indexedColumnPut index tail key amount
+
+/-- Full-scan lower-bound count chooses the positional update index. -/
+def lowerBoundIndexedPut (rows : List (Nat × Nat))
+    (key amount : Nat) : List (Nat × Nat) :=
+  indexedColumnPut (columnCountBefore rows key) rows key amount
+
+/-- In any sorted finite list, the lower-bound index is exactly the
+insertion/replacement/deletion position used by canonical sortedVecPut.
+This includes front, interior, end, existing and absent keys. -/
+theorem indexed_column_put_equals_sorted_put
+    (rows : List (Nat × Nat)) (key amount : Nat)
+    (sorted : SortedVecKeys rows) :
+    lowerBoundIndexedPut rows key amount = sortedVecPut rows key amount := by
+  induction rows with
+  | nil =>
+      simp [lowerBoundIndexedPut, columnCountBefore,
+        indexedColumnPut, sortedVecPut]
+  | cons pair tail ih =>
+      rcases pair with ⟨stored, old⟩
+      obtain ⟨above, tailSorted⟩ := sorted
+      by_cases before : key < stored
+      · have notBefore : ¬stored < key := by omega
+        have notEqual : stored ≠ key := by omega
+        have tailNone : columnCountBefore tail key = 0 :=
+          column_count_before_none tail key (by
+            intro entry member
+            have higher := above entry member
+            omega)
+        have indexZero :
+            columnCountBefore ((stored, old) :: tail) key = 0 := by
+          simp [columnCountBefore, notBefore, tailNone]
+        simp [lowerBoundIndexedPut, indexZero, indexedColumnPut,
+          sortedVecPut, before, notEqual]
+      · by_cases equal : key = stored
+        · have notBefore : ¬stored < key := by omega
+          have tailNone : columnCountBefore tail key = 0 :=
+            column_count_before_none tail key (by
+              intro entry member
+              have higher := above entry member
+              omega)
+          have indexZero :
+              columnCountBefore ((stored, old) :: tail) key = 0 := by
+            simp [columnCountBefore, notBefore, tailNone]
+          simp [lowerBoundIndexedPut, indexZero, indexedColumnPut,
+            sortedVecPut, before, equal, eq_comm]
+        · have after : stored < key := by omega
+          have notEqual : stored ≠ key := Ne.symm equal
+          have indexSuccessor :
+              columnCountBefore ((stored, old) :: tail) key =
+                columnCountBefore tail key + 1 := by
+            simp [columnCountBefore, after, Nat.add_comm]
+          have indexedHead :
+              lowerBoundIndexedPut ((stored, old) :: tail) key amount =
+                (stored, old) :: lowerBoundIndexedPut tail key amount := by
+            simp [lowerBoundIndexedPut, indexSuccessor,
+              indexedColumnPut]
+          have sortedHead :
+              sortedVecPut ((stored, old) :: tail) key amount =
+                (stored, old) :: sortedVecPut tail key amount := by
+            simp [sortedVecPut, before, equal]
+          rw [indexedHead, sortedHead, ih tailSorted]
+
+/-- The actual midpoint lower-bound index in the Lean binary-search
+algorithm can replace the independent linear count without changing
+the canonical stored result. -/
+def midpointIndexedPut (rows : List (Nat × Nat))
+    (key amount : Nat) : List (Nat × Nat) :=
+  indexedColumnPut (midpointColumnLowerBound rows key) rows key amount
+
+theorem midpoint_indexed_put_equals_sorted_put
+    (rows : List (Nat × Nat)) (key amount : Nat)
+    (sorted : SortedVecKeys rows) :
+    midpointIndexedPut rows key amount = sortedVecPut rows key amount := by
+  unfold midpointIndexedPut
+  rw [midpoint_column_lower_bound_is_exact rows key sorted]
+  exact indexed_column_put_equals_sorted_put rows key amount sorted
+
+/-- Every positional update preserves strict ordering and changes only
+the addressed account because it is equal to the already proved
+canonical sorted-vector update, at arbitrary lengths. -/
+theorem midpoint_indexed_put_preserves_order
+    (rows : List (Nat × Nat)) (key amount : Nat)
+    (sorted : SortedVecKeys rows) :
+    SortedVecKeys (midpointIndexedPut rows key amount) := by
+  rw [midpoint_indexed_put_equals_sorted_put rows key amount sorted]
+  exact sorted_vec_write_preserves_order rows key amount sorted
+
+theorem midpoint_indexed_put_reads_written_key
+    (rows : List (Nat × Nat)) (key amount : Nat)
+    (sorted : SortedVecKeys rows) :
+    sortedVecGet (midpointIndexedPut rows key amount) key = amount := by
+  rw [midpoint_indexed_put_equals_sorted_put rows key amount sorted]
+  exact sorted_vec_put_reads_written_key rows key amount sorted
+
+theorem midpoint_indexed_put_keeps_other_keys
+    (rows : List (Nat × Nat)) (key other amount : Nat)
+    (sorted : SortedVecKeys rows) (different : other ≠ key) :
+    sortedVecGet (midpointIndexedPut rows key amount) other =
+      sortedVecGet rows other := by
+  rw [midpoint_indexed_put_equals_sorted_put rows key amount sorted]
+  exact sorted_vec_put_keeps_other_keys rows key other amount sorted different
+
+/-- Arbitrary finite histories of indexed Vec edits, not merely isolated
+writes. -/
+def midpointIndexedTrace (rows : List (Nat × Nat)) :
+    List (Nat × Nat) → List (Nat × Nat)
+  | [] => rows
+  | (key, amount) :: tail =>
+      midpointIndexedTrace (midpointIndexedPut rows key amount) tail
+
+theorem midpoint_indexed_trace_equals_canonical
+    (writes : List (Nat × Nat)) :
+    ∀ rows : List (Nat × Nat),
+      SortedVecKeys rows →
+      midpointIndexedTrace rows writes =
+        sortedVecWriteTrace rows writes := by
+  induction writes with
+  | nil =>
+      intro rows _
+      rfl
+  | cons pair tail ih =>
+      rcases pair with ⟨key, amount⟩
+      intro rows sorted
+      change
+        midpointIndexedTrace
+          (midpointIndexedPut rows key amount) tail =
+        sortedVecWriteTrace
+          (sortedVecPut rows key amount) tail
+      rw [midpoint_indexed_put_equals_sorted_put rows key amount sorted]
+      exact ih _ (sorted_vec_write_preserves_order rows key amount sorted)
+
+/-- The index-based update implementation represents exactly the same
+abstract state as functional assignment across any finite history. -/
+theorem midpoint_indexed_trace_refines_function
+    (writes : List (Nat × Nat)) (rows : List (Nat × Nat))
+    (amounts : Nat → Nat)
+    (good : SortedColumnRepresents rows amounts) :
+    SortedColumnRepresents (midpointIndexedTrace rows writes)
+      (functionalWriteTrace amounts writes) := by
+  rw [midpoint_indexed_trace_equals_canonical writes rows good.1]
+  exact sorted_vec_write_trace_refines writes rows amounts good
+
 end TradeLayerFormal
