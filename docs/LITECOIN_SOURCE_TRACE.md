@@ -64,6 +64,13 @@ mainnet block window. The script inherits all collector security constraints:
 environment credentials, no private-key or wallet calls, and a confirmation
 and active-chain check. Both output paths must differ.
 
+The extension pins Litecoin Core's genesis from
+[chainparams.cpp@ec1b648](https://github.com/litecoin-project/litecoin/blob/ec1b6489a900d09cf5991e220dce089c77a232a2/src/chainparams.cpp).
+It checks the selected network's height-zero hash before attributing sources:
+`12a765e3...` mainnet, `4966625a...` testnet and `530827f3...`
+regtest. A Bitcoin Core or otherwise misrouted RPC endpoint is rejected,
+even if it advertises the same generic `chain` name.
+
 The source-trace extension additionally:
 
 1. Parses the selected transaction's raw first-input outpoint, and checks the
