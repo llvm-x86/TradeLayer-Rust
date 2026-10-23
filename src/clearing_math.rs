@@ -95,6 +95,36 @@ fn multiply_checked(values: &[u128]) -> Result<u128, ClearingMathError> {
         .ok_or(ClearingMathError::ArithmeticOverflow)
 }
 
+fn gcd(mut a: u128, mut b: u128) -> u128 {
+    while b != 0 {
+        let remainder = a % b;
+        a = b;
+        b = remainder;
+    }
+    a
+}
+
+/// Cancel common factors before multiplication. The unreduced intermediate
+/// can exceed u128 even when the quotient and its rounded result fit i128.
+/// Any remaining oversized product still fails closed.
+fn reduced_ratio_round_half_up(
+    numerator_factors: &mut [u128],
+    denominator_factors: &mut [u128],
+) -> Result<u128, ClearingMathError> {
+    for numerator in numerator_factors.iter_mut() {
+        for denominator in denominator_factors.iter_mut() {
+            let divisor = gcd(*numerator, *denominator);
+            if divisor > 1 {
+                *numerator /= divisor;
+                *denominator /= divisor;
+            }
+        }
+    }
+    let numerator = multiply_checked(numerator_factors)?;
+    let denominator = multiply_checked(denominator_factors)?;
+    ratio_round_half_up(numerator, denominator)
+}
+
 fn ratio_round_half_up(numerator: u128, denominator: u128) -> Result<u128, ClearingMathError> {
     if denominator == 0 {
         return Err(ClearingMathError::ArithmeticOverflow);
@@ -151,11 +181,11 @@ pub fn mark_to_mark_pnl_atoms(
     } else {
         match rounding {
             PnlRounding::ExactRational => {
-                let numerator =
-                    multiply_checked(&[delta.unsigned_abs(), contracts, notional, ATOMS_PER_UNIT])?;
-                let denominator =
-                    multiply_checked(&[u128::from(from_price_e8), u128::from(to_price_e8)])?;
-                ratio_round_half_up(numerator, denominator)?
+                let mut numerator_factors =
+                    [delta.unsigned_abs(), contracts, notional, ATOMS_PER_UNIT];
+                let mut denominator_factors =
+                    [u128::from(from_price_e8), u128::from(to_price_e8)];
+                reduced_ratio_round_half_up(&mut numerator_factors, &mut denominator_factors)?
             }
             PnlRounding::Legacy20DecimalPlaces => {
                 // BigNumber performs two separate 1 / price calculations,
