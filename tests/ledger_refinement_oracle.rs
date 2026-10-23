@@ -506,7 +506,7 @@ fn check_concrete(ledger: &Ledger, spec: &RefLedger, step: u64) {
             "accepted id missing at {step}"
         );
     }
-    if step % 67 == 0 {
+    if step.is_multiple_of(67) {
         let encoded = ledger.snapshot_bytes().unwrap();
         let restored = Ledger::from_snapshot_bytes(&encoded).unwrap();
         assert_eq!(restored, *ledger);
@@ -602,7 +602,7 @@ fn vector_oracle_refines_heterogeneous_rust_maps_through_randomized_operations()
     let mut accepted = 0usize;
     let mut rejected = 0usize;
     for step in 0..1200u64 {
-        let id = if next(&mut rng) % 2 == 0 { 41 } else { 42 };
+        let id = if next(&mut rng).is_multiple_of(2) { 41 } else { 42 };
         let who = PEOPLE[(next(&mut rng) as usize) % PEOPLE.len()];
         let other = PEOPLE[(next(&mut rng) as usize) % PEOPLE.len()];
         let channel = CHANNELS[(next(&mut rng) as usize) % CHANNELS.len()];
