@@ -3329,4 +3329,92 @@ theorem byte_rank_digits_compare
     · subst b
       omega
 
+
+/-- Bytewise lexicographic order, with proper prefixes ordered first.
+All lengths are supported; in the application they are at most 90. -/
+def ByteLexLess : List Nat → List Nat → Prop
+  | [], [] => False
+  | [], _ :: _ => True
+  | _ :: _, [] => False
+  | a :: tailA, b :: tailB =>
+      a < b ∨ (a = b ∧ ByteLexLess tailA tailB)
+
+/-- The base-257 encoding preserves and reflects the *entire* bytewise
+lexicographic comparison. This includes proper-prefix strings and every
+permitted account length, not only the one-byte case of Stage 12. -/
+theorem byte_rank_lt_iff_lex (width : Nat) :
+    ∀ (left right : List Nat),
+      left.length ≤ width →
+      right.length ≤ width →
+      AllByteDigits left →
+      AllByteDigits right →
+      (byteRank width left < byteRank width right ↔
+        ByteLexLess left right) := by
+  induction width with
+  | zero =>
+      intro left right fitsLeft fitsRight _ _
+      have leftEmpty : left = [] :=
+        List.length_eq_zero_iff.mp (by omega)
+      have rightEmpty : right = [] :=
+        List.length_eq_zero_iff.mp (by omega)
+      subst left
+      subst right
+      simp [byteRank, ByteLexLess]
+  | succ n ih =>
+      intro left right fitsLeft fitsRight leftValid rightValid
+      cases left with
+      | nil =>
+          cases right with
+          | nil =>
+              simp [byteRank, ByteLexLess]
+          | cons b tailB =>
+              have powerPositive : 0 < 257 ^ n :=
+                Nat.pow_pos (by decide)
+              have digitPositive : 0 < b + 1 := by omega
+              have productPositive :
+                  0 < (b + 1) * 257 ^ n :=
+                Nat.mul_pos digitPositive powerPositive
+              have positive :
+                  0 < (b + 1) * 257 ^ n + byteRank n tailB := by
+                omega
+              change (0 < (b + 1) * 257 ^ n + byteRank n tailB) ↔ True
+              constructor
+              · intro _
+                trivial
+              · intro _
+                exact positive
+      | cons a tailA =>
+          cases right with
+          | nil =>
+              change ((a + 1) * 257 ^ n + byteRank n tailA < 0) ↔ False
+              constructor
+              · intro impossible
+                omega
+              · intro impossible
+                cases impossible
+          | cons b tailB =>
+              have leftFits : tailA.length ≤ n := by simpa using fitsLeft
+              have rightFits : tailB.length ≤ n := by simpa using fitsRight
+              have tailValidLeft : AllByteDigits tailA := by
+                intro byte member
+                exact leftValid byte (List.mem_cons.mpr (Or.inr member))
+              have tailValidRight : AllByteDigits tailB := by
+                intro byte member
+                exact rightValid byte (List.mem_cons.mpr (Or.inr member))
+              have leftBound :=
+                byte_rank_bounded n tailA leftFits tailValidLeft
+              have rightBound :=
+                byte_rank_bounded n tailB rightFits tailValidRight
+              have tailOrder :=
+                ih tailA tailB leftFits rightFits tailValidLeft tailValidRight
+              change
+                ((a + 1) * 257 ^ n + byteRank n tailA <
+                  (b + 1) * 257 ^ n + byteRank n tailB) ↔
+                    (a < b ∨
+                      (a = b ∧ ByteLexLess tailA tailB))
+              rw [byte_rank_digits_compare a b (257 ^ n)
+                (byteRank n tailA) (byteRank n tailB)
+                leftBound rightBound]
+              rw [tailOrder]
+
 end TradeLayerFormal
