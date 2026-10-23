@@ -88,9 +88,7 @@ pub fn project_end_block(
             height % 10_000 == 0 || transactions.iter().any(|t| !t.already_processed)
         }
         ReplayPath::RealTime => transactions.iter().any(|t| {
-            !funding_bucket(path, t.tx_type)
-                && !t.already_processed
-                && t.valid_before_logic
+            !funding_bucket(path, t.tx_type) && !t.already_processed && t.valid_before_logic
         }),
     };
     let funding_height_eligible = height % 24 == 0;
