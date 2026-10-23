@@ -5,6 +5,7 @@ on:
     paths:
       - "src/atomic_batch.rs"
       - "src/checked_amounts.rs"
+      - "src/journal_move.rs"
       - "src/ledger.rs"
       - "src/ledger_channels_impl.rs"
       - "src/ledger_settlement_impl.rs"
@@ -17,6 +18,7 @@ on:
     paths:
       - "src/atomic_batch.rs"
       - "src/checked_amounts.rs"
+      - "src/journal_move.rs"
       - "src/ledger.rs"
       - "src/ledger_channels_impl.rs"
       - "src/ledger_settlement_impl.rs"

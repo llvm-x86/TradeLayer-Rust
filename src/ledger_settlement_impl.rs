@@ -277,11 +277,12 @@ impl Ledger {
         state.put(receiving_side, receipt.property, receiver);
         state.put(recomputed.payer_side, receipt.property, payer);
         for (claim_txid, _) in selected {
-            let claim = self
-                .pending_net_settlements
-                .remove(&claim_txid)
-                .expect("selected pending settlement");
-            self.swept_net_settlements.insert(claim_txid, claim);
+            crate::journal_move::move_pending_once(
+                &mut self.pending_net_settlements,
+                &mut self.swept_net_settlements,
+                claim_txid,
+            )
+            .map_err(|_| LedgerError::MalformedSettlementJournal)?;
         }
         self.king_settlements.insert(txid, receipt);
         Ok(())
