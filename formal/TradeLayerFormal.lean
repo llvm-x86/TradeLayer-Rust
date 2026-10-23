@@ -1965,4 +1965,110 @@ theorem sorted_vec_put_keeps_other_keys
         · have tailFrame := ih restSorted
           simp [sortedVecPut, sortedVecGet, lt, equal, tailFrame]
 
+
+/-- Inserting or removing one key cannot introduce a key below a declared
+lower bound when both the old support and inserted key exceed the bound. -/
+theorem sorted_vec_write_preserves_lower_bound
+    (rows : List (Nat × Nat)) (lower key amount : Nat)
+    (greater : ∀ entry ∈ rows, lower < entry.1)
+    (newAbove : lower < key) :
+    ∀ entry ∈ sortedVecPut rows key amount, lower < entry.1 := by
+  induction rows with
+  | nil =>
+      intro entry member
+      by_cases zero : amount = 0
+      · simp [sortedVecPut, zero] at member
+      · have equal : entry = (key, amount) := by
+          simpa [sortedVecPut, zero] using member
+        subst entry
+        exact newAbove
+  | cons pair rest ih =>
+      rcases pair with ⟨stored, prior⟩
+      have greaterTail : ∀ entry ∈ rest, lower < entry.1 := by
+        intro entry inRest
+        exact greater entry (List.mem_cons.mpr (Or.inr inRest))
+      have oldAbove : lower < stored :=
+        greater (stored, prior) (by simp)
+      intro entry member
+      by_cases before : key < stored
+      · by_cases zero : amount = 0
+        · have oldMember : entry ∈ (stored, prior) :: rest := by
+            simpa [sortedVecPut, before, zero] using member
+          exact greater entry oldMember
+        · have choice :
+            entry = (key, amount) ∨ entry ∈ (stored, prior) :: rest := by
+            simpa [sortedVecPut, before, zero] using member
+          rcases choice with isNew | isOld
+          · subst entry
+            exact newAbove
+          · exact greater entry isOld
+      · by_cases equal : key = stored
+        · by_cases zero : amount = 0
+          · have inRest : entry ∈ rest := by
+              simpa [sortedVecPut, before, equal, zero] using member
+            exact greaterTail entry inRest
+          · have choice :
+                entry = (stored, amount) ∨ entry ∈ rest := by
+              simpa [sortedVecPut, before, equal, zero] using member
+            rcases choice with atHead | atRest
+            · subst entry
+              exact oldAbove
+            · exact greaterTail entry atRest
+        · have choice :
+              entry = (stored, prior) ∨
+                entry ∈ sortedVecPut rest key amount := by
+            simpa [sortedVecPut, before, equal] using member
+          rcases choice with atHead | atRest
+          · subst entry
+            exact oldAbove
+          · exact ih greaterTail entry atRest
+
+/-- For any number of entries, sorted insertion, replacement and zero-erasure
+preserve strict ascending order. This is the ordered Vec representation
+invariant, not merely a balance-conservation statement. -/
+theorem sorted_vec_write_preserves_order
+    (rows : List (Nat × Nat)) (key amount : Nat)
+    (sorted : SortedVecKeys rows) :
+    SortedVecKeys (sortedVecPut rows key amount) := by
+  induction rows with
+  | nil =>
+      by_cases zero : amount = 0 <;>
+        simp [sortedVecPut, SortedVecKeys, zero]
+  | cons pair rest ih =>
+      rcases pair with ⟨stored, prior⟩
+      obtain ⟨greater, restSorted⟩ := sorted
+      by_cases before : key < stored
+      · by_cases zero : amount = 0
+        · simpa [sortedVecPut, before, zero] using
+            (show SortedVecKeys ((stored, prior) :: rest) from
+              ⟨greater, restSorted⟩)
+        · have newGreater :
+              ∀ entry ∈ (stored, prior) :: rest, key < entry.1 := by
+            intro entry member
+            rcases List.mem_cons.mp member with isHead | inTail
+            · subst entry
+              exact before
+            · have oldAbove := greater entry inTail
+              omega
+          simpa [sortedVecPut, before, zero, SortedVecKeys] using
+            (show SortedVecKeys ((key, amount) :: (stored, prior) :: rest)
+              from ⟨newGreater, ⟨greater, restSorted⟩⟩)
+      · by_cases equal : key = stored
+        · by_cases zero : amount = 0
+          · simpa [sortedVecPut, before, equal, zero] using restSorted
+          · simpa [sortedVecPut, before, equal, zero, SortedVecKeys] using
+              (show SortedVecKeys ((stored, amount) :: rest)
+                from ⟨greater, restSorted⟩)
+        · have above : stored < key := by omega
+          have futureGreater :
+              ∀ entry ∈ sortedVecPut rest key amount,
+                stored < entry.1 :=
+            sorted_vec_write_preserves_lower_bound rest stored key amount
+              greater above
+          have tailSorted := ih restSorted
+          simpa [sortedVecPut, before, equal, SortedVecKeys] using
+            (show SortedVecKeys
+                ((stored, prior) :: sortedVecPut rest key amount)
+              from ⟨futureGreater, tailSorted⟩)
+
 end TradeLayerFormal
