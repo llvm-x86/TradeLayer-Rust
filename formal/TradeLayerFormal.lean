@@ -3131,6 +3131,13 @@ theorem midpoint_lower_bound_within_length
   exact column_count_before_le_length rows query
 
 
+/-- Total, independent zero-based indexing of the finite storage list.
+This avoids relying on a library's partial or version-dependent get API. -/
+def columnAt : List (Nat × Nat) → Nat → Option (Nat × Nat)
+  | [], _ => none
+  | entry :: _, 0 => some entry
+  | _ :: rest, index + 1 => columnAt rest index
+
 /-- If the canonical sorted-list lookup returns a nonzero balance, its
 lower-bound index identifies the exact key/value record in the list.
 This provides the successful-search index counterpart to the absent-key
@@ -3139,7 +3146,7 @@ theorem sorted_vec_hit_at_lower_bound
     (rows : List (Nat × Nat)) (query : Nat)
     (sorted : SortedVecKeys rows)
     (hit : sortedVecGet rows query ≠ 0) :
-    rows.get? (columnCountBefore rows query) =
+    columnAt rows (columnCountBefore rows query) =
       some (query, sortedVecGet rows query) := by
   induction rows with
   | nil =>
@@ -3156,12 +3163,12 @@ theorem sorted_vec_hit_at_lower_bound
               intro entry member
               have greater := above entry member
               omega)
-          simp [columnCountBefore, noEarlier, sortedVecGet]
+          simp [columnAt, columnCountBefore, noEarlier, sortedVecGet]
         · have later : stored < query := by omega
           have tailHit : sortedVecGet tail query ≠ 0 := by
             simpa [sortedVecGet, smaller, equal] using hit
           have tailIndex := ih tailSorted tailHit
-          simpa [columnCountBefore, later, sortedVecGet,
+          simpa [columnAt, columnCountBefore, later, sortedVecGet,
             smaller, equal] using tailIndex
 
 /-- The canonical Rust balance map never stores zero values. Thus an
@@ -3176,7 +3183,7 @@ theorem midpoint_find_success_points_to_exact_record
     (rows : List (Nat × Nat)) (query index : Nat)
     (sorted : SortedVecKeys rows)
     (found : midpointColumnFind rows query = some index) :
-    rows.get? index = some (query, midpointColumnRead rows query) := by
+    columnAt rows index = some (query, midpointColumnRead rows query) := by
   unfold midpointColumnFind at found
   by_cases zero : midpointColumnRead rows query = 0
   · simp [zero] at found
