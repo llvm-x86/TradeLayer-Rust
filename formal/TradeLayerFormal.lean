@@ -2260,4 +2260,165 @@ theorem sorted_vec_empty_history_refines
       rfl
   exact sorted_vec_write_trace_refines writes [] (fun _ => 0) emptyRep
 
+
+/-!
+## Stage 11: canonical sorted-column representations are unique
+
+The production wallet/escrow writer never stores a zero balance. Combined
+with strict increasing key order, this removes the final ambiguity in an
+extensional finite-map representation: two canonical lists that agree at
+EVERY lookup key must contain precisely the same entries in the same order.
+This theorem is about Lean's sorted-list specification and does not yet
+certify Rust's `binary_search_by` implementation.
+-/
+
+def PositiveColumnValues : List (Nat × Nat) → Prop
+  | [] => True
+  | (_, value) :: tail => 0 < value ∧ PositiveColumnValues tail
+
+theorem sorted_vec_write_preserves_positive
+    (rows : List (Nat × Nat)) (key value : Nat)
+    (positive : PositiveColumnValues rows) :
+    PositiveColumnValues (sortedVecPut rows key value) := by
+  induction rows with
+  | nil =>
+      by_cases zero : value = 0
+      · simp [sortedVecPut, PositiveColumnValues, zero]
+      · have newPositive : 0 < value := by omega
+        simp [sortedVecPut, PositiveColumnValues, zero, newPositive]
+  | cons pair tail ih =>
+      rcases pair with ⟨stored, atoms⟩
+      obtain ⟨oldPositive, tailPositive⟩ := positive
+      by_cases before : key < stored
+      · by_cases zero : value = 0
+        · simp [sortedVecPut, PositiveColumnValues, before, zero,
+            oldPositive, tailPositive]
+        · have newPositive : 0 < value := by omega
+          simp [sortedVecPut, PositiveColumnValues, before, zero,
+            newPositive, oldPositive, tailPositive]
+      · by_cases equal : key = stored
+        · by_cases zero : value = 0
+          · simpa [sortedVecPut, before, equal, zero] using tailPositive
+          · have newPositive : 0 < value := by omega
+            simp [sortedVecPut, PositiveColumnValues, before, equal, zero,
+              newPositive, tailPositive]
+        · have updatedTail := ih tailPositive
+          simpa [sortedVecPut, PositiveColumnValues, before, equal] using
+            (show 0 < atoms ∧
+                PositiveColumnValues (sortedVecPut tail key value)
+              from ⟨oldPositive, updatedTail⟩)
+
+def CanonicalSortedColumns (rows : List (Nat × Nat)) : Prop :=
+  SortedVecKeys rows ∧ PositiveColumnValues rows
+
+theorem canonical_sorted_columns_write
+    (rows : List (Nat × Nat)) (key value : Nat)
+    (valid : CanonicalSortedColumns rows) :
+    CanonicalSortedColumns (sortedVecPut rows key value) := by
+  exact ⟨sorted_vec_write_preserves_order rows key value valid.1,
+    sorted_vec_write_preserves_positive rows key value valid.2⟩
+
+theorem canonical_sorted_columns_write_history
+    (writes : List (Nat × Nat)) :
+    ∀ rows : List (Nat × Nat),
+      CanonicalSortedColumns rows →
+      CanonicalSortedColumns (sortedVecWriteTrace rows writes) := by
+  induction writes with
+  | nil =>
+      intro rows good
+      simpa [sortedVecWriteTrace] using good
+  | cons pair tail ih =>
+      rcases pair with ⟨key, value⟩
+      intro rows good
+      change CanonicalSortedColumns
+        (sortedVecWriteTrace (sortedVecPut rows key value) tail)
+      exact ih _ (canonical_sorted_columns_write rows key value good)
+
+/-- No two canonical finite vectors can encode the same balance function
+unless they are structurally identical. This rules out duplicate keys,
+hidden zero entries and order-only ambiguity at the abstract layer. -/
+theorem canonical_sorted_columns_extensional_unique :
+    ∀ (left right : List (Nat × Nat)),
+      CanonicalSortedColumns left →
+      CanonicalSortedColumns right →
+      (∀ query, sortedVecGet left query = sortedVecGet right query) →
+      left = right := by
+  intro left
+  induction left with
+  | nil =>
+      intro right _ canonRight agree
+      cases right with
+      | nil => rfl
+      | cons entry rest =>
+          rcases entry with ⟨key, atoms⟩
+          have nonzero : 0 < atoms := canonRight.2.1
+          have same := agree key
+          simp [sortedVecGet] at same
+          omega
+  | cons entry rest ih =>
+      rcases entry with ⟨first, firstAtoms⟩
+      intro right canonLeft canonRight agree
+      cases right with
+      | nil =>
+          have nonzero : 0 < firstAtoms := canonLeft.2.1
+          have same := agree first
+          simp [sortedVecGet] at same
+          omega
+      | cons other tail =>
+          rcases other with ⟨second, secondAtoms⟩
+          have firstAbove : ∀ entry ∈ rest, first < entry.1 :=
+            canonLeft.1.1
+          have secondAbove : ∀ entry ∈ tail, second < entry.1 :=
+            canonRight.1.1
+          have firstPositive : 0 < firstAtoms := canonLeft.2.1
+          have secondPositive : 0 < secondAtoms := canonRight.2.1
+          have sameKey : first = second := by
+            by_contra different
+            by_cases smaller : first < second
+            · have same := agree first
+              have skip : sortedVecGet ((second, secondAtoms) :: tail) first = 0 := by
+                simp [sortedVecGet, smaller]
+              have found : sortedVecGet ((first, firstAtoms) :: rest) first =
+                  firstAtoms := by simp [sortedVecGet]
+              rw [found, skip] at same
+              omega
+            · have greater : second < first := by omega
+              have same := agree second
+              have skip : sortedVecGet ((first, firstAtoms) :: rest) second = 0 := by
+                simp [sortedVecGet, greater]
+              have found : sortedVecGet ((second, secondAtoms) :: tail) second =
+                  secondAtoms := by simp [sortedVecGet]
+              rw [skip, found] at same
+              omega
+          subst second
+          have sameAtoms : firstAtoms = secondAtoms := by
+            have same := agree first
+            simpa [sortedVecGet] using same
+          subst secondAtoms
+          have agreeRest : ∀ query, sortedVecGet rest query =
+              sortedVecGet tail query := by
+            intro query
+            by_cases below : query ≤ first
+            · have leftZero :=
+                sorted_vec_read_below rest query first firstAbove below
+              have rightZero :=
+                sorted_vec_read_below tail query first secondAbove below
+              exact leftZero.trans rightZero.symm
+            · have greater : first < query := by omega
+              have skipLeft :
+                  sortedVecGet ((first, firstAtoms) :: rest) query =
+                  sortedVecGet rest query := by
+                simp [sortedVecGet, show ¬query < first by omega,
+                  show query ≠ first by omega]
+              have skipRight :
+                  sortedVecGet ((first, firstAtoms) :: tail) query =
+                  sortedVecGet tail query := by
+                simp [sortedVecGet, show ¬query < first by omega,
+                  show query ≠ first by omega]
+              exact skipLeft.symm.trans ((agree query).trans skipRight)
+          have equalTail := ih tail
+            ⟨canonLeft.1.2, canonLeft.2.2⟩
+            ⟨canonRight.1.2, canonRight.2.2⟩ agreeRest
+          rw [equalTail]
+
 end TradeLayerFormal
