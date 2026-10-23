@@ -3886,17 +3886,16 @@ theorem indexed_column_put_equals_sorted_put
         simp [lowerBoundIndexedPut, indexZero, indexedColumnPut,
           sortedVecPut, before, notEqual]
       · by_cases equal : key = stored
-        · have notBefore : ¬stored < key := by omega
-          have tailNone : columnCountBefore tail key = 0 :=
-            column_count_before_none tail key (by
+        · subst key
+          have tailNone : columnCountBefore tail stored = 0 :=
+            column_count_before_none tail stored (by
               intro entry member
               have higher := above entry member
               omega)
           have indexZero :
-              columnCountBefore ((stored, old) :: tail) key = 0 := by
-            simp [columnCountBefore, notBefore, tailNone]
-          simp [lowerBoundIndexedPut, indexZero, indexedColumnPut,
-            sortedVecPut, before, equal, eq_comm]
+              columnCountBefore ((stored, old) :: tail) stored = 0 := by
+            simp [columnCountBefore, tailNone]
+          simp [lowerBoundIndexedPut, indexZero, indexedColumnPut, sortedVecPut]
         · have after : stored < key := by omega
           have notEqual : stored ≠ key := Ne.symm equal
           have indexSuccessor :
