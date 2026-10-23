@@ -1592,4 +1592,113 @@ theorem source_tag_noncollision
   have contradiction := congrArg EncodedColumnKey.sourceTag equal
   simp [encodeTypedColumn, encodeOrigin] at contradiction
 
+
+/-!
+## Typed transfer conservation under exact key encoding
+
+This final bridge lifts the existing column-sum reasoning to the exact
+typed keys represented by the Rust audit. Since the encoded key has a
+machine-checked left inverse, the same conservation equation holds when
+its support is re-keyed to (network tag, property, source tag, bytes).
+-/
+
+def typedColumnPut (amounts : TypedColumnKey → Nat)
+    (key : TypedColumnKey) (newValue : Nat) : TypedColumnKey → Nat :=
+  fun query => if query = key then newValue else amounts query
+
+theorem typed_column_total_put_absent
+    (support : List TypedColumnKey) (amounts : TypedColumnKey → Nat)
+    (key : TypedColumnKey) (newValue : Nat)
+    (absent : key ∉ support) :
+    typedColumnTotal support (typedColumnPut amounts key newValue) =
+      typedColumnTotal support amounts := by
+  induction support with
+  | nil => rfl
+  | cons head tail ih =>
+      have different : head ≠ key := by
+        intro equal
+        apply absent
+        simp [equal]
+      have absentTail : key ∉ tail := by
+        intro member
+        apply absent
+        exact List.mem_cons.mpr (Or.inr member)
+      simp [typedColumnTotal, typedColumnPut, different, ih absentTail]
+
+theorem typed_column_total_put
+    (support : List TypedColumnKey) (amounts : TypedColumnKey → Nat)
+    (key : TypedColumnKey) (newValue : Nat)
+    (unique : support.Nodup) (present : key ∈ support) :
+    typedColumnTotal support (typedColumnPut amounts key newValue) + amounts key =
+      typedColumnTotal support amounts + newValue := by
+  induction support with
+  | nil => simp at present
+  | cons head tail ih =>
+      have noTail : head ∉ tail := (List.nodup_cons.mp unique).1
+      have uniqueTail : tail.Nodup := (List.nodup_cons.mp unique).2
+      by_cases same : head = key
+      · subst head
+        have tailUnchanged :=
+          typed_column_total_put_absent tail amounts key newValue noTail
+        simp [typedColumnTotal, typedColumnPut, tailUnchanged]
+        omega
+      · have inTail : key ∈ tail := by
+          have disjunction := List.mem_cons.mp present
+          exact disjunction.resolve_left (by simpa [eq_comm] using same)
+        have restEq := ih uniqueTail inTail
+        simp only [typedColumnTotal]
+        simp [typedColumnPut, same]
+        omega
+
+def typedColumnMove (amounts : TypedColumnKey → Nat)
+    (sender recipient : TypedColumnKey) (amount : Nat) :
+    TypedColumnKey → Nat :=
+  typedColumnPut
+    (typedColumnPut amounts sender (amounts sender - amount))
+    recipient (amounts recipient + amount)
+
+theorem typed_column_move_preserves_total
+    (support : List TypedColumnKey) (amounts : TypedColumnKey → Nat)
+    (sender recipient : TypedColumnKey) (amount : Nat)
+    (unique : support.Nodup)
+    (senderPresent : sender ∈ support)
+    (recipientPresent : recipient ∈ support)
+    (distinct : sender ≠ recipient)
+    (funded : amount ≤ amounts sender) :
+    typedColumnTotal support (typedColumnMove amounts sender recipient amount) =
+      typedColumnTotal support amounts := by
+  let intermediate := typedColumnPut amounts sender (amounts sender - amount)
+  have first := typed_column_total_put support amounts sender
+    (amounts sender - amount) unique senderPresent
+  have second := typed_column_total_put support intermediate recipient
+    (amounts recipient + amount) unique recipientPresent
+  have untouched : intermediate recipient = amounts recipient := by
+    simp [intermediate, typedColumnPut, Ne.symm distinct]
+  change typedColumnTotal support intermediate + amounts sender =
+    typedColumnTotal support amounts + (amounts sender - amount) at first
+  change typedColumnTotal support (typedColumnMove amounts sender recipient amount) +
+    intermediate recipient =
+    typedColumnTotal support intermediate + (amounts recipient + amount) at second
+  rw [untouched] at second
+  omega
+
+/-- Conservation transfers through the full four-field, network-qualified
+encoding for arbitrary finite typed supports and two distinct columns. -/
+theorem encoded_column_move_preserves_total
+    (support : List TypedColumnKey) (amounts : TypedColumnKey → Nat)
+    (sender recipient : TypedColumnKey) (amount : Nat)
+    (unique : support.Nodup)
+    (senderPresent : sender ∈ support)
+    (recipientPresent : recipient ∈ support)
+    (distinct : sender ≠ recipient)
+    (funded : amount ≤ amounts sender) :
+    typedColumnTotal (support.map encodeTypedColumn)
+        (decodedColumnAmounts (typedColumnMove amounts sender recipient amount)) =
+      typedColumnTotal (support.map encodeTypedColumn)
+        (decodedColumnAmounts amounts) := by
+  rw [typed_column_total_preserved_by_encoding,
+      typed_column_total_preserved_by_encoding]
+  exact typed_column_move_preserves_total support amounts sender recipient
+    amount unique senderPresent recipientPresent distinct funded
+
 end TradeLayerFormal

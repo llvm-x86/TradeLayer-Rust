@@ -953,10 +953,7 @@ fn network_qualified_column_key_mapping_is_injective_for_supported_sources() {
             assert_eq!(key.network_tag, network.tag());
             assert_eq!(key.property_id, row.property.get());
             assert_eq!(key.source_tag, if index < 4 { index as u8 } else { 0 });
-            assert_eq!(
-                key.identifier_bytes,
-                tx_bytes.to_vec()
-            );
+            assert_eq!(key.identifier_bytes, tx_bytes.to_vec());
             assert!(
                 keys.insert(key),
                 "source, property and network must be unique"
