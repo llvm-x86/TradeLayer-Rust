@@ -602,7 +602,11 @@ fn vector_oracle_refines_heterogeneous_rust_maps_through_randomized_operations()
     let mut accepted = 0usize;
     let mut rejected = 0usize;
     for step in 0..1200u64 {
-        let id = if next(&mut rng).is_multiple_of(2) { 41 } else { 42 };
+        let id = if next(&mut rng).is_multiple_of(2) {
+            41
+        } else {
+            42
+        };
         let who = PEOPLE[(next(&mut rng) as usize) % PEOPLE.len()];
         let other = PEOPLE[(next(&mut rng) as usize) % PEOPLE.len()];
         let channel = CHANNELS[(next(&mut rng) as usize) % CHANNELS.len()];
