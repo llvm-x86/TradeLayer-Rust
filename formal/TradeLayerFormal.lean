@@ -2981,7 +2981,7 @@ theorem column_count_before_append
     columnCountBefore (left ++ right) query =
       columnCountBefore left query + columnCountBefore right query := by
   induction left with
-  | nil => rfl
+  | nil => simp [columnCountBefore]
   | cons pair tail ih =>
       rcases pair with ⟨stored, amount⟩
       simp only [List.cons_append, columnCountBefore, ih]
@@ -3017,6 +3017,7 @@ theorem column_count_before_all
         intro entry member
         exact allBelow entry (List.mem_cons.mpr (Or.inr member))
       simp [columnCountBefore, headBound, ih tailBound]
+      omega
 
 /-- The independent full-scan lower bound follows the same pivot comparison
 as binary search, provided the pivot separates the smaller/larger keys. -/
@@ -3043,6 +3044,7 @@ theorem column_count_before_pivot
         have lt := below entry member
         omega)
     simp [columnCountBefore, before, pivotBefore, allLeft]
+    omega
 
 /-- The number of nodes in a finite search tree. -/
 def binaryColumnCount : BinaryColumnTree → Nat
@@ -3111,16 +3113,21 @@ theorem midpoint_column_lower_bound_is_exact
   rw [midpoint_tree_preserves_entries rows.length rows (by omega)]
 
 /-- The insertion index cannot exceed the number of existing entries. -/
-theorem midpoint_lower_bound_within_length
-    (rows : List (Nat × Nat)) (query : Nat)
-    (sorted : SortedVecKeys rows) :
-    midpointColumnLowerBound rows query ≤ rows.length := by
-  rw [midpoint_column_lower_bound_is_exact rows query sorted]
+theorem column_count_before_le_length
+    (rows : List (Nat × Nat)) (query : Nat) :
+    columnCountBefore rows query ≤ rows.length := by
   induction rows with
   | nil => simp [columnCountBefore]
   | cons pair tail ih =>
       rcases pair with ⟨key, amount⟩
       simp only [columnCountBefore, List.length_cons]
       split <;> omega
+
+theorem midpoint_lower_bound_within_length
+    (rows : List (Nat × Nat)) (query : Nat)
+    (sorted : SortedVecKeys rows) :
+    midpointColumnLowerBound rows query ≤ rows.length := by
+  rw [midpoint_column_lower_bound_is_exact rows query sorted]
+  exact column_count_before_le_length rows query
 
 end TradeLayerFormal
