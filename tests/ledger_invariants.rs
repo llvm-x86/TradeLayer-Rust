@@ -477,14 +477,12 @@ fn iterator_panic_during_staging_preserves_public_ledger() {
         .apply(tx(1), create(23, PropertyKind::Fixed, 100))
         .unwrap();
     let before = ledger.clone();
-    let partial = std::iter::once((tx(2), send(23, "alice", "bob", 20))).chain(
-        std::iter::once_with(|| -> (TxId, Operation) {
-            panic!("deliberate panic after a valid staged transaction")
-        }),
-    );
-    let caught = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        ledger.apply_batch(partial)
-    }));
+    let partial =
+        std::iter::once((tx(2), send(23, "alice", "bob", 20))).chain(std::iter::once_with(
+            || -> (TxId, Operation) { panic!("deliberate panic after a valid staged transaction") },
+        ));
+    let caught =
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| ledger.apply_batch(partial)));
     assert!(caught.is_err());
     assert_eq!(ledger, before);
     assert!(!ledger.is_processed(tx(2)));

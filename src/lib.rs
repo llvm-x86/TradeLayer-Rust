@@ -5,11 +5,11 @@
 
 #![forbid(unsafe_code)]
 
+mod atomic_batch; // Clone-validate-commit boundary and Kani rollback harnesses.
 pub mod bitcoin_chainwork; // Bitcoin mainnet nBits/MTP/chainwork from explicit checkpoints; not full consensus.
 pub mod bitcoin_forks; // Bounded greatest-work selection among observed header forks; no active-chain trust.
 pub mod bitcoin_inclusion; // Bitcoin SHA256d header and tx Merkle checks; no full consensus.
 pub mod chain; // Trust-boundary and reversible block progression, prototype only.
-mod atomic_batch; // Clone-validate-commit boundary and Kani rollback harnesses.
 mod checked_amounts; // Bit-precise checked debit/credit arithmetic; Kani proof harnesses.
 mod codec; // Bounded, checksummed snapshot codec.
 pub mod execution; // Prototype unified registry+ledger replay; input unverified.

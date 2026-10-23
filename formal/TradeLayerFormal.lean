@@ -376,7 +376,7 @@ theorem checked_move_preserves_sum (debit credit amount afterDebit afterCredit :
   omega
 
 theorem checked_move_preserves_u128 (debit credit amount afterDebit afterCredit : Nat)
-    (boundedDebit : debit ≤ maxU128) (boundedCredit : credit ≤ maxU128)
+    (boundedDebit : debit ≤ maxU128) (_boundedCredit : credit ≤ maxU128)
     (accepted : checkedMove debit credit amount =
       .ok (afterDebit, afterCredit)) :
     afterDebit ≤ maxU128 ∧ afterCredit ≤ maxU128 := by
@@ -426,7 +426,7 @@ theorem stage_tx_effect (e after : Engine) (tx : CertifiedBatchTx)
       | some updated =>
           have eq : finish e tx.network tx.txid updated = after := by
             simpa [stageTx, used, proposed] using accepted
-          exact ⟨updated, proposed, eq.symm⟩
+          exact ⟨updated, rfl, eq.symm⟩
 
 theorem stage_tx_conserves (e after : Engine) (tx : CertifiedBatchTx)
     (accepted : stageTx e tx = some after)
@@ -574,10 +574,10 @@ theorem repeated_txid_rolls_back_everything (e : Engine)
   simp [batchResult, repeated_txid_fails_staging]
 
 theorem staged_batch_append (e : Engine)
-    (prefix suffix : List CertifiedBatchTx) :
-    stagedBatch e (prefix ++ suffix) =
-      (stagedBatch e prefix).bind (fun mid => stagedBatch mid suffix) := by
-  induction prefix generalizing e with
+    (front back : List CertifiedBatchTx) :
+    stagedBatch e (front ++ back) =
+      (stagedBatch e front).bind (fun mid => stagedBatch mid back) := by
+  induction front generalizing e with
   | nil =>
       simp [stagedBatch]
   | cons tx tail ih =>
@@ -588,12 +588,12 @@ theorem staged_batch_append (e : Engine)
           simp [stagedBatch, step, ih]
 
 theorem valid_prefix_then_rejection_rolls_back
-    (e middle : Engine) (prefix : List CertifiedBatchTx)
+    (e middle : Engine) (front : List CertifiedBatchTx)
     (bad : CertifiedBatchTx)
-    (validPrefix : stagedBatch e prefix = some middle)
+    (validPrefix : stagedBatch e front = some middle)
     (rejected : stageTx middle bad = none) :
-    batchResult e (prefix ++ [bad]) = (e, false) := by
-  have wholeFails : stagedBatch e (prefix ++ [bad]) = none := by
+    batchResult e (front ++ [bad]) = (e, false) := by
+  have wholeFails : stagedBatch e (front ++ [bad]) = none := by
     rw [staged_batch_append, validPrefix]
     simp [stagedBatch, rejected]
   simp [batchResult, wholeFails]
