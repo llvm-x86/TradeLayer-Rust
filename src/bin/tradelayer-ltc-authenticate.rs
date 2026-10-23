@@ -151,9 +151,16 @@ fn main() {
                         o.parent_membership(),
                         address(o.sender_address()),
                         o.actor_resolved(),
-                        if refs.is_empty() { "-".into() } else { refs.join(",") },
-                        o.last_non_nulldata()
-                            .map_or("-".into(), |r| format!("{}:{}", r.vout, short(&r.address))),
+                        if refs.is_empty() {
+                            "-".into()
+                        } else {
+                            refs.join(",")
+                        },
+                        o.last_non_nulldata().map_or("-".into(), |r| format!(
+                            "{}:{}",
+                            r.vout,
+                            short(&r.address)
+                        )),
                     );
                 }
             }
