@@ -160,10 +160,8 @@ pub fn mark_to_mark_pnl_atoms(
             PnlRounding::Legacy20DecimalPlaces => {
                 // BigNumber performs two separate 1 / price calculations,
                 // rounded to 20 decimal places, before it subtracts them.
-                let from_reciprocal = ratio_round_half_up(
-                    RECIPROCAL_NUMERATOR,
-                    u128::from(from_price_e8),
-                )?;
+                let from_reciprocal =
+                    ratio_round_half_up(RECIPROCAL_NUMERATOR, u128::from(from_price_e8))?;
                 let to_reciprocal =
                     ratio_round_half_up(RECIPROCAL_NUMERATOR, u128::from(to_price_e8))?;
                 let numerator = multiply_checked(&[
