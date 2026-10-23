@@ -2778,4 +2778,188 @@ example (p q : Nat) (a b : Nat)
     oneByteColumnCode p a < oneByteColumnCode q b :=
   (one_byte_column_code_order p q a b aBound bBound).2 (Or.inl before)
 
+
+/-!
+## Stage 12: midpoint-selection binary-search implementation model
+
+The earlier pivot proof works with an *assumed* ordered search tree.
+The following algorithm actually chooses the midpoint of the current
+finite slice at every iteration, recursively divides it into smaller
+slices, and returns the lookup result. The length bound acts as a
+termination fuel; the proof establishes that the fuel is sufficient
+for every possible nonempty pivot split.
+
+This is a fully defined Lean algorithm, not an assertion that the
+compiler or Rust's std::slice::binary_search_by has been verified.
+-/
+
+/-- Midpoint-split tree from the exact finite list of key/value entries.
+The recursive fuel is bounded by the original number of entries. -/
+def midpointColumnTree : Nat → List (Nat × Nat) → BinaryColumnTree
+  | 0, _ => .empty
+  | fuel + 1, rows =>
+      let center := rows.length / 2
+      match rows.drop center with
+      | [] => .empty
+      | (key, atoms) :: right =>
+          .branch key atoms
+            (midpointColumnTree fuel (rows.take center))
+            (midpointColumnTree fuel right)
+
+/-- Whenever the midpoint selects a present pivot, the prefix and suffix
+are strictly shorter and concatenating them around that pivot yields
+the original list. This is the termination/coverage certificate for
+arbitrarily large finite lists. -/
+theorem midpoint_split_certificate
+    (rows : List (Nat × Nat)) (key atoms : Nat)
+    (right : List (Nat × Nat))
+    (split : rows.drop (rows.length / 2) = (key, atoms) :: right) :
+    (rows.take (rows.length / 2)).length < rows.length ∧
+    right.length < rows.length ∧
+    rows = rows.take (rows.length / 2) ++ (key, atoms) :: right := by
+  have below : rows.length / 2 ≤ rows.length := by omega
+  have takeLen :
+      (rows.take (rows.length / 2)).length =
+        min (rows.length / 2) rows.length := by simp
+  have dropLen :
+      (rows.drop (rows.length / 2)).length =
+        rows.length - rows.length / 2 := by simp
+  rw [split] at dropLen
+  simp only [List.length_cons] at dropLen
+  have restored := List.take_append_drop (rows.length / 2) rows
+  rw [split] at restored
+  constructor
+  · omega
+  constructor
+  · omega
+  · exact restored.symm
+
+/-- An empty midpoint suffix is only possible when the whole list is
+empty, since dividing a positive length by two is always interior. -/
+theorem midpoint_empty_suffix_implies_empty
+    (rows : List (Nat × Nat))
+    (empty : rows.drop (rows.length / 2) = []) : rows = [] := by
+  have dropLen :
+      (rows.drop (rows.length / 2)).length =
+        rows.length - rows.length / 2 := by simp
+  rw [empty] at dropLen
+  simp at dropLen
+  have lenZero : rows.length = 0 := by omega
+  exact List.length_eq_zero_iff.mp lenZero
+
+/-- The in-order entries of the midpoint-split tree are precisely the
+original list once fuel covers its length, regardless of sortedness. -/
+theorem midpoint_tree_preserves_entries (fuel : Nat) :
+    ∀ rows : List (Nat × Nat),
+      rows.length ≤ fuel →
+      binaryColumnInorder (midpointColumnTree fuel rows) = rows := by
+  induction fuel with
+  | zero =>
+      intro rows enough
+      have empty : rows = [] :=
+        List.length_eq_zero_iff.mp (by omega)
+      subst rows
+      rfl
+  | succ n ih =>
+      intro rows enough
+      cases split : rows.drop (rows.length / 2) with
+      | nil =>
+          have empty := midpoint_empty_suffix_implies_empty rows split
+          subst rows
+          rfl
+      | cons pivot tail =>
+          rcases pivot with ⟨key, atoms⟩
+          obtain ⟨shortLeft, shortRight, restore⟩ :=
+            midpoint_split_certificate rows key atoms tail split
+          have leftBound :
+              (rows.take (rows.length / 2)).length ≤ n := by omega
+          have rightBound : tail.length ≤ n := by omega
+          have leftProof := ih (rows.take (rows.length / 2)) leftBound
+          have rightProof := ih tail rightBound
+          change
+            binaryColumnInorder
+              (BinaryColumnTree.branch key atoms
+                (midpointColumnTree n (rows.take (rows.length / 2)))
+                (midpointColumnTree n tail)) = rows
+          simp only [binaryColumnInorder, leftProof, rightProof]
+          exact restore.symm
+
+/-- If the input is sorted, every recursively chosen midpoint is a
+valid binary-search pivot, no matter how many recursive levels occur. -/
+theorem midpoint_tree_is_ordered (fuel : Nat) :
+    ∀ rows : List (Nat × Nat),
+      rows.length ≤ fuel →
+      SortedVecKeys rows →
+      BinaryColumnOrdered (midpointColumnTree fuel rows) := by
+  induction fuel with
+  | zero =>
+      intro rows enough _
+      have empty : rows = [] :=
+        List.length_eq_zero_iff.mp (by omega)
+      subst rows
+      trivial
+  | succ n ih =>
+      intro rows enough sorted
+      cases split : rows.drop (rows.length / 2) with
+      | nil =>
+          have empty := midpoint_empty_suffix_implies_empty rows split
+          subst rows
+          trivial
+      | cons pivot tail =>
+          rcases pivot with ⟨key, atoms⟩
+          obtain ⟨shortLeft, shortRight, restore⟩ :=
+            midpoint_split_certificate rows key atoms tail split
+          have partitionSorted :
+              SortedVecKeys
+                (rows.take (rows.length / 2) ++ (key, atoms) :: tail) := by
+            rw [← restore]
+            exact sorted
+          obtain ⟨leftSorted, rightSorted⟩ :=
+            sorted_vec_any_pivot_subtrees_sorted
+              (rows.take (rows.length / 2)) tail key atoms partitionSorted
+          obtain ⟨below, above⟩ :=
+            sorted_vec_any_pivot_has_valid_bounds
+              (rows.take (rows.length / 2)) tail key atoms partitionSorted
+          have leftBound :
+              (rows.take (rows.length / 2)).length ≤ n := by omega
+          have rightBound : tail.length ≤ n := by omega
+          have leftValid := ih (rows.take (rows.length / 2))
+            leftBound leftSorted
+          have rightValid := ih tail rightBound rightSorted
+          have leftEntries := midpoint_tree_preserves_entries n
+            (rows.take (rows.length / 2)) leftBound
+          have rightEntries := midpoint_tree_preserves_entries n tail rightBound
+          change BinaryColumnOrdered
+            (BinaryColumnTree.branch key atoms
+              (midpointColumnTree n (rows.take (rows.length / 2)))
+              (midpointColumnTree n tail))
+          refine ⟨leftValid, rightValid, ?_, ?_⟩
+          · simpa only [leftEntries] using below
+          · simpa only [rightEntries] using above
+
+/-- Concrete midpoint tree search (fuel = number of stored entries) reads
+exactly the value at the query key for every finite strictly ordered list.
+Unlike Stage 11, the splitting strategy is now fixed by the algorithm. -/
+def midpointColumnRead (rows : List (Nat × Nat)) (query : Nat) : Nat :=
+  binaryColumnRead (midpointColumnTree rows.length rows) query
+
+theorem midpoint_column_read_equals_sorted_vec
+    (rows : List (Nat × Nat)) (query : Nat)
+    (sorted : SortedVecKeys rows) :
+    midpointColumnRead rows query = sortedVecGet rows query := by
+  unfold midpointColumnRead
+  have repr := midpoint_tree_preserves_entries rows.length rows (by omega)
+  have valid := midpoint_tree_is_ordered rows.length rows (by omega) sorted
+  rw [binary_column_read_refines_sorted_vec _ query valid]
+  rw [repr]
+
+/-- By Stage 10's independent linear oracle, the concrete midpoint search
+also agrees with a full scan, not merely with a second binary-search spec. -/
+theorem midpoint_column_read_equals_linear
+    (rows : List (Nat × Nat)) (query : Nat)
+    (sorted : SortedVecKeys rows) :
+    midpointColumnRead rows query = linearColumnGet rows query := by
+  rw [midpoint_column_read_equals_sorted_vec rows query sorted]
+  exact sorted_vec_get_equals_linear rows query sorted
+
 end TradeLayerFormal
