@@ -197,4 +197,95 @@ theorem cross_chain_txid_remains_independent
   rw [marking_preserves_other_chain r net other txid txid different]
   exact unused
 
+/-- This is a single-ledger-per-network protocol projection. The next-state
+witness is an admitted arithmetic step for the selected mainnet. -/
+structure Engine where
+  balances : Mainnet → Portfolio
+  replay : Replay
+
+def AllConserved (e : Engine) : Prop :=
+  ∀ net, Conserved (e.balances net)
+
+def AllBounded (e : Engine) : Prop :=
+  ∀ net, Bounded (e.balances net)
+
+/-- One atomic state update, with the replay marker and ledger column scoped
+to the same network. The Nat txid and eligibility proof must eventually be
+derived from a verified Rust transaction/chain adapter. -/
+def finish (e : Engine) (net : Mainnet) (txid : Nat)
+    (next : Portfolio) : Engine :=
+  { balances := fun other => if other = net then next else e.balances other,
+    replay := mark e.replay net txid }
+
+/-- An abstract proof-carrying transition: the caller must supply a Lean
+witness of a permitted accounting step to construct this command. The Rust
+engine does not yet produce such a witness. -/
+def tryCommit (e : Engine) (net : Mainnet) (txid : Nat)
+    (next : Portfolio) (_admitted : AccountingStep (e.balances net) next) :
+    Option Engine :=
+  if e.replay.seen net txid then none else some (finish e net txid next)
+
+theorem committed_conserves_every_network
+    (e after : Engine) (net : Mainnet) (txid : Nat)
+    (next : Portfolio) (step : AccountingStep (e.balances net) next)
+    (good : AllConserved e)
+    (accepted : tryCommit e net txid next step = some after) :
+    AllConserved after := by
+  cases used : e.replay.seen net txid with
+  | true => simp [tryCommit, used] at accepted
+  | false =>
+      have h : finish e net txid next = after := by
+        simpa [tryCommit, used] using accepted
+      rw [← h]
+      intro other
+      by_cases same : other = net
+      · subst other
+        simpa [finish] using accounting_step_conserves step (good net)
+      · simpa [finish, same] using good other
+
+theorem committed_bounds_every_network
+    (e after : Engine) (net : Mainnet) (txid : Nat)
+    (next : Portfolio) (step : AccountingStep (e.balances net) next)
+    (good : AllBounded e)
+    (accepted : tryCommit e net txid next step = some after) :
+    AllBounded after := by
+  cases used : e.replay.seen net txid with
+  | true => simp [tryCommit, used] at accepted
+  | false =>
+      have h : finish e net txid next = after := by
+        simpa [tryCommit, used] using accepted
+      rw [← h]
+      intro other
+      by_cases same : other = net
+      · subst other
+        simpa [finish] using accounting_step_stays_bounded step (good net)
+      · simpa [finish, same] using good other
+
+theorem committed_marks_same_chain_replay
+    (e after : Engine) (net : Mainnet) (txid : Nat)
+    (next : Portfolio) (step : AccountingStep (e.balances net) next)
+    (accepted : tryCommit e net txid next step = some after) :
+    after.replay.seen net txid = true := by
+  cases used : e.replay.seen net txid with
+  | true => simp [tryCommit, used] at accepted
+  | false =>
+      have h : finish e net txid next = after := by
+        simpa [tryCommit, used] using accepted
+      rw [← h]
+      exact marked_transaction_is_used e.replay net txid
+
+theorem committed_leaves_other_ledger_untouched
+    (e after : Engine) (net other : Mainnet) (txid : Nat)
+    (next : Portfolio) (step : AccountingStep (e.balances net) next)
+    (different : other ≠ net)
+    (accepted : tryCommit e net txid next step = some after) :
+    after.balances other = e.balances other := by
+  cases used : e.replay.seen net txid with
+  | true => simp [tryCommit, used] at accepted
+  | false =>
+      have h : finish e net txid next = after := by
+        simpa [tryCommit, used] using accepted
+      rw [← h]
+      simp [finish, different]
+
 end TradeLayerFormal

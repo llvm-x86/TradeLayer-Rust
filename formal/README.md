@@ -15,6 +15,8 @@ This is an **abstract kernel-checked protocol safety model**. The Lean definitio
 
 The model reduces one property to two account balances and one bilateral channel's two escrow columns. Its `Nat` amounts carry explicit `u128` addition limits; subtraction requires sufficient funds. It proves conservation and boundedness over arbitrarily long **admitted** traces, while managed mint/burn change supply and circulating amounts by the same amount. The journal claim and commitment-root semantics, transaction signatures, checksums, channel ownership, future block heights, database snapshots, rollback, and property-map iteration remain outside this model.
 
+The `Engine.tryCommit` command additionally couples a checked accounting-step witness to a fresh replay marker. Its theorems prove that a successful local commit preserves conservation and bounds in **all three networks**, marks its txid, and leaves the other two ledgers unchanged. This logical command is a candidate refinement target, not a function exported to Rust.
+
 The replay proof treats a txid as `Nat`. The actual Rust type is `TxId([u8;32])`, and each TradeLayer instance must bind its replay namespace to verified genesis and chain history. Running the exact same local property ID on three networks is legal. Cross-chain asset transfers are outside the architecture.
 
 ### What the theorems establish
@@ -24,6 +26,7 @@ The replay proof treats a txid as `Nat`. The actual Rust type is `TxId([u8;32])`
 * `accepted_tx_cannot_be_replayed`: once a txid is admitted, a second application in that network fails.
 * `marking_preserves_other_chain`: marking Bitcoin cannot alter Litecoin or Dogecoin replay histories.
 * `same_property_id_on_distinct_mainnets_is_distinct`: chain identity is part of the asset key.
+* `committed_conserves_every_network`, `committed_bounds_every_network`, `committed_marks_same_chain_replay`, `committed_leaves_other_ledger_untouched`: one admitted atomic transition preserves global safety and changes only its own network.
 
 ### Run
 
