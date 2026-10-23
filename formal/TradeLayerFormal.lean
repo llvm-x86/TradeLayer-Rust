@@ -1926,4 +1926,43 @@ theorem sorted_vec_put_reads_written_key (rows : List (Nat × Nat))
         · have restResult := ih restSorted
           simpa [sortedVecPut, sortedVecGet, lt, equal] using restResult
 
+
+/-- A canonical sorted-vector write does not modify the observable balance
+at any distinct key. Together with `sorted_vec_put_reads_written_key`,
+this is an extensional get/put specification for the new balance backend. -/
+theorem sorted_vec_put_keeps_other_keys
+    (rows : List (Nat × Nat)) (key other amount : Nat)
+    (sorted : SortedVecKeys rows) (different : other ≠ key) :
+    sortedVecGet (sortedVecPut rows key amount) other =
+      sortedVecGet rows other := by
+  induction rows with
+  | nil =>
+      by_cases zero : amount = 0
+      · simp [sortedVecPut, sortedVecGet, zero]
+      · by_cases below : other < key
+        · simp [sortedVecPut, sortedVecGet, zero, below]
+        · simp [sortedVecPut, sortedVecGet, zero, below, different]
+  | cons pair rest ih =>
+      rcases pair with ⟨stored, prior⟩
+      obtain ⟨greater, restSorted⟩ := sorted
+      by_cases lt : key < stored
+      · by_cases zero : amount = 0
+        · simp [sortedVecPut, zero, lt]
+        · by_cases below : other < key
+          · have oldBelow : other < stored := by omega
+            simp [sortedVecPut, sortedVecGet, lt, zero, below, oldBelow]
+          · simp [sortedVecPut, sortedVecGet, lt, zero, below, different]
+      · by_cases equal : key = stored
+        · subst key
+          by_cases zero : amount = 0
+          · by_cases below : other < stored
+            · have tailZero :=
+                sorted_vec_read_below rest other stored greater (by omega)
+              simp [sortedVecPut, sortedVecGet, lt, zero, below,
+                different, tailZero]
+            · simp [sortedVecPut, sortedVecGet, lt, zero, below, different]
+          · simp [sortedVecPut, sortedVecGet, lt, zero, different]
+        · have tailFrame := ih restSorted
+          simp [sortedVecPut, sortedVecGet, lt, equal, tailFrame]
+
 end TradeLayerFormal
