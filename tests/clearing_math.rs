@@ -34,11 +34,21 @@ fn independent_node_bigint_vectors_match_in_both_rounding_modes() {
             _ => panic!("invalid inverse flag in {label}"),
         };
         let legacy = mark_to_mark_pnl_atoms(
-            contracts, from, to, notional, inverse, PnlRounding::Legacy20DecimalPlaces,
+            contracts,
+            from,
+            to,
+            notional,
+            inverse,
+            PnlRounding::Legacy20DecimalPlaces,
         )
         .unwrap();
         let rational = mark_to_mark_pnl_atoms(
-            contracts, from, to, notional, inverse, PnlRounding::ExactRational,
+            contracts,
+            from,
+            to,
+            notional,
+            inverse,
+            PnlRounding::ExactRational,
         )
         .unwrap();
         assert_eq!(legacy, parse::<i128>(columns[6]), "legacy {label}");
@@ -83,10 +93,12 @@ fn half_atomic_margin_is_preserved_and_never_spendable_as_full_atom() {
     assert_eq!(c.coverage_twice_atoms, 1);
     assert!(c.covers(0));
     assert!(!c.covers(1));
-    assert!(compute_loss_coverage(0, 0, -3, 1)
-        .unwrap()
-        .coverage_twice_atoms
-        < 0);
+    assert!(
+        compute_loss_coverage(0, 0, -3, 1)
+            .unwrap()
+            .coverage_twice_atoms
+            < 0
+    );
 }
 
 #[test]
@@ -100,24 +112,10 @@ fn inverse_and_linear_signed_positions_cancel_symmetrically() {
             PnlRounding::ExactRational,
         ] {
             for inverse in [false, true] {
-                let gain = mark_to_mark_pnl_atoms(
-                    3,
-                    from,
-                    to,
-                    notional,
-                    inverse,
-                    rounding,
-                )
-                .unwrap();
-                let loss = mark_to_mark_pnl_atoms(
-                    -3,
-                    from,
-                    to,
-                    notional,
-                    inverse,
-                    rounding,
-                )
-                .unwrap();
+                let gain =
+                    mark_to_mark_pnl_atoms(3, from, to, notional, inverse, rounding).unwrap();
+                let loss =
+                    mark_to_mark_pnl_atoms(-3, from, to, notional, inverse, rounding).unwrap();
                 assert_eq!(gain + loss, 0);
             }
         }
@@ -144,7 +142,14 @@ fn zero_price_and_zero_notional_follow_pinned_legacy_semantics() {
         assert_eq!(mark_to_mark_pnl_atoms(20, 0, 1, 1, false, mode), Ok(0));
         assert_eq!(mark_to_mark_pnl_atoms(20, 1, 0, 1, true, mode), Ok(0));
         assert_eq!(
-            mark_to_mark_pnl_atoms(1, 100 * ATOMS_PER_UNIT as u64, 110 * ATOMS_PER_UNIT as u64, 0, false, mode),
+            mark_to_mark_pnl_atoms(
+                1,
+                100 * ATOMS_PER_UNIT as u64,
+                110 * ATOMS_PER_UNIT as u64,
+                0,
+                false,
+                mode
+            ),
             Ok(10 * ATOMS_PER_UNIT as i128)
         );
     }
