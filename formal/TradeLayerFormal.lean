@@ -1110,4 +1110,69 @@ theorem reserved_does_not_alias_escrow_b (tx c : Nat) :
     reservedColumn tx ≠ escrowBColumn c := by
   exact tagged_columns_are_disjoint tx c 3 2 (by omega) (by omega) (by omega)
 
+
+/-!
+## Newly encountered recipients
+
+The real Rust available map omits zero-valued keys, and a transfer can create
+a previously absent recipient. A finite formal support may first be extended
+with a zero-valued slot without affecting conservation; the checked movement
+then transfers atoms into that slot. Removal of zero entries from the
+canonical Rust BTreeMap remains a separate refinement obligation.
+-/
+
+def finiteExtendZero (s : FiniteSupplyView) (key : Nat) : FiniteSupplyView :=
+  { s with slots := key :: s.slots }
+
+theorem finite_extend_zero_preserves_validity
+    (s : FiniteSupplyView) (key : Nat)
+    (good : FiniteSupplyValid s) (fresh : key ∉ s.slots) :
+    FiniteSupplyValid (finiteExtendZero s key) := by
+  rcases good with ⟨unique, covered, conserved, bounded, supplyBounded⟩
+  have zero : s.atoms key = 0 := covered key fresh
+  change (key :: s.slots).Nodup ∧
+    (∀ other, other ∉ key :: s.slots → s.atoms other = 0) ∧
+    columnTotal (key :: s.slots) s.atoms = s.supply ∧
+    (∀ other, other ∈ key :: s.slots → s.atoms other ≤ maxU128) ∧
+    s.supply ≤ maxU128
+  refine ⟨List.nodup_cons.mpr ⟨fresh, unique⟩, ?_, ?_, ?_, supplyBounded⟩
+  · intro other absent
+    apply covered other
+    intro member
+    apply absent
+    simp [member]
+  · simp [columnTotal, zero, conserved]
+  · intro other member
+    rcases List.mem_cons.mp member with equal | oldMember
+    · subst other
+      simp [zero]
+    · exact bounded other oldMember
+
+theorem finite_move_to_new_recipient_preserves_validity
+    (s : FiniteSupplyView) (sender recipient amount : Nat)
+    (good : FiniteSupplyValid s)
+    (senderPresent : sender ∈ s.slots)
+    (recipientFresh : recipient ∉ s.slots)
+    (positive : 0 < amount)
+    (funded : amount ≤ s.atoms sender)
+    (amountFits : amount ≤ maxU128) :
+    FiniteSupplyValid
+      (finiteMove (finiteExtendZero s recipient) sender recipient amount) := by
+  have extended := finite_extend_zero_preserves_validity
+    s recipient good recipientFresh
+  have senderMember : sender ∈ (finiteExtendZero s recipient).slots := by
+    simp [finiteExtendZero, senderPresent]
+  have recipientMember : recipient ∈ (finiteExtendZero s recipient).slots := by
+    simp [finiteExtendZero]
+  have different : sender ≠ recipient := by
+    intro same
+    apply recipientFresh
+    simpa [same] using senderPresent
+  have zero : s.atoms recipient = 0 := good.2.1 recipient recipientFresh
+  apply finite_move_preserves_validity
+    (finiteExtendZero s recipient) sender recipient amount
+    extended senderMember recipientMember different positive
+  · exact funded
+  · simpa [finiteExtendZero, zero] using amountFits
+
 end TradeLayerFormal

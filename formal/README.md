@@ -82,6 +82,8 @@ This stage strengthens the connection between the finite-model proof obligations
 
 The ledger also exports `supply_column_rows_unverified`, a sorted finite support of typed `SupplyColumnSource` keys and their positive atom counts. Its source tags distinguish available wallets, two channel-escrow sides and reserved withdrawal records; entries cannot alias across variants. The Rust test compares the exact nine canonical columns against an independent grouping of available, escrow and pending totals, including a snapshot reload. Lean's `taggedColumn` proof gives a collision-free numerical namespace across four source tags; injective encoding of the underlying Rust account/channel/transaction identifiers into Nat remains an explicit bridge requirement.
 
+The `finite_extend_zero_preserves_validity` and `finite_move_to_new_recipient_preserves_validity` theorems handle a recipient absent from the formal support by adding a zero-valued slot before an authorized transfer, leaving totals and bounds unchanged. Rust regression `newly_seen_recipient_and_zero_pruning_change_only_column_support` checks that the actual BTreeMap omits the exhausted sender, creates the recipient, and maintains supply and snapshot correctness. A formal proof of canonical zero-entry removal is still required to equate the exact support lists.
+
 ## Boundaries for the next phases
 
 1. **Rust-to-Lean refinement.** Build a pure checked-`u128` transition function with a Verus specification and relate it to the current `Ledger::apply` and `calculate_settlement_preview` implementations. Prove failure leaves the ledger unchanged, conservation through all map entries, journal single-use, and finite-`u128` arithmetic. Tests and matching numbers alone are evidence, not a proof of refinement.
