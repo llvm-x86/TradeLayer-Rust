@@ -1,0 +1,11 @@
+# Supply-chain gate for the existing TradeLayer consensus crate.
+# Any change here must be reviewed as an explicit security policy change.
+schema = 1
+policy = "deny-all-external-rust-crates"
+package = "tradelayer-core"
+package_version = "0.1.0"
+toolchain = "1.90.0"
+require_offline = true
+deny_build_scripts = true
+deny_git_path_registry_dependencies = true
+approved_external_crates = []
