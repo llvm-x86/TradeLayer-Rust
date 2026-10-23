@@ -1,0 +1,10 @@
+# These patterns become enforceable only if the repository branch rules
+# require code-owner review. Owners must review proposed dependency admissions.
+/Cargo.toml @patrickdugan
+/Cargo.lock @patrickdugan
+/rust-toolchain.toml @patrickdugan
+/.cargo/ @patrickdugan
+/.github/workflows/ @patrickdugan
+/security/ @patrickdugan
+/scripts/check_rust_supply_chain.py @patrickdugan
+/tests/test_rust_supply_chain.py @patrickdugan
