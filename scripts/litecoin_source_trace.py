@@ -239,6 +239,7 @@ def checked_parent_output(rpc, prev_txid: str, prev_vout: int,
                  "header_hex": block["header_hex"],
                  "merkle_branch": base.merkle_branch(block["tx"], positions[0]),
                  "block_tx_count": len(block["tx"]),
+                 "output_count": len(outputs),
                  "raw_hex": raw_hex.lower(),
                  "mweb": base.parse_transaction(raw_hex)["mweb"]})
     return item

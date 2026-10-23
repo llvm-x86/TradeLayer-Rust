@@ -35,7 +35,7 @@ HASH_RE = re.compile(r"^[0-9a-fA-F]{64}$")
 # Read-only allowlist; no wallet, signing, broadcast, peer or config methods.
 READ_ONLY_METHODS = frozenset({"getblockchaininfo", "getblockcount", "getblockhash", "getblock",
                                "getblockheader", "getrawtransaction", "getnetworkinfo",
-                               "getindexinfo"})
+                               "getindexinfo", "validateaddress"})
 
 
 class EvidenceError(Exception):

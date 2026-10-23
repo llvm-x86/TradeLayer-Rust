@@ -33,6 +33,9 @@ import litecoin_source_trace as trace
 
 NETWORK_KEYS = {"litecoin-mainnet": "main", "litecoin-testnet": "test", "litecoin-regtest": "regtest"}
 OP_PUSHDATA1, OP_PUSHDATA2, OP_PUSHDATA4, OP_16 = 0x4C, 0x4D, 0x4E, 0x60
+# tradelayer.js@dca0888b src/main.js GENESIS_BLOCK_HEIGHTS.LTC (commented there
+# as "Replace with actual ... genesis block height": an unresolved assumption).
+LEGACY_JS_GENESIS = {"test": 3_082_500, "main": 2_819_000}
 
 
 class Rejected(Exception):
@@ -178,6 +181,7 @@ def verify_candidate(cand: dict, row: list[str], headers: dict[int, dict]) -> di
     parent = base.parse_transaction(sender["raw_hex"])
     require(parent["txid"] == first_txid, "parent raw bytes do not hash to the outpoint txid")
     require(first_vout < len(parent["outputs"]), "outpoint index outside parent outputs")
+    require(sender.get("output_count") == len(parent["outputs"]), "parent output count differs from raw bytes")
     sat, script = parent["outputs"][first_vout]
     require(sender["satoshis"] == sat and sender["script_hex"] == script, "sender output differs from parent bytes")
     parent_header = base.parse_header(sender["header_hex"])
@@ -250,9 +254,10 @@ def verify_manifest(manifest: dict, corpus: str, commit: str, check_scrypt: bool
             "header_hashes": {h: v["hash"] for h, v in headers.items()}}
 
 
-def coverage(reports: list[dict], legacy_genesis: int | None) -> dict:
+def coverage(reports: list[dict]) -> dict:
     networks = {r["network"] for r in reports}
     require(len(networks) == 1, "manifests from different networks")
+    legacy_genesis = LEGACY_JS_GENESIS.get(next(iter(networks)))
     intervals, contiguous = [], True
     for prev, cur in zip(reports, reports[1:]):
         if not (prev["end_height"] + 1 == cur["start_height"]
@@ -264,10 +269,10 @@ def coverage(reports: list[dict], legacy_genesis: int | None) -> dict:
         else:
             intervals.append([r["start_height"], r["end_height"]])
     complete = (contiguous and legacy_genesis is not None
-                and reports[0]["start_height"] <= legacy_genesis)
+                and reports[0]["start_height"] <= legacy_genesis <= reports[-1]["end_height"])
     return {"network": networks.pop(), "intervals": intervals, "contiguous_hash_linked": contiguous,
-            "declared_legacy_genesis": legacy_genesis,
-            "prior_state": "COMPLETE_FROM_DECLARED_GENESIS" if complete else "INCOMPLETE"}
+            "pinned_legacy_js_genesis": legacy_genesis,
+            "prior_state": "COMPLETE_FROM_LEGACY_JS_GENESIS" if complete else "INCOMPLETE"}
 
 
 def recheck_active_chain(rpc, reports: list[dict]) -> int:
@@ -286,8 +291,7 @@ def recheck_active_chain(rpc, reports: list[dict]) -> int:
     return checked
 
 
-def verify(pairs: list[tuple[str, str]], commit: str, check_scrypt: bool,
-           legacy_genesis: int | None, rpc=None) -> dict:
+def verify(pairs: list[tuple[str, str]], commit: str, check_scrypt: bool, rpc=None) -> dict:
     reports, seen = [], set()
     for corpus, manifest_text in pairs:
         manifest = json.loads(manifest_text)
@@ -297,7 +301,7 @@ def verify(pairs: list[tuple[str, str]], commit: str, check_scrypt: bool,
             seen.add(cand["txid"])
         reports.append(report)
     require(reports, "no manifests supplied")
-    cover = coverage(reports, legacy_genesis)
+    cover = coverage(reports)
     rechecked = recheck_active_chain(rpc, reports) if rpc is not None else None
     counts = {"ACCEPTED_FOR_PARITY": 0, "INCONCLUSIVE": 0, "REJECTED": 0}
     for report in reports:
@@ -317,8 +321,6 @@ def main(argv=None) -> int:
     parser.add_argument("--pair", nargs=2, action="append", metavar=("CORPUS_TSV", "MANIFEST_JSON"),
                         required=True, help="repeat in ascending height order")
     parser.add_argument("--legacy-js-commit", default=trace.LEGACY_JS_COMMIT)
-    parser.add_argument("--legacy-genesis-height", type=int,
-                        help="declared legacy TradeLayer start height for prior-state completeness")
     parser.add_argument("--skip-scrypt", action="store_true")
     parser.add_argument("--recheck-rpc", action="store_true", help="recheck active-chain hashes on a local node")
     parser.add_argument("--rpc-url")
@@ -332,7 +334,7 @@ def main(argv=None) -> int:
             network = NETWORK_KEYS[json.loads(pairs[0][1])["network"]]
             url = args.rpc_url or f"http://127.0.0.1:{base.NETWORK_PORTS[network]}"
             rpc = base.LitecoinRPC(url, inspect_cli.load_credential(args.cookie_file, network))
-        report = verify(pairs, args.legacy_js_commit, not args.skip_scrypt, args.legacy_genesis_height, rpc)
+        report = verify(pairs, args.legacy_js_commit, not args.skip_scrypt, rpc)
         base.atomic_write(args.output, json.dumps(report, indent=2, sort_keys=True) + "\n")
     except (OSError, ValueError, KeyError, Rejected, base.EvidenceError) as exc:
         print(f"evidence REJECTED: {exc}", file=sys.stderr)

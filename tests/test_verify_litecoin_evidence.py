@@ -30,7 +30,7 @@ def traced(legacy_last_reference=True):
 
 
 def run(corpus, manifest, **kw):
-    return verifier.verify([(corpus, json.dumps(manifest))], COMMIT, False, kw.get("genesis"), kw.get("rpc"))
+    return verifier.verify([(corpus, json.dumps(manifest))], COMMIT, False, kw.get("rpc"))
 
 
 class GenesisVectorTests(unittest.TestCase):
@@ -130,19 +130,21 @@ class EndToEndTests(unittest.TestCase):
         self.assertEqual(report["counts"]["REJECTED"], 1)
 
     def test_coverage_continuity_and_prior_state(self):
-        a = {"network": "test", "start_height": 10, "end_height": 19, "previous_block_hash": "aa",
-             "last_block_hash": "bb"}
-        b = dict(a, start_height=20, end_height=29, previous_block_hash="bb", last_block_hash="cc")
-        gap = dict(b, start_height=21)
+        a = {"network": "test", "start_height": 3_082_500, "end_height": 3_082_999,
+             "previous_block_hash": "aa", "last_block_hash": "bb"}
+        b = dict(a, start_height=3_083_000, end_height=3_083_499, previous_block_hash="bb", last_block_hash="cc")
+        gap = dict(b, start_height=3_083_001)
         fork = dict(b, previous_block_hash="zz")
-        self.assertEqual(verifier.coverage([a, b], 10)["prior_state"], "COMPLETE_FROM_DECLARED_GENESIS")
-        self.assertEqual(verifier.coverage([a, b], 5)["prior_state"], "INCOMPLETE")
-        self.assertEqual(verifier.coverage([a, b], None)["prior_state"], "INCOMPLETE")
-        self.assertFalse(verifier.coverage([a, gap], 10)["contiguous_hash_linked"])
-        self.assertFalse(verifier.coverage([a, fork], 10)["contiguous_hash_linked"])
+        late = dict(a, start_height=3_082_501)
+        self.assertEqual(verifier.coverage([a, b])["prior_state"], "COMPLETE_FROM_LEGACY_JS_GENESIS")
+        self.assertEqual(verifier.coverage([late])["prior_state"], "INCOMPLETE")
+        before = dict(a, start_height=100, end_height=101)
+        self.assertEqual(verifier.coverage([before])["prior_state"], "INCOMPLETE")
+        self.assertEqual(verifier.coverage([dict(a, network="regtest")])["prior_state"], "INCOMPLETE")
+        self.assertFalse(verifier.coverage([a, gap])["contiguous_hash_linked"])
+        self.assertEqual(verifier.coverage([a, fork])["prior_state"], "INCOMPLETE")
         with self.assertRaises(verifier.Rejected):
-            verifier.coverage([a, dict(b, network="main")], 10)
-
+            verifier.coverage([a, dict(b, network="main")])
 
 if __name__ == "__main__":
     unittest.main()

@@ -54,6 +54,10 @@ jobs:
         run: python3 -m unittest discover -s tests -p test_litecoin_resolve_leads.py -v
       - name: Litecoin offline evidence verifier tests (synthetic trace + pinned genesis headers)
         run: python3 -m unittest discover -s tests -p test_verify_litecoin_evidence.py -v
+      - name: Litecoin replay inputs (validateaddress recorder, SYNTHETIC chain builder)
+        run: python3 -m unittest discover -s tests -p test_litecoin_replay_inputs.py -v
+      - name: Legacy JS replay harness unit tests (no legacy dependencies; synthetic records)
+        run: node tests/test_legacy_js_replay.cjs
       - name: Legacy comparison integration tests (fake decoder only)
         run: node tests/test_compare_legacy.cjs
       - name: Rust diagnostic export smoke test
