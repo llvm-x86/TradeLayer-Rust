@@ -1175,4 +1175,47 @@ theorem finite_move_to_new_recipient_preserves_validity
   · exact funded
   · simpa [finiteExtendZero, zero] using amountFits
 
+
+/-- Canonical snapshots omit zero-valued entries. Removing an exhausted,
+zero-valued head column preserves total, coverage and u128 bounds.
+A generic map erase refinement must additionally show that the removed
+key was unique and zero and that all remaining keys retain their values. -/
+def finiteDropHead (s : FiniteSupplyView) (remaining : List Nat) :
+    FiniteSupplyView :=
+  { s with slots := remaining }
+
+theorem finite_drop_zero_head_preserves_validity
+    (s : FiniteSupplyView) (key : Nat) (remaining : List Nat)
+    (good : FiniteSupplyValid s)
+    (support : s.slots = key :: remaining)
+    (empty : s.atoms key = 0) :
+    FiniteSupplyValid (finiteDropHead s remaining) := by
+  rcases good with ⟨unique, covered, conserved, bounded, supplyBounded⟩
+  have uniqueRest : remaining.Nodup := by
+    rw [support] at unique
+    exact (List.nodup_cons.mp unique).2
+  change remaining.Nodup ∧
+    (∀ other, other ∉ remaining → s.atoms other = 0) ∧
+    columnTotal remaining s.atoms = s.supply ∧
+    (∀ other, other ∈ remaining → s.atoms other ≤ maxU128) ∧
+    s.supply ≤ maxU128
+  refine ⟨uniqueRest, ?_, ?_, ?_, supplyBounded⟩
+  · intro other missing
+    by_cases same : other = key
+    · subst other
+      exact empty
+    · apply covered other
+      rw [support]
+      intro inCons
+      rcases List.mem_cons.mp inCons with atHead | inRest
+      · exact same atHead
+      · exact missing inRest
+  · have total : columnTotal (key :: remaining) s.atoms = s.supply := by
+      simpa [support] using conserved
+    simpa [columnTotal, empty] using total
+  · intro other present
+    apply bounded other
+    rw [support]
+    simp [present]
+
 end TradeLayerFormal
