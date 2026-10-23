@@ -810,7 +810,7 @@ theorem journal_move_success_shape
                  swept := fun query => if query = key then true else j.swept query } :
                  JournalView) = after := by
               simpa [journalMove, swept, pending] using accepted
-          exact ⟨swept, pending, shape.symm⟩
+          exact ⟨rfl, rfl, shape.symm⟩
 
 theorem journal_move_marks_swept (j after : JournalView) (key : Nat)
     (accepted : journalMove j key = some after) :
