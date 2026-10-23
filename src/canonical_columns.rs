@@ -109,7 +109,6 @@ mod kani_proofs {
         }
     }
 
-
     /// Either key may be the target. Symbolic presence flags model inserted
     /// and existing columns; the remaining key must retain its original
     /// Option value for every possible nonzero/zero update.
