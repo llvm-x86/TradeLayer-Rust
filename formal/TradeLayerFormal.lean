@@ -2955,4 +2955,172 @@ theorem midpoint_column_read_equals_linear
   rw [midpoint_column_read_equals_sorted_vec rows query sorted]
   exact sorted_vec_get_equals_linear rows query sorted
 
+
+/-!
+## Stage 12: the precise lower-bound index returned by binary search
+
+For a sorted vector, the absent-key insertion index is the number of
+existing keys strictly smaller than the query. The previous midpoint proof
+established the *value* returned by the search. These lemmas prove the
+position independently of any particular pivot depth or list length.
+
+The actual Rust API returns Result<usize,usize>: Ok(index) on an existing
+key or Err(lower_bound_index) otherwise. These lemmas establish the numeric
+insertion position of the Lean model. Rust usize arithmetic, Vec shifting
+and binary_search_by remain downstream refinement obligations.
+-/
+
+/-- An independent full scan counting strictly smaller keys. -/
+def columnCountBefore : List (Nat × Nat) → Nat → Nat
+  | [], _ => 0
+  | (stored, _) :: tail, query =>
+      (if stored < query then 1 else 0) + columnCountBefore tail query
+
+theorem column_count_before_append
+    (left right : List (Nat × Nat)) (query : Nat) :
+    columnCountBefore (left ++ right) query =
+      columnCountBefore left query + columnCountBefore right query := by
+  induction left with
+  | nil => rfl
+  | cons pair tail ih =>
+      rcases pair with ⟨stored, amount⟩
+      simp only [List.cons_append, columnCountBefore, ih]
+      omega
+
+theorem column_count_before_none
+    (rows : List (Nat × Nat)) (query : Nat)
+    (noneBelow : ∀ entry ∈ rows, query ≤ entry.1) :
+    columnCountBefore rows query = 0 := by
+  induction rows with
+  | nil => rfl
+  | cons pair tail ih =>
+      rcases pair with ⟨stored, amount⟩
+      have headBound : query ≤ stored :=
+        noneBelow (stored, amount) (by simp)
+      have tailBound : ∀ entry ∈ tail, query ≤ entry.1 := by
+        intro entry member
+        exact noneBelow entry (List.mem_cons.mpr (Or.inr member))
+      have notBefore : ¬stored < query := by omega
+      simp [columnCountBefore, notBefore, ih tailBound]
+
+theorem column_count_before_all
+    (rows : List (Nat × Nat)) (query : Nat)
+    (allBelow : ∀ entry ∈ rows, entry.1 < query) :
+    columnCountBefore rows query = rows.length := by
+  induction rows with
+  | nil => rfl
+  | cons pair tail ih =>
+      rcases pair with ⟨stored, amount⟩
+      have headBound : stored < query :=
+        allBelow (stored, amount) (by simp)
+      have tailBound : ∀ entry ∈ tail, entry.1 < query := by
+        intro entry member
+        exact allBelow entry (List.mem_cons.mpr (Or.inr member))
+      simp [columnCountBefore, headBound, ih tailBound]
+
+/-- The independent full-scan lower bound follows the same pivot comparison
+as binary search, provided the pivot separates the smaller/larger keys. -/
+theorem column_count_before_pivot
+    (left right : List (Nat × Nat)) (pivot value query : Nat)
+    (below : ∀ entry ∈ left, entry.1 < pivot)
+    (above : ∀ entry ∈ right, pivot < entry.1) :
+    columnCountBefore (left ++ (pivot, value) :: right) query =
+      if query ≤ pivot then columnCountBefore left query
+      else left.length + 1 + columnCountBefore right query := by
+  rw [column_count_before_append]
+  by_cases before : query ≤ pivot
+  · have noPivot : ¬pivot < query := by omega
+    have noRight : columnCountBefore right query = 0 :=
+      column_count_before_none right query (by
+        intro entry member
+        have gt := above entry member
+        omega)
+    simp [columnCountBefore, before, noPivot, noRight]
+  · have pivotBefore : pivot < query := by omega
+    have allLeft : columnCountBefore left query = left.length :=
+      column_count_before_all left query (by
+        intro entry member
+        have lt := below entry member
+        omega)
+    simp [columnCountBefore, before, pivotBefore, allLeft]
+
+/-- The number of nodes in a finite search tree. -/
+def binaryColumnCount : BinaryColumnTree → Nat
+  | .empty => 0
+  | .branch _ _ left right =>
+      binaryColumnCount left + 1 + binaryColumnCount right
+
+theorem binary_column_count_matches_inorder (tree : BinaryColumnTree) :
+    binaryColumnCount tree = (binaryColumnInorder tree).length := by
+  induction tree with
+  | empty => rfl
+  | branch key amount left right ihLeft ihRight =>
+      simp [binaryColumnCount, binaryColumnInorder,
+        List.length_append, ihLeft, ihRight]
+      omega
+
+/-- Lower bound by recursive binary pivot comparisons. A hit at the pivot
+returns the length of the left subtree, its correct zero-based index. -/
+def binaryColumnLowerBound : BinaryColumnTree → Nat → Nat
+  | .empty, _ => 0
+  | .branch pivot _ left right, query =>
+      if query ≤ pivot then binaryColumnLowerBound left query
+      else binaryColumnCount left + 1 + binaryColumnLowerBound right query
+
+/-- Binary-search lower bound is exactly the number of keys strictly
+smaller than the query in the represented sorted sequence. -/
+theorem binary_column_lower_bound_matches_count :
+    ∀ (tree : BinaryColumnTree),
+      BinaryColumnOrdered tree →
+      ∀ query,
+        binaryColumnLowerBound tree query =
+        columnCountBefore (binaryColumnInorder tree) query := by
+  intro tree
+  induction tree with
+  | empty =>
+      intro _ query
+      rfl
+  | branch pivot atoms left right ihLeft ihRight =>
+      intro valid query
+      rcases valid with ⟨validLeft, validRight, below, above⟩
+      change (if query ≤ pivot then binaryColumnLowerBound left query
+        else binaryColumnCount left + 1 +
+          binaryColumnLowerBound right query) =
+        columnCountBefore
+          (binaryColumnInorder left ++
+            (pivot, atoms) :: binaryColumnInorder right) query
+      rw [column_count_before_pivot _ _ pivot atoms query below above]
+      rw [ihLeft validLeft query, ihRight validRight query]
+      rw [binary_column_count_matches_inorder]
+
+/-- Concrete midpoint-search insertion index from a sorted list. -/
+def midpointColumnLowerBound
+    (rows : List (Nat × Nat)) (query : Nat) : Nat :=
+  binaryColumnLowerBound (midpointColumnTree rows.length rows) query
+
+/-- This algorithm returns the exact insertion position for every query
+and every finite sorted list, including an empty list and prefix/suffix
+positions. There is no artificial maximum list size. -/
+theorem midpoint_column_lower_bound_is_exact
+    (rows : List (Nat × Nat)) (query : Nat)
+    (sorted : SortedVecKeys rows) :
+    midpointColumnLowerBound rows query = columnCountBefore rows query := by
+  unfold midpointColumnLowerBound
+  have valid := midpoint_tree_is_ordered rows.length rows (by omega) sorted
+  rw [binary_column_lower_bound_matches_count _ valid query]
+  rw [midpoint_tree_preserves_entries rows.length rows (by omega)]
+
+/-- The insertion index cannot exceed the number of existing entries. -/
+theorem midpoint_lower_bound_within_length
+    (rows : List (Nat × Nat)) (query : Nat)
+    (sorted : SortedVecKeys rows) :
+    midpointColumnLowerBound rows query ≤ rows.length := by
+  rw [midpoint_column_lower_bound_is_exact rows query sorted]
+  induction rows with
+  | nil => simp [columnCountBefore]
+  | cons pair tail ih =>
+      rcases pair with ⟨key, amount⟩
+      simp only [columnCountBefore, List.length_cons]
+      split <;> omega
+
 end TradeLayerFormal
