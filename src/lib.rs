@@ -9,6 +9,7 @@ pub mod bitcoin_chainwork; // Bitcoin mainnet nBits/MTP/chainwork from explicit 
 pub mod bitcoin_forks; // Bounded greatest-work selection among observed header forks; no active-chain trust.
 pub mod bitcoin_inclusion; // Bitcoin SHA256d header and tx Merkle checks; no full consensus.
 pub mod chain; // Trust-boundary and reversible block progression, prototype only.
+pub mod clearing_cadence; // Stage 24C read-only JS clearing callback and funding schedule observations.
 pub mod clearing_math; // Stage 24A diagnostic loss, funding and PnL equations; no ledger writes.
 mod codec; // Bounded, checksummed snapshot codec.
 pub mod execution; // Prototype unified registry+ledger replay; input unverified.

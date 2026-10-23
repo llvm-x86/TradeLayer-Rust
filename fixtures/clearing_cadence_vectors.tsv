@@ -1,0 +1,33 @@
+#scenario	path	height	txs_type_processed_valid	funding_bucket	other_bucket	clearing_called	funding_height_eligible	funding_attempted	withdrawals_attempted
+due_empty	catchup	240		0	0	0	1	0	0
+due_empty	realtime	240		0	0	0	1	0	1
+due_type4_only	catchup	240	4:0:1	1	0	1	1	1	1
+due_type4_only	realtime	240	4:0:1	1	0	0	1	0	1
+due_type20_only_k	catchup	240	20:0:1	1	0	1	1	1	1
+due_type20_only_k	realtime	240	20:0:1	0	1	1	1	1	1
+due_type22_only_m	catchup	240	22:0:1	0	1	1	1	1	1
+due_type22_only_m	realtime	240	22:0:1	1	0	0	1	0	1
+due_other_valid	catchup	240	18:0:1	0	1	1	1	1	1
+due_other_valid	realtime	240	18:0:1	0	1	1	1	1	1
+due_other_invalid	catchup	240	18:0:0	0	1	1	1	1	1
+due_other_invalid	realtime	240	18:0:0	0	1	0	1	0	1
+due_other_already_processed	catchup	240	18:1:1	0	1	0	1	0	0
+due_other_already_processed	realtime	240	18:1:1	0	1	0	1	0	1
+due_type4_plus_other_valid	catchup	240	4:0:1,18:0:1	1	1	1	1	1	1
+due_type4_plus_other_valid	realtime	240	4:0:1,18:0:1	1	1	1	1	1	1
+due_type20_plus_invalid	catchup	240	20:0:1,18:0:0	1	1	1	1	1	1
+due_type20_plus_invalid	realtime	240	20:0:1,18:0:0	0	2	1	1	1	1
+due_type22_plus_invalid	catchup	240	22:0:1,18:0:0	0	2	1	1	1	1
+due_type22_plus_invalid	realtime	240	22:0:1,18:0:0	1	1	0	1	0	1
+non_due_with_valid_work	catchup	241	18:0:1	0	1	1	0	0	1
+non_due_with_valid_work	realtime	241	18:0:1	0	1	1	0	0	1
+catchup_force_10000	catchup	10000		0	0	1	0	0	1
+catchup_force_10000	realtime	10000		0	0	0	0	0	1
+catchup_force_30000_due	catchup	30000		0	0	1	1	1	1
+catchup_force_30000_due	realtime	30000		0	0	0	1	0	1
+caught_up_funding_already_processed	catchup	240	4:1:1	1	0	0	1	0	0
+caught_up_funding_already_processed	realtime	240	4:1:1	1	0	0	1	0	1
+failed_logic_after_decode_true	catchup	240	18:0:1	0	1	1	1	1	1
+failed_logic_after_decode_true	realtime	240	18:0:1	0	1	1	1	1	1
+due_type4_invalid	catchup	240	4:0:0	1	0	1	1	1	1
+due_type4_invalid	realtime	240	4:0:0	1	0	0	1	0	1
