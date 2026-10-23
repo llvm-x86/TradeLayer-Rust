@@ -408,11 +408,7 @@ impl Ledger {
     }
 
     fn put_balance(&mut self, id: PropertyId, account: AccountId, atoms: u128) {
-        if atoms == 0 {
-            self.available.remove(&(id, account));
-        } else {
-            self.available.insert((id, account), atoms);
-        }
+        crate::canonical_columns::put_nonzero(&mut self.available, (id, account), atoms);
     }
 
     fn existing_property(&self, id: PropertyId) -> Result<&Property, LedgerError> {

@@ -61,11 +61,7 @@ impl ChannelState {
         self.escrow(side).get(&id).copied().unwrap_or(0)
     }
     fn put(&mut self, side: ChannelSide, id: PropertyId, atoms: u128) {
-        if atoms == 0 {
-            self.escrow_mut(side).remove(&id);
-        } else {
-            self.escrow_mut(side).insert(id, atoms);
-        }
+        crate::canonical_columns::put_nonzero(self.escrow_mut(side), id, atoms);
     }
     fn claim(
         &mut self,
