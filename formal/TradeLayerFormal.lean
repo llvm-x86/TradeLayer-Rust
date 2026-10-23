@@ -121,14 +121,14 @@ theorem every_reachable_state_conserves
     {s t : Portfolio} (run : AccountingRun s t)
     (good : Conserved s) : Conserved t := by
   induction run with
-  | refl _ => exact good
+  | refl => exact good
   | next prior step ih => exact accounting_step_conserves step ih
 
 theorem every_reachable_state_bounded
     {s t : Portfolio} (run : AccountingRun s t)
     (good : Bounded s) : Bounded t := by
   induction run with
-  | refl _ => exact good
+  | refl => exact good
   | next prior step ih => exact accounting_step_stays_bounded step ih
 
 /-- The real code uses different genesis-bound ChainIds and independent
