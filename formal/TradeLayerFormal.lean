@@ -3657,4 +3657,64 @@ theorem native_account_sorted_embeds_in_nat (rows : List (NativeAccountKey × Na
           key source.1 headValid sourceValid).1 nativeLess
       · exact tailProof
 
+
+/-- Independent linear lookup on the full native composite key type. The
+decision compares property IDs and the entire exact account-byte list;
+no encoded Nat or positional binary-search routine is used. -/
+def nativeAccountLinearGet :
+    List (NativeAccountKey × Nat) → NativeAccountKey → Nat
+  | [], _ => 0
+  | (key, atoms) :: rest, query =>
+      if key = query then atoms else nativeAccountLinearGet rest query
+
+theorem native_encoded_linear_get_matches_original
+    (rows : List (NativeAccountKey × Nat)) (query : NativeAccountKey)
+    (validQuery : ValidAccountBytes query.accountBytes)
+    (validRows : ∀ entry ∈ rows, ValidAccountBytes entry.1.accountBytes) :
+    linearColumnGet (encodeNativeRows rows) (encodeNativeAccount query) =
+      nativeAccountLinearGet rows query := by
+  induction rows with
+  | nil =>
+      rfl
+  | cons pair rest ih =>
+      rcases pair with ⟨key, atoms⟩
+      have validHead : ValidAccountBytes key.accountBytes :=
+        validRows (key, atoms) (by simp)
+      have validRest :
+          ∀ entry ∈ rest, ValidAccountBytes entry.1.accountBytes := by
+        intro entry member
+        exact validRows entry (List.mem_cons.mpr (Or.inr member))
+      by_cases same : key = query
+      · subst query
+        simp [encodeNativeRows, linearColumnGet, nativeAccountLinearGet]
+      · have differentRank :
+            encodeNativeAccount key ≠ encodeNativeAccount query := by
+          intro equal
+          exact same (encode_native_account_injective_on_valid
+            key query validHead validQuery equal)
+        simpa [encodeNativeRows, linearColumnGet, nativeAccountLinearGet,
+          differentRank, same] using ih validRest
+
+/-- The entire concrete-key sorted wallet book can be searched through
+the numeric Lean map model without changing any observable balance.
+Quantifies over any valid 1–90-byte printable account keys and any finite
+number of wallet records. This is a mathematical implementation contract,
+not a theorem about the Rust compiler or standard library. -/
+theorem native_encoded_sorted_lookup_refines
+    (rows : List (NativeAccountKey × Nat)) (query : NativeAccountKey)
+    (nativeSorted : NativeAccountSorted rows)
+    (validRows : ∀ entry ∈ rows, ValidAccountBytes entry.1.accountBytes)
+    (validQuery : ValidAccountBytes query.accountBytes) :
+    sortedVecGet (encodeNativeRows rows) (encodeNativeAccount query) =
+      nativeAccountLinearGet rows query := by
+  have natSorted :=
+    native_account_sorted_embeds_in_nat rows nativeSorted validRows
+  calc
+    sortedVecGet (encodeNativeRows rows) (encodeNativeAccount query) =
+        linearColumnGet (encodeNativeRows rows) (encodeNativeAccount query) :=
+      sorted_vec_get_equals_linear _ _ natSorted
+    _ = nativeAccountLinearGet rows query :=
+      native_encoded_linear_get_matches_original
+        rows query validQuery validRows
+
 end TradeLayerFormal
