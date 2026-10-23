@@ -72,6 +72,14 @@ The production King settlement uses `journal_move::move_pending_once` on the act
 
 These additional theorems verify the **abstract map and journal projection**. The full Rust-to-Lean refinement remains open, including account/column ownership, claims with trade references, receipt hashes, batch rollback and authentic economic inputs.
 
+## Stage 5: finite-support accounting and auditable supply partitions
+
+`FiniteSupplyView` models an arbitrary finite set of accounting columns by abstract numeric keys, covering available balances, channel escrow sides, and reserved withdrawal records. Lean proves conservation and u128 bounds after a checked transfer between any two distinct present columns, and conservation after managed mint/burn. It also proves all unrelated columns stay unchanged and that balances outside the finite support remain zero. The finite support list is required to be duplicate-free and complete. Abstract numeric keys need a verified injective encoding of real Rust composite map keys to establish a full refinement.
+
+The live `Ledger::supply_audit_rows_unverified` is a read-only, property-ordered projection of supply and all three ledger accounting partitions, and returns only after `verify_conservation` succeeds. Its totals are recalculated from the live available, channel and pending maps. A separate regression constructs wallet/channel/reserved balances across two properties and checks the audit before and after withdrawal maturity, plus after canonical snapshot roundtrip. The production `checked_supply_add` now handles both existing conservation accumulation paths and the audit with explicit overflow rejection; Kani checks its u128 semantics.
+
+This stage strengthens the connection between the finite-model proof obligations and the Rust ledger's real state, while leaving a machine-checked equivalence between `BTreeMap` iteration and the abstract support list as an open obligation.
+
 ## Boundaries for the next phases
 
 1. **Rust-to-Lean refinement.** Build a pure checked-`u128` transition function with a Verus specification and relate it to the current `Ledger::apply` and `calculate_settlement_preview` implementations. Prove failure leaves the ledger unchanged, conservation through all map entries, journal single-use, and finite-`u128` arithmetic. Tests and matching numbers alone are evidence, not a proof of refinement.

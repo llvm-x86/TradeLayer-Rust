@@ -851,4 +851,214 @@ theorem journal_move_cannot_repeat (j after : JournalView) (key : Nat)
   have swept := (journal_move_marks_swept j after key accepted).2
   exact journal_move_rejects_consumed after key swept
 
+
+/-!
+## Arbitrary finite accounting columns
+
+An individual property can have arbitrarily many wallet owners, escrow
+columns and reserved withdrawal entries. Here every type of storage column
+receives a distinct abstract Nat identifier and the support list is finite,
+complete and duplicate-free. This representation is independent from the
+Rust BTreeMap implementation and its concrete composite-key encoding.
+-/
+
+def columnTotal : List Nat → (Nat → Nat) → Nat
+  | [], _ => 0
+  | key :: rest, amounts => amounts key + columnTotal rest amounts
+
+def columnPut (amounts : Nat → Nat) (key newValue : Nat) : Nat → Nat :=
+  fun query => if query = key then newValue else amounts query
+
+theorem column_total_put_absent
+    (keys : List Nat) (amounts : Nat → Nat) (key newValue : Nat)
+    (absent : key ∉ keys) :
+    columnTotal keys (columnPut amounts key newValue) =
+      columnTotal keys amounts := by
+  induction keys with
+  | nil => rfl
+  | cons head rest ih =>
+      have unequal : head ≠ key := by
+        intro same
+        apply absent
+        simp [same]
+      have restAbsent : key ∉ rest := by
+        intro member
+        apply absent
+        simp [member]
+      simp [columnTotal, columnPut, unequal, ih restAbsent]
+
+/-- Replacing one covered, unique balance has a precise aggregate delta.
+This applies to any finite number of distinct wallet/channel/reservation
+columns, and proves the arithmetic fact behind BTreeMap aggregation. -/
+theorem column_total_put
+    (keys : List Nat) (amounts : Nat → Nat) (key newValue : Nat)
+    (unique : keys.Nodup) (present : key ∈ keys) :
+    columnTotal keys (columnPut amounts key newValue) + amounts key =
+      columnTotal keys amounts + newValue := by
+  induction keys with
+  | nil => simp at present
+  | cons head rest ih =>
+      have noTail : head ∉ rest := (List.nodup_cons.mp unique).1
+      have uniqueTail : rest.Nodup := (List.nodup_cons.mp unique).2
+      by_cases same : head = key
+      · subst head
+        have absentTail := column_total_put_absent rest amounts key newValue noTail
+        simp [columnTotal, columnPut, absentTail]
+      · have inTail : key ∈ rest := by
+          have presentOrTail := List.mem_cons.mp present
+          exact presentOrTail.resolve_left (by simpa [eq_comm] using same)
+        have tailEquation := ih uniqueTail inTail
+        simp only [columnTotal]
+        simp [columnPut, same]
+        omega
+
+def columnMove (amounts : Nat → Nat) (debitKey creditKey amount : Nat) :
+    Nat → Nat :=
+  columnPut
+    (columnPut amounts debitKey (amounts debitKey - amount))
+    creditKey (amounts creditKey + amount)
+
+theorem column_move_preserves_total
+    (keys : List Nat) (amounts : Nat → Nat)
+    (debitKey creditKey amount : Nat)
+    (unique : keys.Nodup)
+    (debitPresent : debitKey ∈ keys)
+    (creditPresent : creditKey ∈ keys)
+    (distinct : debitKey ≠ creditKey)
+    (funded : amount ≤ amounts debitKey) :
+    columnTotal keys (columnMove amounts debitKey creditKey amount) =
+      columnTotal keys amounts := by
+  let intermediate := columnPut amounts debitKey (amounts debitKey - amount)
+  have first := column_total_put keys amounts debitKey
+    (amounts debitKey - amount) unique debitPresent
+  have second := column_total_put keys intermediate creditKey
+    (amounts creditKey + amount) unique creditPresent
+  have creditUnchanged : intermediate creditKey = amounts creditKey := by
+    simp [intermediate, columnPut, Ne.symm distinct]
+  change columnTotal keys intermediate + amounts debitKey =
+    columnTotal keys amounts + (amounts debitKey - amount) at first
+  change columnTotal keys (columnMove amounts debitKey creditKey amount) +
+    intermediate creditKey =
+    columnTotal keys intermediate + (amounts creditKey + amount) at second
+  rw [creditUnchanged] at second
+  omega
+
+theorem column_move_frame
+    (amounts : Nat → Nat) (debitKey creditKey amount other : Nat)
+    (notDebit : other ≠ debitKey) (notCredit : other ≠ creditKey) :
+    columnMove amounts debitKey creditKey amount other = amounts other := by
+  simp [columnMove, columnPut, notDebit, notCredit]
+
+theorem column_move_debit
+    (amounts : Nat → Nat) (debitKey creditKey amount : Nat)
+    (distinct : debitKey ≠ creditKey) :
+    columnMove amounts debitKey creditKey amount debitKey =
+      amounts debitKey - amount := by
+  simp [columnMove, columnPut, distinct]
+
+theorem column_move_credit
+    (amounts : Nat → Nat) (debitKey creditKey amount : Nat)
+    (distinct : debitKey ≠ creditKey) :
+    columnMove amounts debitKey creditKey amount creditKey =
+      amounts creditKey + amount := by
+  simp [columnMove, columnPut, Ne.symm distinct]
+
+/-- The support of the actual ledger includes positive-value available
+accounts, channel escrow entries and pending withdrawal TxIds. The support
+list here may also contain zero-valued slots to permit a move without
+rebuilding the support. It is an abstract set of candidate columns. -/
+structure FiniteSupplyView where
+  slots : List Nat
+  atoms : Nat → Nat
+  supply : Nat
+
+def FiniteSupplyValid (s : FiniteSupplyView) : Prop :=
+  s.slots.Nodup ∧
+  (∀ key, key ∉ s.slots → s.atoms key = 0) ∧
+  columnTotal s.slots s.atoms = s.supply ∧
+  (∀ key, key ∈ s.slots → s.atoms key ≤ maxU128) ∧
+  s.supply ≤ maxU128
+
+def finiteMove (s : FiniteSupplyView)
+    (debitKey creditKey amount : Nat) : FiniteSupplyView :=
+  { s with atoms := columnMove s.atoms debitKey creditKey amount }
+
+theorem finite_move_preserves_validity
+    (s : FiniteSupplyView) (debitKey creditKey amount : Nat)
+    (good : FiniteSupplyValid s)
+    (debitPresent : debitKey ∈ s.slots)
+    (creditPresent : creditKey ∈ s.slots)
+    (distinct : debitKey ≠ creditKey)
+    (positive : 0 < amount)
+    (funded : amount ≤ s.atoms debitKey)
+    (creditFits : s.atoms creditKey + amount ≤ maxU128) :
+    FiniteSupplyValid (finiteMove s debitKey creditKey amount) := by
+  rcases good with ⟨unique, covered, conserved, bounded, supplyFits⟩
+  refine ⟨unique, ?_, ?_, ?_, supplyFits⟩
+  · intro key absent
+    have otherDebit : key ≠ debitKey := by
+      intro same
+      apply absent
+      simpa [same] using debitPresent
+    have otherCredit : key ≠ creditKey := by
+      intro same
+      apply absent
+      simpa [same] using creditPresent
+    simpa [finiteMove, column_move_frame, otherDebit, otherCredit]
+      using covered key absent
+  · simpa [finiteMove] using
+      (column_move_preserves_total s.slots s.atoms
+        debitKey creditKey amount unique debitPresent
+        creditPresent distinct funded).trans conserved
+  · intro key present
+    by_cases isDebit : key = debitKey
+    · subst key
+      have newDebit := column_move_debit s.atoms debitKey creditKey amount distinct
+      simp only [finiteMove]
+      rw [newDebit]
+      omega
+    · by_cases isCredit : key = creditKey
+      · subst key
+        have newCredit := column_move_credit s.atoms debitKey creditKey amount distinct
+        simp only [finiteMove]
+        rw [newCredit]
+        exact creditFits
+      · have unchanged := column_move_frame s.atoms debitKey creditKey amount
+          key isDebit isCredit
+        simp only [finiteMove]
+        rw [unchanged]
+        exact bounded key present
+
+def finiteMint (s : FiniteSupplyView) (key amount : Nat) : FiniteSupplyView :=
+  { s with atoms := columnPut s.atoms key (s.atoms key + amount),
+           supply := s.supply + amount }
+
+def finiteBurn (s : FiniteSupplyView) (key amount : Nat) : FiniteSupplyView :=
+  { s with atoms := columnPut s.atoms key (s.atoms key - amount),
+           supply := s.supply - amount }
+
+theorem finite_mint_preserves_total
+    (s : FiniteSupplyView) (key amount : Nat)
+    (conserved : columnTotal s.slots s.atoms = s.supply)
+    (unique : s.slots.Nodup) (present : key ∈ s.slots) :
+    columnTotal (finiteMint s key amount).slots (finiteMint s key amount).atoms =
+      (finiteMint s key amount).supply := by
+  have updated := column_total_put s.slots s.atoms key
+    (s.atoms key + amount) unique present
+  dsimp [finiteMint]
+  omega
+
+theorem finite_burn_preserves_total
+    (s : FiniteSupplyView) (key amount : Nat)
+    (conserved : columnTotal s.slots s.atoms = s.supply)
+    (unique : s.slots.Nodup) (present : key ∈ s.slots)
+    (funded : amount ≤ s.atoms key)
+    (supplyEnough : amount ≤ s.supply) :
+    columnTotal (finiteBurn s key amount).slots (finiteBurn s key amount).atoms =
+      (finiteBurn s key amount).supply := by
+  have updated := column_total_put s.slots s.atoms key
+    (s.atoms key - amount) unique present
+  dsimp [finiteBurn]
+  omega
+
 end TradeLayerFormal
