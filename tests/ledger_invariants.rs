@@ -488,3 +488,111 @@ fn iterator_panic_during_staging_preserves_public_ledger() {
     assert!(!ledger.is_processed(tx(2)));
     assert_eq!(ledger.verify_conservation(), Ok(()));
 }
+
+#[test]
+fn journal_sweep_preserves_other_property_and_rejects_wrong_receipt_atomically() {
+    use tradelayer_core::ledger::ChannelSide;
+
+    let chan = a("chan");
+    let mut ledger = Ledger::new();
+    ledger
+        .apply(tx(1), create(7, PropertyKind::Fixed, 200))
+        .unwrap();
+    ledger.apply(tx(2), send(7, "alice", "bob", 100)).unwrap();
+    ledger
+        .apply(
+            tx(3),
+            Operation::ChannelCommit {
+                id: p(7),
+                owner: a("alice"),
+                channel: chan.clone(),
+                side: ChannelSide::A,
+                amount_atoms: 100,
+            },
+        )
+        .unwrap();
+    ledger
+        .apply(
+            tx(4),
+            Operation::ChannelCommit {
+                id: p(7),
+                owner: a("bob"),
+                channel: chan.clone(),
+                side: ChannelSide::B,
+                amount_atoms: 100,
+            },
+        )
+        .unwrap();
+    ledger
+        .apply(tx(5), create(8, PropertyKind::Managed, 50))
+        .unwrap();
+    ledger
+        .apply(
+            tx(6),
+            Operation::Mint {
+                id: p(8),
+                issuer: a("alice"),
+                to: a("bob"),
+                amount_atoms: 20,
+            },
+        )
+        .unwrap();
+    let property8_alice = ledger.available_atoms(p(8), &a("alice"));
+    let property8_bob = ledger.available_atoms(p(8), &a("bob"));
+
+    for (txid, side, atoms, reference, height) in [
+        (7, ChannelSide::A, 30, 50, 104),
+        (8, ChannelSide::B, 10, 51, 105),
+    ] {
+        ledger
+            .apply(
+                tx(txid),
+                Operation::ChannelNetClaim {
+                    id: p(7),
+                    channel: chan.clone(),
+                    payer_side: side,
+                    amount_atoms: atoms,
+                    trade_reference: tx(reference),
+                    height,
+                    expiry_height: 200,
+                },
+            )
+            .unwrap();
+    }
+    let preview = ledger
+        .preview_king_settlement_unverified(&chan, p(7), 104, 105, 106)
+        .unwrap();
+    assert_eq!(preview.net_atoms, 20);
+    let make_sweep = |net_atoms| Operation::ChannelKingSettle {
+        id: p(7),
+        channel: chan.clone(),
+        start_height: 104,
+        end_height: 105,
+        settled_at: 106,
+        expected_root: preview.root,
+        expected_count: preview.count,
+        payer_side: preview.payer_side,
+        net_atoms,
+    };
+
+    let prior = ledger.clone();
+    assert_eq!(
+        ledger.apply(tx(9), make_sweep(21)),
+        Err(LedgerError::SettlementCommitmentMismatch)
+    );
+    assert_eq!(ledger, prior);
+    assert!(!ledger.is_processed(tx(9)));
+
+    ledger.apply(tx(9), make_sweep(20)).unwrap();
+    assert_eq!(ledger.pending_net_settlement_count(), 0);
+    assert_eq!(ledger.swept_net_settlement_count(), 2);
+    assert_eq!(ledger.king_settlement_count(), 1);
+    assert_eq!(ledger.channel_atoms(p(7), &chan, ChannelSide::A), 80);
+    assert_eq!(ledger.channel_atoms(p(7), &chan, ChannelSide::B), 120);
+    assert_eq!(ledger.available_atoms(p(8), &a("alice")), property8_alice);
+    assert_eq!(ledger.available_atoms(p(8), &a("bob")), property8_bob);
+    assert_eq!(ledger.property(p(8)).unwrap().total_supply_atoms, 70);
+    assert_eq!(ledger.verify_conservation(), Ok(()));
+    let checkpoint = ledger.snapshot_bytes().unwrap();
+    assert_eq!(Ledger::from_snapshot_bytes(&checkpoint).unwrap(), ledger);
+}

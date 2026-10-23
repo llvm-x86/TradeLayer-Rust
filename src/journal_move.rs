@@ -39,7 +39,7 @@ impl<K: Ord, V> JournalStore<K, V> for BTreeMap<K, V> {
 }
 
 /// Shared, checked journal-transition control flow.
-/// Both presence checks run before either map is mutated.
+/// The destination is checked first; removing an absent source is a no-op.
 fn move_checked<K: Copy, V, P: JournalStore<K, V>, S: JournalStore<K, V>>(
     pending: &mut P,
     swept: &mut S,
