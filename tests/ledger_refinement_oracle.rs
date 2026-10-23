@@ -25,51 +25,125 @@ fn txid(n: u64) -> TxId {
 
 #[derive(Clone, Copy, Debug)]
 enum Action {
-    Send { property: u32, from: &'static str, to: &'static str, amount: u128 },
-    Mint { property: u32, actor: &'static str, to: &'static str, amount: u128 },
-    Burn { property: u32, actor: &'static str, amount: u128 },
+    Send {
+        property: u32,
+        from: &'static str,
+        to: &'static str,
+        amount: u128,
+    },
+    Mint {
+        property: u32,
+        actor: &'static str,
+        to: &'static str,
+        amount: u128,
+    },
+    Burn {
+        property: u32,
+        actor: &'static str,
+        amount: u128,
+    },
     Commit {
-        property: u32, owner: &'static str, channel: &'static str,
-        side: ChannelSide, amount: u128,
+        property: u32,
+        owner: &'static str,
+        channel: &'static str,
+        side: ChannelSide,
+        amount: u128,
     },
     Withdraw {
-        property: u32, owner: &'static str, channel: &'static str,
-        side: ChannelSide, amount: u128, unlock: u64,
+        property: u32,
+        owner: &'static str,
+        channel: &'static str,
+        side: ChannelSide,
+        amount: u128,
+        unlock: u64,
     },
     ChannelMove {
-        property: u32, source: &'static str, side: ChannelSide,
-        destination: &'static str, receiving: ChannelSide, amount: u128,
+        property: u32,
+        source: &'static str,
+        side: ChannelSide,
+        destination: &'static str,
+        receiving: ChannelSide,
+        amount: u128,
     },
 }
 
 impl Action {
     fn into_operation(self) -> Operation {
         match self {
-            Self::Send { property: p, from, to, amount } => Operation::Transfer {
-                id: property(p), from: account(from), to: account(to), amount_atoms: amount,
+            Self::Send {
+                property: p,
+                from,
+                to,
+                amount,
+            } => Operation::Transfer {
+                id: property(p),
+                from: account(from),
+                to: account(to),
+                amount_atoms: amount,
             },
-            Self::Mint { property: p, actor, to, amount } => Operation::Mint {
-                id: property(p), issuer: account(actor), to: account(to), amount_atoms: amount,
+            Self::Mint {
+                property: p,
+                actor,
+                to,
+                amount,
+            } => Operation::Mint {
+                id: property(p),
+                issuer: account(actor),
+                to: account(to),
+                amount_atoms: amount,
             },
-            Self::Burn { property: p, actor, amount } => Operation::Burn {
-                id: property(p), issuer: account(actor), amount_atoms: amount,
+            Self::Burn {
+                property: p,
+                actor,
+                amount,
+            } => Operation::Burn {
+                id: property(p),
+                issuer: account(actor),
+                amount_atoms: amount,
             },
-            Self::Commit { property: p, owner, channel, side, amount } =>
-                Operation::ChannelCommit {
-                    id: property(p), owner: account(owner), channel: account(channel),
-                    side, amount_atoms: amount,
-                },
-            Self::Withdraw { property: p, owner, channel, side, amount, unlock } =>
-                Operation::ChannelWithdraw {
-                    id: property(p), owner: account(owner), channel: account(channel),
-                    side, amount_atoms: amount, unlock_height: unlock,
-                },
-            Self::ChannelMove { property: p, source, side, destination, receiving, amount } =>
-                Operation::ChannelTransfer {
-                    id: property(p), from_channel: account(source), from_side: side,
-                    to_channel: account(destination), to_side: receiving,
-                    amount_atoms: amount,
-                },
+            Self::Commit {
+                property: p,
+                owner,
+                channel,
+                side,
+                amount,
+            } => Operation::ChannelCommit {
+                id: property(p),
+                owner: account(owner),
+                channel: account(channel),
+                side,
+                amount_atoms: amount,
+            },
+            Self::Withdraw {
+                property: p,
+                owner,
+                channel,
+                side,
+                amount,
+                unlock,
+            } => Operation::ChannelWithdraw {
+                id: property(p),
+                owner: account(owner),
+                channel: account(channel),
+                side,
+                amount_atoms: amount,
+                unlock_height: unlock,
+            },
+            Self::ChannelMove {
+                property: p,
+                source,
+                side,
+                destination,
+                receiving,
+                amount,
+            } => Operation::ChannelTransfer {
+                id: property(p),
+                from_channel: account(source),
+                from_side: side,
+                to_channel: account(destination),
+                to_side: receiving,
+                amount_atoms: amount,
+            },
         }
     }
 }
@@ -138,12 +212,17 @@ impl RefLedger {
     }
 
     fn opposite(side: ChannelSide) -> ChannelSide {
-        match side { ChannelSide::A => ChannelSide::B, ChannelSide::B => ChannelSide::A }
+        match side {
+            ChannelSide::A => ChannelSide::B,
+            ChannelSide::B => ChannelSide::A,
+        }
     }
 
     fn can_claim(&self, channel: &str, side: ChannelSide, owner: &str) -> bool {
         self.owner(channel, Self::opposite(side)) != Some(owner)
-            && self.owner(channel, side).is_none_or(|current| current == owner)
+            && self
+                .owner(channel, side)
+                .is_none_or(|current| current == owner)
     }
 
     fn claim(&mut self, channel: &'static str, side: ChannelSide, owner: &'static str) {
@@ -171,7 +250,9 @@ impl RefLedger {
         if from == to {
             return true;
         }
-        let Some(credit) = self.atoms(p, &to).checked_add(n) else { return false };
+        let Some(credit) = self.atoms(p, &to).checked_add(n) else {
+            return false;
+        };
         self.put(p, from, debit - n);
         self.put(p, to, credit);
         true
@@ -179,24 +260,46 @@ impl RefLedger {
 
     fn execute(&mut self, tx: u64, action: Action) -> bool {
         match action {
-            Action::Send { property: p, from, to, amount } => {
-                self.property_meta(p).is_some() && self.move_atoms(
-                    p, Slot::Available(from), Slot::Available(to), amount)
+            Action::Send {
+                property: p,
+                from,
+                to,
+                amount,
+            } => {
+                self.property_meta(p).is_some()
+                    && self.move_atoms(p, Slot::Available(from), Slot::Available(to), amount)
             }
-            Action::Mint { property: p, actor, to, amount } => {
-                let Some((index, managed, supply)) = self.property_meta(p) else { return false };
+            Action::Mint {
+                property: p,
+                actor,
+                to,
+                amount,
+            } => {
+                let Some((index, managed, supply)) = self.property_meta(p) else {
+                    return false;
+                };
                 if !managed || actor != "alice" || amount == 0 {
                     return false;
                 }
-                let Some(total) = supply.checked_add(amount) else { return false };
+                let Some(total) = supply.checked_add(amount) else {
+                    return false;
+                };
                 let old = self.atoms(p, &Slot::Available(to));
-                let Some(credited) = old.checked_add(amount) else { return false };
+                let Some(credited) = old.checked_add(amount) else {
+                    return false;
+                };
                 self.properties[index].2 = total;
                 self.put(p, Slot::Available(to), credited);
                 true
             }
-            Action::Burn { property: p, actor, amount } => {
-                let Some((index, managed, supply)) = self.property_meta(p) else { return false };
+            Action::Burn {
+                property: p,
+                actor,
+                amount,
+            } => {
+                let Some((index, managed, supply)) = self.property_meta(p) else {
+                    return false;
+                };
                 if !managed || actor != "alice" || amount == 0 {
                     return false;
                 }
@@ -208,12 +311,21 @@ impl RefLedger {
                 self.put(p, Slot::Available("alice"), balance - amount);
                 true
             }
-            Action::Commit { property: p, owner, channel, side, amount } => {
+            Action::Commit {
+                property: p,
+                owner,
+                channel,
+                side,
+                amount,
+            } => {
                 if self.property_meta(p).is_none() || !self.can_claim(channel, side, owner) {
                     return false;
                 }
                 if self.move_atoms(
-                    p, Slot::Available(owner), Slot::Escrow(channel, side), amount
+                    p,
+                    Slot::Available(owner),
+                    Slot::Escrow(channel, side),
+                    amount,
                 ) {
                     self.claim(channel, side, owner);
                     true
@@ -221,35 +333,54 @@ impl RefLedger {
                     false
                 }
             }
-            Action::Withdraw { property: p, owner, channel, side, amount, unlock } => {
+            Action::Withdraw {
+                property: p,
+                owner,
+                channel,
+                side,
+                amount,
+                unlock,
+            } => {
                 if self.property_meta(p).is_none()
                     || unlock == 0
                     || self.owner(channel, side) != Some(owner)
                 {
                     return false;
                 }
-                if !self.move_atoms(
-                    p, Slot::Escrow(channel, side), Slot::Reserved(tx), amount
-                ) {
+                if !self.move_atoms(p, Slot::Escrow(channel, side), Slot::Reserved(tx), amount) {
                     return false;
                 }
                 self.withdrawals.push(Withdrawal {
-                    id: tx, property: p, owner, amount, unlock,
+                    id: tx,
+                    property: p,
+                    owner,
+                    amount,
+                    unlock,
                 });
                 true
             }
             Action::ChannelMove {
-                property: p, source, side, destination, receiving, amount,
+                property: p,
+                source,
+                side,
+                destination,
+                receiving,
+                amount,
             } => {
                 if self.property_meta(p).is_none() || source == destination {
                     return false;
                 }
-                let Some(owner) = self.owner(source, side) else { return false };
+                let Some(owner) = self.owner(source, side) else {
+                    return false;
+                };
                 if !self.can_claim(destination, receiving, owner) {
                     return false;
                 }
                 if self.move_atoms(
-                    p, Slot::Escrow(source, side), Slot::Escrow(destination, receiving), amount
+                    p,
+                    Slot::Escrow(source, side),
+                    Slot::Escrow(destination, receiving),
+                    amount,
                 ) {
                     self.claim(destination, receiving, owner);
                     true
@@ -274,10 +405,16 @@ impl RefLedger {
     }
 
     fn mature(&mut self, height: u64) -> Option<usize> {
-        if height == 0 { return None }
+        if height == 0 {
+            return None;
+        }
         let mut staged = self.clone();
-        let due: Vec<Withdrawal> = staged.withdrawals.iter()
-            .filter(|x| x.unlock <= height).cloned().collect();
+        let due: Vec<Withdrawal> = staged
+            .withdrawals
+            .iter()
+            .filter(|x| x.unlock <= height)
+            .cloned()
+            .collect();
         for record in &due {
             let available = staged.atoms(record.property, &Slot::Available(record.owner));
             let credited = available.checked_add(record.amount)?;
@@ -298,10 +435,15 @@ impl RefLedger {
                 Slot::Escrow(channel, ChannelSide::B) => (2, channel.as_bytes().to_vec()),
                 Slot::Reserved(id) => (3, txid(*id).as_bytes().to_vec()),
             };
-            result.push((SupplyColumnProofKey {
-                network_tag: network.tag(), property_id: *property,
-                source_tag, identifier_bytes,
-            }, *atoms));
+            result.push((
+                SupplyColumnProofKey {
+                    network_tag: network.tag(),
+                    property_id: *property,
+                    source_tag,
+                    identifier_bytes,
+                },
+                *atoms,
+            ));
         }
         result.sort_by(|a, b| a.0.cmp(&b.0));
         result
@@ -323,8 +465,10 @@ impl RefLedger {
             }
             assert_eq!(parts.iter().sum::<u128>(), *supply);
             rows.push(SupplyAuditRow {
-                property: property(*p), total_supply_atoms: *supply,
-                available_atoms: parts[0], escrow_atoms: parts[1],
+                property: property(*p),
+                total_supply_atoms: *supply,
+                available_atoms: parts[0],
+                escrow_atoms: parts[1],
                 pending_withdrawal_atoms: parts[2],
             });
         }
@@ -335,10 +479,15 @@ impl RefLedger {
 
 fn check_concrete(ledger: &Ledger, spec: &RefLedger, step: u64) {
     ledger.verify_conservation().unwrap();
-    assert_eq!(ledger.supply_audit_rows_unverified().unwrap(), spec.expected_audit(),
-        "supply mismatch at iteration {step}");
+    assert_eq!(
+        ledger.supply_audit_rows_unverified().unwrap(),
+        spec.expected_audit(),
+        "supply mismatch at iteration {step}"
+    );
     for network in [
-        TradeLayerMainnet::Bitcoin, TradeLayerMainnet::Litecoin, TradeLayerMainnet::Dogecoin,
+        TradeLayerMainnet::Bitcoin,
+        TradeLayerMainnet::Litecoin,
+        TradeLayerMainnet::Dogecoin,
     ] {
         assert_eq!(
             ledger.supply_proof_keys_unverified(network).unwrap(),
@@ -346,15 +495,25 @@ fn check_concrete(ledger: &Ledger, spec: &RefLedger, step: u64) {
             "typed map mismatch for {network:?} at iteration {step}"
         );
     }
-    assert_eq!(ledger.processed_count(), spec.used.len(), "replay count at {step}");
+    assert_eq!(
+        ledger.processed_count(),
+        spec.used.len(),
+        "replay count at {step}"
+    );
     for id in &spec.used {
-        assert!(ledger.is_processed(txid(*id)), "accepted id missing at {step}");
+        assert!(
+            ledger.is_processed(txid(*id)),
+            "accepted id missing at {step}"
+        );
     }
     if step % 67 == 0 {
         let encoded = ledger.snapshot_bytes().unwrap();
         let restored = Ledger::from_snapshot_bytes(&encoded).unwrap();
         assert_eq!(restored, *ledger);
-        assert_eq!(restored.supply_audit_rows_unverified().unwrap(), spec.expected_audit());
+        assert_eq!(
+            restored.supply_audit_rows_unverified().unwrap(),
+            spec.expected_audit()
+        );
     }
 }
 
@@ -369,23 +528,69 @@ fn vector_oracle_refines_heterogeneous_rust_maps_through_randomized_operations()
     const CHANNELS: [&str; 3] = ["chan-a", "chan-b", "chan-c"];
 
     let mut ledger = Ledger::new();
-    ledger.apply(txid(1), Operation::CreateProperty {
-        id: property(41), issuer: account("alice"), kind: PropertyKind::Fixed,
-        initial_atoms: 1000,
-    }).unwrap();
-    ledger.apply(txid(2), Operation::CreateProperty {
-        id: property(42), issuer: account("alice"), kind: PropertyKind::Managed,
-        initial_atoms: 1000,
-    }).unwrap();
+    ledger
+        .apply(
+            txid(1),
+            Operation::CreateProperty {
+                id: property(41),
+                issuer: account("alice"),
+                kind: PropertyKind::Fixed,
+                initial_atoms: 1000,
+            },
+        )
+        .unwrap();
+    ledger
+        .apply(
+            txid(2),
+            Operation::CreateProperty {
+                id: property(42),
+                issuer: account("alice"),
+                kind: PropertyKind::Managed,
+                initial_atoms: 1000,
+            },
+        )
+        .unwrap();
     let mut spec = RefLedger::new();
 
     let initial = [
-        (3, Action::Send { property: 41, from: "alice", to: "bob", amount: 300 }),
-        (4, Action::Send { property: 42, from: "alice", to: "carol", amount: 220 }),
-        (5, Action::Commit { property: 41, owner: "bob", channel: "chan-a",
-            side: ChannelSide::A, amount: 80 }),
-        (6, Action::Commit { property: 42, owner: "carol", channel: "chan-a",
-            side: ChannelSide::B, amount: 60 }),
+        (
+            3,
+            Action::Send {
+                property: 41,
+                from: "alice",
+                to: "bob",
+                amount: 300,
+            },
+        ),
+        (
+            4,
+            Action::Send {
+                property: 42,
+                from: "alice",
+                to: "carol",
+                amount: 220,
+            },
+        ),
+        (
+            5,
+            Action::Commit {
+                property: 41,
+                owner: "bob",
+                channel: "chan-a",
+                side: ChannelSide::A,
+                amount: 80,
+            },
+        ),
+        (
+            6,
+            Action::Commit {
+                property: 42,
+                owner: "carol",
+                channel: "chan-a",
+                side: ChannelSide::B,
+                amount: 60,
+            },
+        ),
     ];
     for (tx, operation) in initial {
         assert!(spec.apply(tx, operation));
@@ -402,27 +607,68 @@ fn vector_oracle_refines_heterogeneous_rust_maps_through_randomized_operations()
         let other = PEOPLE[(next(&mut rng) as usize) % PEOPLE.len()];
         let channel = CHANNELS[(next(&mut rng) as usize) % CHANNELS.len()];
         let destination = CHANNELS[(next(&mut rng) as usize) % CHANNELS.len()];
-        let side = if next(&mut rng) & 1 == 0 { ChannelSide::A } else { ChannelSide::B };
-        let receiving = if next(&mut rng) & 1 == 0 { ChannelSide::A } else { ChannelSide::B };
+        let side = if next(&mut rng) & 1 == 0 {
+            ChannelSide::A
+        } else {
+            ChannelSide::B
+        };
+        let receiving = if next(&mut rng) & 1 == 0 {
+            ChannelSide::A
+        } else {
+            ChannelSide::B
+        };
         let amount = u128::from(next(&mut rng) % 180);
         let operation = match next(&mut rng) % 6 {
-            0 => Action::Send { property: id, from: who, to: other, amount },
-            1 => Action::Mint { property: id, actor: who, to: other, amount },
-            2 => Action::Burn { property: id, actor: who, amount },
-            3 => Action::Commit { property: id, owner: who, channel, side, amount },
+            0 => Action::Send {
+                property: id,
+                from: who,
+                to: other,
+                amount,
+            },
+            1 => Action::Mint {
+                property: id,
+                actor: who,
+                to: other,
+                amount,
+            },
+            2 => Action::Burn {
+                property: id,
+                actor: who,
+                amount,
+            },
+            3 => Action::Commit {
+                property: id,
+                owner: who,
+                channel,
+                side,
+                amount,
+            },
             4 => Action::Withdraw {
-                property: id, owner: who, channel, side, amount,
+                property: id,
+                owner: who,
+                channel,
+                side,
+                amount,
                 unlock: if step % 53 == 0 { 0 } else { 40 + step * 2 },
             },
             _ => Action::ChannelMove {
-                property: id, source: channel, side, destination, receiving, amount,
+                property: id,
+                source: channel,
+                side,
+                destination,
+                receiving,
+                amount,
             },
         };
         let tx = step + 100;
         let before = ledger.clone();
         let expect = spec.apply(tx, operation);
         let actual = ledger.apply(txid(tx), operation.into_operation());
-        assert_eq!(actual.is_ok(), expect, "step={step}, operation={operation:?}, actual={actual:?}");
+        assert_eq!(
+            actual.is_ok(),
+            expect,
+            "step={step}, operation={operation:?}, actual={actual:?}"
+        );
         if expect {
             accepted += 1;
             assert!(ledger.is_processed(txid(tx)));
@@ -438,8 +684,11 @@ fn vector_oracle_refines_heterogeneous_rust_maps_through_randomized_operations()
             let before = ledger.clone();
             let expected_mature = spec.mature(height);
             let actual_mature = ledger.settle_due_withdrawals_unverified(height);
-            assert_eq!(actual_mature.ok(), expected_mature,
-                "withdrawal maturity mismatch at {step}");
+            assert_eq!(
+                actual_mature.ok(),
+                expected_mature,
+                "withdrawal maturity mismatch at {step}"
+            );
             if actual_mature.is_err() {
                 assert_eq!(ledger, before);
             }
