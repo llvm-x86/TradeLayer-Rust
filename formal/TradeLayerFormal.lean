@@ -3130,4 +3130,70 @@ theorem midpoint_lower_bound_within_length
   rw [midpoint_column_lower_bound_is_exact rows query sorted]
   exact column_count_before_le_length rows query
 
+
+/-- If the canonical sorted-list lookup returns a nonzero balance, its
+lower-bound index identifies the exact key/value record in the list.
+This provides the successful-search index counterpart to the absent-key
+insertion-position theorem. -/
+theorem sorted_vec_hit_at_lower_bound
+    (rows : List (Nat × Nat)) (query : Nat)
+    (sorted : SortedVecKeys rows)
+    (hit : sortedVecGet rows query ≠ 0) :
+    rows.get? (columnCountBefore rows query) =
+      some (query, sortedVecGet rows query) := by
+  induction rows with
+  | nil =>
+      simp [sortedVecGet] at hit
+  | cons pair tail ih =>
+      rcases pair with ⟨stored, atoms⟩
+      obtain ⟨above, tailSorted⟩ := sorted
+      by_cases smaller : query < stored
+      · simp [sortedVecGet, smaller] at hit
+      · by_cases equal : query = stored
+        · subst query
+          have noEarlier : columnCountBefore tail stored = 0 :=
+            column_count_before_none tail stored (by
+              intro entry member
+              have greater := above entry member
+              omega)
+          simp [columnCountBefore, noEarlier, sortedVecGet]
+        · have later : stored < query := by omega
+          have tailHit : sortedVecGet tail query ≠ 0 := by
+            simpa [sortedVecGet, smaller, equal] using hit
+          have tailIndex := ih tailSorted tailHit
+          simpa [columnCountBefore, later, sortedVecGet,
+            smaller, equal] using tailIndex
+
+/-- The canonical Rust balance map never stores zero values. Thus an
+absent lookup can be represented by None and a present lookup by the
+precise lower-bound index. The index is mathematical Nat, not Rust usize. -/
+def midpointColumnFind (rows : List (Nat × Nat))
+    (query : Nat) : Option Nat :=
+  if midpointColumnRead rows query = 0 then none
+  else some (midpointColumnLowerBound rows query)
+
+theorem midpoint_find_success_points_to_exact_record
+    (rows : List (Nat × Nat)) (query index : Nat)
+    (sorted : SortedVecKeys rows)
+    (found : midpointColumnFind rows query = some index) :
+    rows.get? index = some (query, midpointColumnRead rows query) := by
+  unfold midpointColumnFind at found
+  by_cases zero : midpointColumnRead rows query = 0
+  · simp [zero] at found
+  · have position : midpointColumnLowerBound rows query = index := by
+      simpa [zero] using found
+    rw [← position, midpoint_column_lower_bound_is_exact rows query sorted]
+    rw [midpoint_column_read_equals_sorted_vec rows query sorted]
+    exact sorted_vec_hit_at_lower_bound rows query sorted
+      (by simpa [midpoint_column_read_equals_sorted_vec rows query sorted] using zero)
+
+theorem midpoint_find_missing_returns_zero
+    (rows : List (Nat × Nat)) (query : Nat)
+    (missing : midpointColumnFind rows query = none) :
+    midpointColumnRead rows query = 0 := by
+  unfold midpointColumnFind at missing
+  by_cases zero : midpointColumnRead rows query = 0
+  · exact zero
+  · simp [zero] at missing
+
 end TradeLayerFormal
