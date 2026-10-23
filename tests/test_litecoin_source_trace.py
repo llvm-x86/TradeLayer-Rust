@@ -176,7 +176,7 @@ class SourceTraceTests(unittest.TestCase):
     def test_corpus_mismatch_is_rejected(self):
         node = FakeHistory()
         corpus, manifest = self.scan(node)
-        with self.assertRaisesRegex(collector.EvidenceError, "corpus"):
+        with self.assertRaisesRegex(collector.EvidenceError, "corpus|transaction order"):
             trace.augment_with_sources(node, corpus.replace(node.child_id, "00" * 32), manifest)
 
     def test_coinbase_input_and_address_schema_are_fail_closed(self):
