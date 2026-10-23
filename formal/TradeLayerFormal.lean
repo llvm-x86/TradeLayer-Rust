@@ -4037,21 +4037,28 @@ theorem native_indexed_encode_commutes
   | zero =>
       cases rows with
       | nil =>
-          simp [nativeIndexedColumnPut, indexedColumnPut, encodeNativeRows]
+          by_cases zero : amount = 0
+          · simp [nativeIndexedColumnPut, indexedColumnPut, encodeNativeRows, zero]
+          · simp [nativeIndexedColumnPut, indexedColumnPut, encodeNativeRows, zero]
       | cons pair tail =>
           rcases pair with ⟨stored, old⟩
           have validStored : ValidAccountBytes stored.accountBytes :=
             validRows (stored, old) (by simp)
           by_cases equal : stored = key
           · subst key
-            simp [nativeIndexedColumnPut, indexedColumnPut, encodeNativeRows]
+            by_cases zero : amount = 0
+            · simp [nativeIndexedColumnPut, indexedColumnPut, encodeNativeRows, zero]
+            · simp [nativeIndexedColumnPut, indexedColumnPut, encodeNativeRows, zero]
           · have rankNotEqual :
                 encodeNativeAccount stored ≠ encodeNativeAccount key := by
               intro same
               exact equal (encode_native_account_injective_on_valid
                 stored key validStored validKey same)
-            simp [nativeIndexedColumnPut, indexedColumnPut, encodeNativeRows,
-              equal, rankNotEqual]
+            by_cases zero : amount = 0
+            · simp [nativeIndexedColumnPut, indexedColumnPut, encodeNativeRows,
+                equal, rankNotEqual, zero]
+            · simp [nativeIndexedColumnPut, indexedColumnPut, encodeNativeRows,
+                equal, rankNotEqual, zero]
   | succ index ih =>
       cases rows with
       | nil => rfl
