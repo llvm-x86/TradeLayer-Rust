@@ -3,6 +3,7 @@ name: Kani checked accounting
 on:
   pull_request:
     paths:
+      - "src/atomic_batch.rs"
       - "src/checked_amounts.rs"
       - "src/ledger.rs"
       - "src/ledger_channels_impl.rs"
@@ -14,6 +15,7 @@ on:
   push:
     branches: [main]
     paths:
+      - "src/atomic_batch.rs"
       - "src/checked_amounts.rs"
       - "src/ledger.rs"
       - "src/ledger_channels_impl.rs"

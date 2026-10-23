@@ -414,3 +414,79 @@ fn randomized_legal_and_illegal_transfers_preserve_every_invariant() {
         assert_eq!(ledger.verify_conservation(), Ok(()), "after {i}");
     }
 }
+
+#[test]
+fn duplicate_late_in_batch_rolls_back_every_collection() {
+    let mut ledger = Ledger::new();
+    ledger
+        .apply(tx(1), create(20, PropertyKind::Fixed, 100))
+        .unwrap();
+    let before = ledger.clone();
+    let result = ledger.apply_batch([
+        (tx(2), send(20, "alice", "bob", 20)),
+        (tx(3), create(21, PropertyKind::Managed, 50)),
+        (tx(2), send(20, "bob", "carol", 1)),
+    ]);
+    assert_eq!(result, Err(LedgerError::AlreadyProcessed(tx(2))));
+    assert_eq!(ledger, before);
+    assert!(!ledger.is_processed(tx(2)));
+    assert!(!ledger.is_processed(tx(3)));
+    assert!(ledger.property(p(21)).is_none());
+    assert_eq!(ledger.verify_conservation(), Ok(()));
+}
+
+#[test]
+fn late_overflow_rolls_back_earlier_mint_and_replay_markers() {
+    let mut ledger = Ledger::new();
+    ledger
+        .apply(tx(1), create(22, PropertyKind::Managed, u128::MAX - 1))
+        .unwrap();
+    let before = ledger.clone();
+    let result = ledger.apply_batch([
+        (
+            tx(2),
+            Operation::Mint {
+                id: p(22),
+                issuer: a("alice"),
+                to: a("bob"),
+                amount_atoms: 1,
+            },
+        ),
+        (
+            tx(3),
+            Operation::Mint {
+                id: p(22),
+                issuer: a("alice"),
+                to: a("bob"),
+                amount_atoms: 1,
+            },
+        ),
+    ]);
+    assert_eq!(result, Err(LedgerError::ArithmeticOverflow));
+    assert_eq!(ledger, before);
+    assert!(!ledger.is_processed(tx(2)));
+    assert!(!ledger.is_processed(tx(3)));
+    assert_eq!(ledger.available_atoms(p(22), &a("bob")), 0);
+    assert_eq!(ledger.verify_conservation(), Ok(()));
+}
+
+#[test]
+fn iterator_panic_during_staging_preserves_public_ledger() {
+    let mut ledger = Ledger::new();
+    ledger
+        .apply(tx(1), create(23, PropertyKind::Fixed, 100))
+        .unwrap();
+    let before = ledger.clone();
+    let partial = std::iter::once((tx(2), send(23, "alice", "bob", 20))).chain(
+        std::iter::once_with(|| -> (TxId, Operation) {
+            panic!("deliberate panic after a valid staged transaction")
+        }),
+    );
+    let caught = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        ledger.apply_batch(partial)
+    }));
+    assert!(caught.is_err());
+    assert_eq!(ledger, before);
+    assert!(!ledger.is_processed(tx(2)));
+    assert_eq!(ledger.verify_conservation(), Ok(()));
+}

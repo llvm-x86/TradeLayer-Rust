@@ -366,16 +366,15 @@ impl Ledger {
         &mut self,
         transactions: impl IntoIterator<Item = (TxId, Operation)>,
     ) -> Result<(), LedgerError> {
-        let mut pending = self.clone();
-        for (txid, op) in transactions {
-            if !pending.processed.insert(txid) {
-                return Err(LedgerError::AlreadyProcessed(txid));
+        crate::atomic_batch::stage_validate_commit(self, |pending| {
+            for (txid, op) in transactions {
+                if !pending.processed.insert(txid) {
+                    return Err(LedgerError::AlreadyProcessed(txid));
+                }
+                pending.execute(txid, op)?;
             }
-            pending.execute(txid, op)?;
-        }
-        pending.verify_conservation()?;
-        *self = pending;
-        Ok(())
+            pending.verify_conservation()
+        })
     }
 
     fn put_balance(&mut self, id: PropertyId, account: AccountId, atoms: u128) {
