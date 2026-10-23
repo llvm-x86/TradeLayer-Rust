@@ -232,8 +232,15 @@ def checked_parent_output(rpc, prev_txid: str, prev_vout: int,
     if not isinstance(decoded, list) or len(decoded) != len(outputs) or prev_vout >= len(outputs):
         raise base.EvidenceError("previous transaction output list mismatch")
     item = check_output(decoded[prev_vout], prev_vout, outputs[prev_vout])
+    if "header_hex" not in block:
+        block["header_hex"] = base.checked_header(rpc, block_hash, None, block["merkleroot"])
     item.update({"txid": prev_txid, "blockhash": block_hash,
-                 "height": block["height"], "position": positions[0]})
+                 "height": block["height"], "position": positions[0],
+                 "header_hex": block["header_hex"],
+                 "merkle_branch": base.merkle_branch(block["tx"], positions[0]),
+                 "block_tx_count": len(block["tx"]),
+                 "raw_hex": raw_hex.lower(),
+                 "mweb": base.parse_transaction(raw_hex)["mweb"]})
     return item
 
 
@@ -298,6 +305,8 @@ def augment_with_sources(rpc, tsv: str, manifest: dict) -> dict:
         if not isinstance(decoded, list) or len(decoded) != len(outputs):
             raise base.EvidenceError("candidate decoded output count mismatch")
         output_provenance = [check_output(out, i, outputs[i]) for i, out in enumerate(decoded)]
+        if any(prev == "00" * 32 and vout == 0xffffffff for prev, vout in inputs):
+            raise base.EvidenceError("coinbase cannot be a TradeLayer sender input")
         vin = tx.get("vin")
         if not isinstance(vin, list) or len(vin) != len(inputs):
             raise base.EvidenceError("candidate decoded input count mismatch")

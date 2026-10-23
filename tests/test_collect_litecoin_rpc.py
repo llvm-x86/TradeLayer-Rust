@@ -15,6 +15,14 @@ SYNTHETIC = Path(__file__).resolve().parents[1] / 'fixtures' / 'synthetic_transa
 PUBLIC = Path(__file__).resolve().parents[1] / 'fixtures' / 'real_transactions.tsv'
 
 
+def fake_header(prev, merkle, nonce=0):
+    """Synthetic header; its SHA256d becomes the fake block hash (no PoW)."""
+    raw = (b'\x00\x00\x00\x20' + bytes.fromhex(prev)[::-1] + bytes.fromhex(merkle)[::-1]
+           + (1_700_000_000).to_bytes(4, 'little') + (0x1e0ffff0).to_bytes(4, 'little')
+           + nonce.to_bytes(4, 'little'))
+    return raw.hex(), collector.sha256d(raw)[::-1].hex()
+
+
 def fixture(path):
     return [line.split('\t') for line in path.read_text().splitlines() if line and not line.startswith('#')]
 
@@ -31,7 +39,7 @@ class FakeRpc:
             self.txs.append({'txid': txid, 'hex': hex_value, 'vout': [
                 {'n': n, 'scriptPubKey': {'hex': script}} for n, script in enumerate(scripts)]})
         self.parent = '10' * 32
-        self.block_hash = '20' * 32
+        self.header, self.block_hash = fake_header(self.parent, collector.merkle_root(self.txids))
         self.block = {
             'hash': self.block_hash,
             'height': height,
@@ -55,6 +63,10 @@ class FakeRpc:
                 self.hash_queries += 1
                 return self.block_hash if not self.reorg or self.hash_queries == 1 else '30' * 32
             raise AssertionError(params)
+        if method == 'getblockheader':
+            if params != [self.block_hash, False]:
+                raise AssertionError(params)
+            return self.header
         if method == 'getblock':
             if params != [self.block_hash, 2]:
                 raise AssertionError(params)
@@ -240,6 +252,66 @@ class MwebAndLegacyCarrierTests(unittest.TestCase):
                        'addnode', 'setnetworkactive', 'getpeerinfo']:
             with self.assertRaisesRegex(collector.EvidenceError, 'unsupported RPC method'):
                 rpc.call(method)
+
+
+
+class HeaderAndBranchTests(unittest.TestCase):
+    def test_branch_roundtrip_all_positions_and_sizes(self):
+        for size in range(1, 12):
+            txids = [collector.sha256d(bytes([size, i]))[::-1].hex() for i in range(size)]
+            root = collector.merkle_root(txids)
+            for index, txid in enumerate(txids):
+                branch = collector.merkle_branch(txids, index)
+                self.assertEqual(collector.root_from_branch(txid, branch, index), root)
+                collector.verify_merkle_position(txid, branch, index, size, root)
+                if size > 1:
+                    # Membership alone is position-ambiguous for a self-paired
+                    # right-edge leaf; position binding must still refuse.
+                    with self.assertRaises(collector.EvidenceError):
+                        collector.verify_merkle_position(txid, branch, index ^ 1, size, root)
+                if size % 2 and index == size - 1:
+                    # An inflated count moves the right edge; the self-paired
+                    # leaf no longer sits on it. (For other leaves tx_count is
+                    # node-reported and not header-authenticated.)
+                    with self.assertRaises(collector.EvidenceError):
+                        collector.verify_merkle_position(txid, branch, index, size + 1, root)
+        with self.assertRaises(collector.EvidenceError):
+            collector.root_from_branch(txids[0], [], 1)
+
+    def test_scan_records_headers_and_branches(self):
+        rpc = FakeRpc(fixture(SYNTHETIC))
+        _, manifest = collector.scan_blocks(rpc, 'test', 101, 101)
+        self.assertEqual(manifest['block_headers'], {'101': rpc.header})
+        for record in manifest['transactions']:
+            root = collector.root_from_branch(record['txid'], record['merkle_branch'],
+                                              record['transaction_position'])
+            self.assertEqual(root, collector.parse_header(rpc.header)['merkleroot'])
+
+    def test_header_binding_failures(self):
+        rpc = FakeRpc(fixture(SYNTHETIC))
+        good = rpc.header
+        for header, message in [
+            (fake_header('10' * 32, collector.merkle_root(rpc.txids), nonce=1)[0], 'do not hash'),
+            ('00' * 79, 'exactly 80 bytes'),
+        ]:
+            rpc.header = header
+            with self.assertRaisesRegex(collector.EvidenceError, message):
+                collector.scan_blocks(rpc, 'test', 101, 101)
+        rpc.header = good
+        wrong_parent, wrong_parent_hash = fake_header('11' * 32, collector.merkle_root(rpc.txids))
+        rpc.header, rpc.block_hash, rpc.block['hash'] = wrong_parent, wrong_parent_hash, wrong_parent_hash
+        with self.assertRaisesRegex(collector.EvidenceError, 'header parent mismatch'):
+            collector.scan_blocks(rpc, 'test', 101, 101)
+        wrong_root, wrong_root_hash = fake_header('10' * 32, 'ee' * 32)
+        rpc.header, rpc.block_hash, rpc.block['hash'] = wrong_root, wrong_root_hash, wrong_root_hash
+        with self.assertRaisesRegex(collector.EvidenceError, 'header Merkle root mismatch'):
+            collector.scan_blocks(rpc, 'test', 101, 101)
+
+    def test_duplicate_txid_block_rejected(self):
+        rows = fixture(SYNTHETIC)
+        rpc = FakeRpc([rows[0], rows[0]])
+        with self.assertRaisesRegex(collector.EvidenceError, 'duplicate txid'):
+            collector.scan_blocks(rpc, 'test', 101, 101)
 
 
 if __name__ == '__main__':

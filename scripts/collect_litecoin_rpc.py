@@ -75,6 +75,92 @@ def merkle_root(txids: list[str]) -> str:
     return level[0][::-1].hex()
 
 
+def merkle_branch(txids: list[str], index: int) -> list[str]:
+    """Sibling hashes (display order) proving txids[index] under the root."""
+    if not 0 <= index < len(txids):
+        raise EvidenceError("Merkle branch index outside block")
+    level = [bytes.fromhex(require_hash(s, "Merkle leaf"))[::-1] for s in txids]
+    branch = []
+    while len(level) > 1:
+        if len(level) % 2:
+            level.append(level[-1])
+        branch.append(level[index ^ 1][::-1].hex())
+        level = [sha256d(level[n] + level[n + 1]) for n in range(0, len(level), 2)]
+        index //= 2
+    return branch
+
+
+def root_from_branch(txid: str, branch: list[str], index: int) -> str:
+    node = bytes.fromhex(require_hash(txid, "Merkle leaf"))[::-1]
+    for sibling in branch:
+        other = bytes.fromhex(require_hash(sibling, "Merkle sibling"))[::-1]
+        node = sha256d(other + node) if index & 1 else sha256d(node + other)
+        index //= 2
+    if index != 0:
+        raise EvidenceError("Merkle branch too short for position")
+    return node[::-1].hex()
+
+
+def verify_merkle_position(txid: str, branch: list[str], index: int, tx_count: int,
+                           root: str) -> None:
+    """Bind a canonical block position, not just membership, to the root.
+
+    The last element of an odd level is paired with itself, so a branch alone
+    does not fix position. Every self-pairing must occur at the right edge of
+    a level whose width follows from tx_count (as reported by the node).
+    tx_count itself is not committed by the header: for a leaf that never
+    self-pairs, a duplicated-tail mutation (CVE-2012-2459 shape) yields the
+    same root and the same position, so position remains canonical.
+    """
+    if type(tx_count) is not int or type(index) is not int or not 0 <= index < tx_count:
+        raise EvidenceError("Merkle position outside block")
+    expected_depth = (tx_count - 1).bit_length()
+    if len(branch) != expected_depth:
+        raise EvidenceError("Merkle branch depth does not match transaction count")
+    node, position, width = require_hash(txid, "Merkle leaf"), index, tx_count
+    for sibling in branch:
+        if require_hash(sibling, "Merkle sibling") == node:
+            if position % 2 or position != width - 1:
+                raise EvidenceError("self-paired Merkle node away from the right edge")
+        elif position % 2 == 0 and position == width - 1:
+            raise EvidenceError("right-edge Merkle node must pair with itself")
+        node = root_from_branch(node, [sibling], position % 2)
+        position //= 2
+        width = (width + 1) // 2
+    if node != root:
+        raise EvidenceError("Merkle branch does not reach the header root")
+
+
+def parse_header(header_hex: str) -> dict:
+    """80-byte Bitcoin-family header; identity hash is SHA256d (PoW is Scrypt)."""
+    if not isinstance(header_hex, str) or len(header_hex) != 160:
+        raise EvidenceError("block header must be exactly 80 bytes")
+    try:
+        raw = bytes.fromhex(header_hex)
+    except ValueError as err:
+        raise EvidenceError("malformed block header hex") from err
+    return {"hash": sha256d(raw)[::-1].hex(), "version": int.from_bytes(raw[0:4], "little"),
+            "prev": raw[4:36][::-1].hex(), "merkleroot": raw[36:68][::-1].hex(),
+            "time": int.from_bytes(raw[68:72], "little"),
+            "bits": int.from_bytes(raw[72:76], "little"),
+            "nonce": int.from_bytes(raw[76:80], "little")}
+
+
+def checked_header(rpc, block_hash: str, parent: str | None, merkle: str) -> str:
+    """Bind the node's block hash, parent link and Merkle root to raw header bytes."""
+    header_hex = rpc.call("getblockheader", [block_hash, False])
+    if not isinstance(header_hex, str):
+        raise EvidenceError("invalid raw block header")
+    header = parse_header(header_hex.lower())
+    if header["hash"] != block_hash:
+        raise EvidenceError("block header bytes do not hash to the block hash")
+    if parent is not None and header["prev"] != parent:
+        raise EvidenceError("block header parent mismatch")
+    if header["merkleroot"] != merkle:
+        raise EvidenceError("block header Merkle root mismatch")
+    return header_hex.lower()
+
+
 class Cursor:
     def __init__(self, data: bytes):
         self.data = data
@@ -325,6 +411,7 @@ def scan_blocks(rpc, network: str, start: int, end: int, confirmations: int = 6)
     if anchor is not None:
         anchor = require_hash(anchor, "prior block hash")
     block_hashes = {}
+    headers = {}
     rows = ["# label\tnetwork\treported_height\treported_block_hash\texpected_txid\traw_transaction_hex"]
     evidence = []
     chain_label = {"main": "litecoin-mainnet", "test": "litecoin-testnet", "regtest": "litecoin-regtest"}[network]
@@ -344,8 +431,12 @@ def scan_blocks(rpc, network: str, start: int, end: int, confirmations: int = 6)
         if not isinstance(txs, list) or not txs or not all(isinstance(tx, dict) for tx in txs):
             raise EvidenceError("getblock verbosity=2 requires decoded transactions")
         txids = [require_hash(tx.get("txid"), "txid") for tx in txs]
-        if merkle_root(txids) != require_hash(block.get("merkleroot"), "block Merkle root"):
+        if len(txids) != len(set(txids)):
+            raise EvidenceError("duplicate txid in block")
+        root = merkle_root(txids)
+        if root != require_hash(block.get("merkleroot"), "block Merkle root"):
             raise EvidenceError("block Merkle root mismatch")
+        headers[str(height)] = checked_header(rpc, block_hash, parent, root)
         selected = []
         for index, tx in enumerate(txs):
             carriers = selected_candidates(tx)
@@ -375,6 +466,8 @@ def scan_blocks(rpc, network: str, start: int, end: int, confirmations: int = 6)
             rows.append("\t".join([label, chain_label, str(height), block_hash, record["txid"], record["raw_hex"]]))
             evidence.append({"label": label, "height": height, "blockhash": block_hash,
                              "transaction_position": record["index"], "txid": record["txid"],
+                             "merkle_branch": merkle_branch(txids, record["index"]),
+                             "block_tx_count": len(txids),
                              "outputs": record["outputs"],
                              "legacy_js_carrier": record["legacy_js_carrier"],
                              "carrier_class": carrier_class(record)})
@@ -403,6 +496,7 @@ def scan_blocks(rpc, network: str, start: int, end: int, confirmations: int = 6)
         "previous_block_hash": anchor,
         "last_block_hash": parent,
         "blocks_scanned": len(block_hashes),
+        "block_headers": headers,
         "transactions_selected": len(evidence),
         "transactions": evidence,
     }

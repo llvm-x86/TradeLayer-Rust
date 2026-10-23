@@ -52,6 +52,8 @@ jobs:
         run: python3 -m unittest discover -s tests -p test_litecoin_source_trace.py -v
       - name: Litecoin historical lead resolution and loopback transport tests (synthetic)
         run: python3 -m unittest discover -s tests -p test_litecoin_resolve_leads.py -v
+      - name: Litecoin offline evidence verifier tests (synthetic trace + pinned genesis headers)
+        run: python3 -m unittest discover -s tests -p test_verify_litecoin_evidence.py -v
       - name: Legacy comparison integration tests (fake decoder only)
         run: node tests/test_compare_legacy.cjs
       - name: Rust diagnostic export smoke test

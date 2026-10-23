@@ -38,10 +38,17 @@ def output(n, satoshis, script_hex, address=None, legacy=True):
     return {"n": n, "value": satoshis / 100_000_000, "scriptPubKey": spk}
 
 
+def fake_header(prev, merkle):
+    """Synthetic header; its SHA256d becomes the fake block hash (no PoW)."""
+    raw = (b"\x00\x00\x00\x20" + bytes.fromhex(prev)[::-1] + bytes.fromhex(merkle)[::-1]
+           + (1_700_000_000).to_bytes(4, "little") + (0x1e0ffff0).to_bytes(4, "little") + bytes(4))
+    return raw.hex(), collector.sha256d(raw)[::-1].hex()
+
+
 class FakeHistory:
     """Two linked node-accepted blocks with parent outpoint provenance."""
     def __init__(self):
-        self.h0, self.h1, self.old = "10" * 32, "20" * 32, "01" * 32
+        self.old = "01" * 32
         self.genesis = trace.PINNED_GENESIS["test"]
         self.origin_script = bytes.fromhex("76a914" + "11" * 20 + "88ac")
         self.ref_script = bytes.fromhex("76a914" + "22" * 20 + "88ac")
@@ -54,6 +61,8 @@ class FakeHistory:
             (0, self.opret), (10_000, self.ref_script), (20_000, self.ref2_script)
         ])
         self.child_id, _ = collector.inspect_raw_transaction(self.child_raw)
+        self.header0, self.h0 = fake_header(self.old, collector.merkle_root([self.prev_id]))
+        self.header1, self.h1 = fake_header(self.h0, collector.merkle_root([self.child_id]))
         self.parent = {
             "txid": self.prev_id, "blockhash": self.h0, "confirmations": 30,
             "vout": [output(0, 500_000_000, self.origin_script.hex(), "Lsender")],
@@ -78,6 +87,12 @@ class FakeHistory:
         self.reorg_at = 1_000_000
         self.txindex_synced = True
 
+    def rebuild_child_block(self):
+        """Re-derive header, hash and Merkle root after mutating the child tx."""
+        root = collector.merkle_root([self.child_id])
+        self.header1, self.h1 = fake_header(self.h0, root)
+        self.child_block.update({"hash": self.h1, "merkleroot": root})
+
     def call(self, method, params=None):
         params = params or []
         if method == "getblockchaininfo":
@@ -100,6 +115,11 @@ class FakeHistory:
             if params == [101]:
                 self.hash_queries += 1
                 return self.h1 if self.hash_queries < self.reorg_at else "30" * 32
+        if method == "getblockheader":
+            if params == [self.h1, False]:
+                return self.header1
+            if params == [self.h0, False]:
+                return self.header0
         if method == "getblock":
             if params == [self.h1, 2]:
                 return self.child_block
@@ -205,9 +225,9 @@ class SourceTraceTests(unittest.TestCase):
         node.child["txid"], node.child["hex"] = node.child_id, coinbase
         node.child["vin"] = [{"coinbase": "00"}]
         node.child["vout"] = [output(0, 0, node.opret.hex())]
-        node.child_block["merkleroot"] = collector.merkle_root([node.child_id])
+        node.rebuild_child_block()
         corpus, manifest = self.scan(node)
-        with self.assertRaises(collector.EvidenceError):
+        with self.assertRaisesRegex(collector.EvidenceError, "coinbase"):
             trace.augment_with_sources(node, corpus, manifest)
 
     def test_decimal_output_strictness(self):
