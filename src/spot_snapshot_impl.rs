@@ -84,10 +84,6 @@ fn spot_read_pair(reader: &mut Cursor<'_>) -> Result<SpotPair, SpotSnapshotError
 impl SpotExchange {
     /// Re-run independently checkable invariants for each serialized state
     /// before encoding or publishing a recovered checkpoint.
-    fn validate_spot_snapshot(&self) -> Result<(), SpotSnapshotError> {
-        self.validate_spot_snapshot_mode(false)
-    }
-
     fn validate_spot_snapshot_mode(
         &self,
         allow_combined_clearing: bool,
