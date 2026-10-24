@@ -4824,7 +4824,13 @@ theorem sorted_column_pivot_iff_before_count
             simpa using inRange
           have tailTheorem := ih index tailSorted tailRange
           by_cases smaller : stored < query
-          · simpa [columnAt, columnCountBefore, smaller] using tailTheorem
+          · have shift :
+                (index < columnCountBefore tail query) ↔
+                  (index + 1 < 1 + columnCountBefore tail query) := by
+              omega
+            have exactResult := tailTheorem.trans shift
+            simpa [columnAt, columnCountBefore, smaller,
+              Nat.succ_eq_add_one] using exactResult
           · have noCount : columnCountBefore tail query = 0 := noTail smaller
             have impossible :
                 ¬∃ row, columnAt tail index = some row ∧ row.1 < query := by
