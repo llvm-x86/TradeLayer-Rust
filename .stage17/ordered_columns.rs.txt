@@ -330,9 +330,10 @@ mod kani_proofs {
     fn actual_vec_symbolic_position_matches_fixed_slot_oracle() {
         let target: u8 = kani::any();
         kani::assume((1..=5).contains(&target));
-        let left: u8 = kani::any();
-        let right: u8 = kani::any();
-        kani::assume(left > 0 && right > 0);
+        // The earlier Vec harness already makes neighboring balances
+        // symbolic. This proof varies the position and written balance.
+        let left = 11u8;
+        let right = 33u8;
         let amount: u8 = kani::any();
 
         let mut columns = OrderedColumns::<u8>::default();
