@@ -537,7 +537,9 @@ fn one_ledger_forbids_backdated_marks_and_spot_orders() {
     assert_eq!(state, before);
     // A mark at the already completed spot height is permitted as an
     // end-of-block settlement, with no source-authority inference.
-    state.settle_mark_to_market_unverified(tx(10), 110, 101 * ONE).unwrap();
+    state
+        .settle_mark_to_market_unverified(tx(10), 110, 101 * ONE)
+        .unwrap();
     let after_mark = state.clone();
     assert_eq!(
         state.enqueue_spot_order_unverified(spot_order(11, "alice", 7, 8)),
