@@ -152,11 +152,16 @@ impl ClearingSandbox {
         if spot.ledger().property(collateral).is_none() {
             return Err(ClearingError::UnknownCollateral);
         }
-        if !spot.ledger().has_no_channel_or_settlement_liabilities_unverified() {
+        if !spot
+            .ledger()
+            .has_no_channel_or_settlement_liabilities_unverified()
+        {
             return Err(ClearingError::UnsupportedExistingLiabilities);
         }
         spot.verify_reserves()?;
-        if spot.ledger().balances_with_account_prefix("~")
+        if spot
+            .ledger()
+            .balances_with_account_prefix("~")
             .iter()
             .any(|(_, account, _)| !account.as_str().starts_with("~spot:"))
         {
@@ -203,7 +208,9 @@ impl ClearingSandbox {
         operation: Operation,
     ) -> Result<(), ClearingError> {
         self.transaction(external, move |staged| {
-            staged.spot.apply_joint_ledger_operation_unverified(external, operation)?;
+            staged
+                .spot
+                .apply_joint_ledger_operation_unverified(external, operation)?;
             Ok(())
         })
     }
@@ -341,7 +348,11 @@ impl ClearingSandbox {
                     return Err(ClearingError::EscrowCollision);
                 }
             } else if staged.margin_escrows.len() >= MAX_CLEARING_OWNERS
-                || staged.spot.ledger().available_atoms(staged.collateral, &escrow) > 0
+                || staged
+                    .spot
+                    .ledger()
+                    .available_atoms(staged.collateral, &escrow)
+                    > 0
             {
                 return Err(ClearingError::TooManyOwners);
             }
@@ -385,7 +396,12 @@ impl ClearingSandbox {
                 owner.clone(),
                 amount_atoms,
             )?;
-            if staged.spot.ledger().available_atoms(staged.collateral, &escrow) == 0 {
+            if staged
+                .spot
+                .ledger()
+                .available_atoms(staged.collateral, &escrow)
+                == 0
+            {
                 staged.margin_escrows.remove(&owner);
             }
             Ok(())
