@@ -4136,4 +4136,147 @@ theorem native_indexed_write_preserves_encoded_order
     (native_account_sorted_embeds_in_nat rows sorted validRows)
 
 
+
+/-!
+## Stage 18: conditional executable-storage refinement contract
+
+This specifies the *precise external obligations* for a concrete
+OrderedColumns<(PropertyId, AccountId)> storage backend. The source-level
+Rust implementation, standard-library Vec, allocator, and compiler are not
+Lean definitions. Their correctness is a separately required premise:
+the search index must equal the native-key lower bound and indexed writes
+must correspond to the native positional list operation.
+
+Given these stated premises, the prior Stage 16 native-account proof shows
+the exact canonical map update on all valid finite sorted supports.
+There are no new axioms and no claim of unconditional Rust verification.
+-/
+
+/-- All stored account identities must satisfy the exact native parser
+limits; zero balances are a separate canonical representation policy. -/
+def NativeRowsValid (rows : List (NativeAccountKey × Nat)) : Prop :=
+  ∀ entry ∈ rows, ValidAccountBytes entry.1.accountBytes
+
+/-- The execution-level search returns a usize interpreted as Nat.
+The correspondence to a Rust usize is a trust boundary, not asserted here. -/
+structure OrderedVecSearchContract
+    (locate : List (NativeAccountKey × Nat) → NativeAccountKey → Nat) :
+    Prop where
+  lower_bound_exact :
+    ∀ (rows : List (NativeAccountKey × Nat)) (key : NativeAccountKey),
+      NativeAccountSorted rows →
+      NativeRowsValid rows →
+      ValidAccountBytes key.accountBytes →
+      locate rows key = nativeAccountCountBefore rows key
+
+/-- A separate operation contract for Rust Vec replacement, insertion and
+removal. It asserts the exact resulting ordered sequence at a valid index.
+Source code, capacity growth, move semantics and panics remain external. -/
+structure OrderedVecMutationContract
+    (writeAt : Nat → List (NativeAccountKey × Nat) →
+      NativeAccountKey → Nat → List (NativeAccountKey × Nat)) :
+    Prop where
+  indexed_write_exact :
+    ∀ (index : Nat) (rows : List (NativeAccountKey × Nat))
+      (key : NativeAccountKey) (amount : Nat),
+      index ≤ rows.length →
+      NativeRowsValid rows →
+      ValidAccountBytes key.accountBytes →
+      writeAt index rows key amount =
+        nativeIndexedColumnPut index rows key amount
+
+/-- Abstract image of a concrete Rust call after separating search
+decisions and positional Vec mutations into explicit contract terms. -/
+def contractedOrderedVecWrite
+    (locate : List (NativeAccountKey × Nat) → NativeAccountKey → Nat)
+    (writeAt : Nat → List (NativeAccountKey × Nat) →
+      NativeAccountKey → Nat → List (NativeAccountKey × Nat))
+    (rows : List (NativeAccountKey × Nat))
+    (key : NativeAccountKey) (amount : Nat) :
+    List (NativeAccountKey × Nat) :=
+  writeAt (locate rows key) rows key amount
+
+/-- Conditional *structural* refinement: a concrete state update satisfying
+both exact standard-library contracts has exactly the canonical abstract
+map state, for any finite valid sorted support and any nonnegative amount.
+This proof does not discharge its executable Rust contracts. -/
+theorem contracted_ordered_vec_write_refines
+    (locate : List (NativeAccountKey × Nat) → NativeAccountKey → Nat)
+    (writeAt : Nat → List (NativeAccountKey × Nat) →
+      NativeAccountKey → Nat → List (NativeAccountKey × Nat))
+    (search : OrderedVecSearchContract locate)
+    (mutation : OrderedVecMutationContract writeAt)
+    (rows : List (NativeAccountKey × Nat))
+    (key : NativeAccountKey) (amount : Nat)
+    (sorted : NativeAccountSorted rows)
+    (valid : NativeRowsValid rows)
+    (keyValid : ValidAccountBytes key.accountBytes) :
+    encodeNativeRows
+      (contractedOrderedVecWrite locate writeAt rows key amount) =
+        sortedVecPut (encodeNativeRows rows)
+          (encodeNativeAccount key) amount := by
+  unfold contractedOrderedVecWrite
+  rw [search.lower_bound_exact rows key sorted valid keyValid]
+  have within :
+      nativeAccountCountBefore rows key ≤ rows.length := by
+    rw [← native_midpoint_lower_bound_matches_native_scan
+      rows key sorted valid keyValid]
+    exact native_midpoint_lower_bound_is_within_support rows key sorted valid
+  rw [mutation.indexed_write_exact
+    (nativeAccountCountBefore rows key) rows key amount within valid keyValid]
+  exact native_lower_bound_indexed_refines_sorted_put
+    rows key amount sorted valid keyValid
+
+/-- A concrete write satisfying the contracts changes precisely the queried
+balance; no claim about allocation failure or compiled execution is added. -/
+theorem contracted_ordered_vec_write_reads_written
+    (locate : List (NativeAccountKey × Nat) → NativeAccountKey → Nat)
+    (writeAt : Nat → List (NativeAccountKey × Nat) →
+      NativeAccountKey → Nat → List (NativeAccountKey × Nat))
+    (search : OrderedVecSearchContract locate)
+    (mutation : OrderedVecMutationContract writeAt)
+    (rows : List (NativeAccountKey × Nat))
+    (key : NativeAccountKey) (amount : Nat)
+    (sorted : NativeAccountSorted rows)
+    (valid : NativeRowsValid rows)
+    (keyValid : ValidAccountBytes key.accountBytes) :
+    sortedVecGet
+      (encodeNativeRows (contractedOrderedVecWrite locate writeAt rows key amount))
+      (encodeNativeAccount key) = amount := by
+  rw [contracted_ordered_vec_write_refines locate writeAt
+    search mutation rows key amount sorted valid keyValid]
+  exact sorted_vec_put_reads_written_key
+    (encodeNativeRows rows) (encodeNativeAccount key) amount
+    (native_account_sorted_embeds_in_nat rows sorted valid)
+
+/-- Any unrelated valid native-key balance is preserved, conditional on
+the same two concrete search/mutation contracts. -/
+theorem contracted_ordered_vec_write_frames
+    (locate : List (NativeAccountKey × Nat) → NativeAccountKey → Nat)
+    (writeAt : Nat → List (NativeAccountKey × Nat) →
+      NativeAccountKey → Nat → List (NativeAccountKey × Nat))
+    (search : OrderedVecSearchContract locate)
+    (mutation : OrderedVecMutationContract writeAt)
+    (rows : List (NativeAccountKey × Nat))
+    (key other : NativeAccountKey) (amount : Nat)
+    (sorted : NativeAccountSorted rows)
+    (valid : NativeRowsValid rows)
+    (keyValid : ValidAccountBytes key.accountBytes)
+    (otherValid : ValidAccountBytes other.accountBytes)
+    (different : other ≠ key) :
+    sortedVecGet
+      (encodeNativeRows (contractedOrderedVecWrite locate writeAt rows key amount))
+      (encodeNativeAccount other) =
+    sortedVecGet (encodeNativeRows rows) (encodeNativeAccount other) := by
+  rw [contracted_ordered_vec_write_refines locate writeAt
+    search mutation rows key amount sorted valid keyValid]
+  apply sorted_vec_put_keeps_other_keys
+    (encodeNativeRows rows) (encodeNativeAccount key)
+      (encodeNativeAccount other) amount
+    · exact native_account_sorted_embeds_in_nat rows sorted valid
+    · intro equal
+      exact different (encode_native_account_injective_on_valid
+        other key otherValid keyValid equal)
+
+
 end TradeLayerFormal
