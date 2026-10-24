@@ -135,7 +135,6 @@ mod tests {
         }
     }
 
-
     /// A deterministic native-key corpus spanning the full parser domain,
     /// including prefixes, boundary byte lengths and u32::MAX property IDs.
     /// BTreeMap checks storage effects; the separate Python oracle checks
@@ -181,10 +180,19 @@ mod tests {
         step: usize,
         canonical: bool,
     ) {
-        let observed: Vec<_> = actual.iter().map(|(key, &atoms)| (key.clone(), atoms)).collect();
-        let expected: Vec<_> = oracle.iter().map(|(key, &atoms)| (key.clone(), atoms)).collect();
+        let observed: Vec<_> = actual
+            .iter()
+            .map(|(key, &atoms)| (key.clone(), atoms))
+            .collect();
+        let expected: Vec<_> = oracle
+            .iter()
+            .map(|(key, &atoms)| (key.clone(), atoms))
+            .collect();
         assert_eq!(observed, expected, "state diverged after mutation {step}");
-        assert!(actual.has_strict_keys(), "unsorted/duplicate keys at {step}");
+        assert!(
+            actual.has_strict_keys(),
+            "unsorted/duplicate keys at {step}"
+        );
         assert_eq!(actual.len(), oracle.len(), "size mismatch at {step}");
         if canonical {
             assert!(
@@ -259,7 +267,9 @@ mod tests {
         let mut oracle = BTreeMap::new();
         let mut seed = 0x2026_1700_cafe_f00du64;
         for step in 0..12_000usize {
-            seed = seed.wrapping_mul(2862933555777941757).wrapping_add(3037000493);
+            seed = seed
+                .wrapping_mul(2862933555777941757)
+                .wrapping_add(3037000493);
             let key = keys[((seed >> 21) as usize) % keys.len()].clone();
             if step % 5 == 0 {
                 assert_eq!(
@@ -269,7 +279,11 @@ mod tests {
                 );
             } else {
                 // Raw storage permits zero, unlike canonical account updates.
-                let amount = if step % 11 == 0 { 0 } else { u128::from(seed >> 7) };
+                let amount = if step % 11 == 0 {
+                    0
+                } else {
+                    u128::from(seed >> 7)
+                };
                 assert_eq!(
                     actual.insert(key.clone(), amount),
                     oracle.insert(key.clone(), amount),
@@ -307,7 +321,6 @@ mod kani_proofs {
     use super::*;
     use crate::canonical_columns::put_nonzero;
 
-
     /// Real Vec-backed storage versus an independent five-slot model.
     /// The symbolic update key crosses before/between/after and present
     /// positions; a zero amount exercises deletion from every location.
@@ -328,8 +341,13 @@ mod kani_proofs {
 
         // This array oracle updates a fixed key slot, without sorting,
         // binary search, insert, removal or Vec element shifting.
-        let mut oracle: [Option<u128>; 5] =
-            [None, Some(u128::from(left)), None, Some(u128::from(right)), None];
+        let mut oracle: [Option<u128>; 5] = [
+            None,
+            Some(u128::from(left)),
+            None,
+            Some(u128::from(right)),
+            None,
+        ];
         let target_index = usize::from(target - 1);
         oracle[target_index] = if amount == 0 {
             None
