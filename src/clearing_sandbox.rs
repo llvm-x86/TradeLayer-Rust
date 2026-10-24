@@ -190,6 +190,9 @@ impl ClearingSandbox {
             return Err(ClearingError::UnsupportedExistingLiabilities);
         }
         spot.verify_reserves()?;
+        if spot.has_clearing_activity_unverified() {
+            return Err(ClearingError::EscrowCollision);
+        }
         if spot
             .ledger()
             .balances_with_account_prefix("~")
