@@ -48,6 +48,8 @@ jobs:
         run: cargo test --frozen --test clearing_sandbox
       - name: Verify Stage 25B single-ledger spot and clearing invariants
         run: cargo test --frozen --test spot_clearing_one_ledger
+      - name: Verify Stage 25B collateral floors and fail-closed funding
+        run: cargo test --frozen --test clearing_collateral_policy
       - name: Release build without network or lockfile changes
         run: cargo build --all-targets --release --frozen
       - name: Legacy withdrawal amount mismatch audit
