@@ -203,9 +203,9 @@ fn late_spot_reserve_failure_restores_margin_and_pending_orders() {
     let queued = state.clone();
     assert!(matches!(
         state.process_spot_block_unverified(10),
-        Err(ClearingError::Spot(SpotError::Ledger(
+        Err(ClearingError::Ledger(
             LedgerError::InsufficientAvailable { .. }
-        )))
+        ))
     ));
     assert_eq!(state, queued);
     assert_eq!(state.margin_atoms(&a("alice")), 750_000_000);
