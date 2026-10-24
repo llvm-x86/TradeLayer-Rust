@@ -493,4 +493,25 @@ mod kani_proofs {
             }
         );
     }
+
+    /// Isolate the real AccountId(String) derived comparator from Vec
+    /// allocation and element shifting. For an arbitrary printable u8
+    /// query against one fixed ASCII account, the Rust Ord result must be
+    /// exactly the independent byte comparison.
+    #[kani::proof]
+    #[kani::unwind(20)]
+    fn native_account_one_byte_ascii_ord_matches_byte_oracle() {
+        use crate::ledger::AccountId;
+
+        let symbol: u8 = kani::any();
+        kani::assume((0x21..=0x7e).contains(&symbol));
+        let bytes = [symbol];
+        let text = std::str::from_utf8(&bytes).unwrap();
+        let query = AccountId::try_from(text).unwrap();
+        let anchor = AccountId::try_from("A").unwrap();
+
+        assert_eq!(anchor.cmp(&query), b'A'.cmp(&symbol));
+        assert_eq!(query.cmp(&anchor), symbol.cmp(&b'A'));
+        assert_eq!(query == anchor, symbol == b'A');
+    }
 }
