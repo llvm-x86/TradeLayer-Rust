@@ -4792,8 +4792,8 @@ theorem column_at_exists_in_range
       | succ index =>
           have tailRange : index < tail.length := by
             simpa using inRange
-          obtain ⟨row, at⟩ := ih index tailRange
-          exact ⟨row, at⟩
+          obtain ⟨row, found⟩ := ih index tailRange
+          exact ⟨row, found⟩
 
 /-- The pivot at a valid index is smaller than the query precisely when
 that index precedes the independently scanned lower-bound count. -/
@@ -4817,12 +4817,12 @@ theorem sorted_column_pivot_iff_before_count
       cases index with
       | zero =>
           by_cases smaller : stored < query
-          · simp [columnAt, columnCountBefore, smaller]
+          · simp [columnAt, columnCountBefore, smaller] <;> omega
           · simp [columnAt, columnCountBefore, smaller, noTail smaller]
       | succ index =>
           have tailRange : index < tail.length := by
             simpa using inRange
-          have tailTheorem := ih tailSorted tailRange
+          have tailTheorem := ih index tailSorted tailRange
           by_cases smaller : stored < query
           · simpa [columnAt, columnCountBefore, smaller] using tailTheorem
           · have noCount : columnCountBefore tail query = 0 := noTail smaller
@@ -4848,21 +4848,21 @@ theorem encoded_pivot_below_iff_lower_count
     (inRange : index < rows.length) :
     encodedIndexedPivotBelow rows query index =
       decide (index < columnCountBefore rows query) := by
-  obtain ⟨row, at⟩ := column_at_exists_in_range rows index inRange
+  obtain ⟨row, found⟩ := column_at_exists_in_range rows index inRange
   have equivalence :=
     sorted_column_pivot_iff_before_count rows query index sorted inRange
   by_cases smaller : row.1 < query
   · have before : index < columnCountBefore rows query :=
-      equivalence.mp ⟨row, at, smaller⟩
-    simp [encodedIndexedPivotBelow, at, smaller, before]
+      equivalence.mp ⟨row, found, smaller⟩
+    simp [encodedIndexedPivotBelow, found, smaller, before]
   · have notBefore : ¬index < columnCountBefore rows query := by
       intro before
       obtain ⟨other, atOther, otherBelow⟩ := equivalence.mpr before
-      rw [at] at atOther
+      rw [found] at atOther
       have equal : row = other := Option.some.inj atOther
       subst other
       exact smaller otherBelow
-    simp [encodedIndexedPivotBelow, at, smaller, notBefore]
+    simp [encodedIndexedPivotBelow, found, smaller, notBefore]
 
 /-- The complete native-key mathematical midpoint-cursor search is exact.
 This proof connects Stages 13–14 and 19 without a separate pivot axiom:
