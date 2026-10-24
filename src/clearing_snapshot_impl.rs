@@ -59,7 +59,9 @@ fn cs_put_account(out: &mut Vec<u8>, owner: &AccountId) {
 }
 
 fn cs_read_account(reader: &mut Cursor<'_>) -> Result<AccountId, ClearingSnapshotError> {
-    let size = reader.u8().map_err(|_| cs_bad("account length truncated"))? as usize;
+    let size = reader
+        .u8()
+        .map_err(|_| cs_bad("account length truncated"))? as usize;
     if size == 0 || size > crate::ledger::MAX_ACCOUNT_BYTES {
         return Err(cs_bad("account size invalid"));
     }
@@ -136,7 +138,9 @@ impl ClearingSandbox {
         for id in &self.seen {
             bytes.extend_from_slice(&id.as_bytes());
         }
-        let spot = self.spot.combined_spot_snapshot_bytes_unverified()
+        let spot = self
+            .spot
+            .combined_spot_snapshot_bytes_unverified()
             .map_err(ClearingSnapshotError::Spot)?;
         cs_u32(&mut bytes, spot.len())?;
         bytes.extend_from_slice(&spot);
@@ -165,9 +169,8 @@ impl ClearingSandbox {
         let genesis = r.fixed::<32>().map_err(|_| cs_bad("network genesis"))?;
         let chain_id = r.fixed::<32>().map_err(|_| cs_bad("network chain"))?;
         let contract = r.u32().map_err(|_| cs_bad("contract truncated"))?;
-        let collateral = PropertyId::try_from(
-            r.u32().map_err(|_| cs_bad("collateral truncated"))?,
-        ).map_err(|_| cs_bad("invalid collateral"))?;
+        let collateral = PropertyId::try_from(r.u32().map_err(|_| cs_bad("collateral truncated"))?)
+            .map_err(|_| cs_bad("invalid collateral"))?;
         if network.tag() != tag
             || genesis != network.genesis().0
             || chain_id != network.chain_id().0
@@ -180,7 +183,9 @@ impl ClearingSandbox {
         let collateral_policy = if cs_read_bool(&mut r)? {
             let p = CollateralPolicy {
                 initial_atoms_per_contract: r.u128().map_err(|_| cs_bad("initial policy"))?,
-                maintenance_atoms_per_contract: r.u128().map_err(|_| cs_bad("maintenance policy"))?,
+                maintenance_atoms_per_contract: r
+                    .u128()
+                    .map_err(|_| cs_bad("maintenance policy"))?,
             };
             Some(p.validate().map_err(ClearingSnapshotError::Clearing)?)
         } else {
@@ -205,7 +210,8 @@ impl ClearingSandbox {
             notional_e8: m.notional_e8,
             inverse: m.inverse,
             rounding: m.rounding,
-        }) != expected_mark_terms {
+        }) != expected_mark_terms
+        {
             return Err(cs_bad("mark terms mismatch"));
         }
         let clearing_activity = cs_read_bool(&mut r)?;
@@ -215,7 +221,10 @@ impl ClearingSandbox {
         for _ in 0..count {
             let owner = cs_read_account(&mut r)?;
             let escrow = cs_read_account(&mut r)?;
-            if prev_owner.as_ref().is_some_and(|previous| &owner <= previous) {
+            if prev_owner
+                .as_ref()
+                .is_some_and(|previous| &owner <= previous)
+            {
                 return Err(cs_bad("unsorted or repeated margin owners"));
             }
             prev_owner = Some(owner.clone());
@@ -226,10 +235,12 @@ impl ClearingSandbox {
         let mut prev_owner = None;
         for _ in 0..count {
             let owner = cs_read_account(&mut r)?;
-            let size = i64::from_be_bytes(
-                r.fixed::<8>().map_err(|_| cs_bad("position quantity"))?,
-            );
-            if size == 0 || prev_owner.as_ref().is_some_and(|previous| &owner <= previous) {
+            let size = i64::from_be_bytes(r.fixed::<8>().map_err(|_| cs_bad("position quantity"))?);
+            if size == 0
+                || prev_owner
+                    .as_ref()
+                    .is_some_and(|previous| &owner <= previous)
+            {
                 return Err(cs_bad("zero, duplicate or unsorted position"));
             }
             prev_owner = Some(owner.clone());
@@ -240,7 +251,8 @@ impl ClearingSandbox {
         let mut prev_id = None;
         for _ in 0..count {
             let id = TxId::from_bytes(
-                r.fixed::<32>().map_err(|_| cs_bad("clearing replay marker"))?,
+                r.fixed::<32>()
+                    .map_err(|_| cs_bad("clearing replay marker"))?,
             );
             if prev_id.is_some_and(|previous| id <= previous) {
                 return Err(cs_bad("duplicate or unsorted clearing replay marker"));
@@ -252,13 +264,17 @@ impl ClearingSandbox {
         if spot_len == 0 {
             return Err(cs_bad("zero-sized inner spot"));
         }
-        let spot_data = r.take(spot_len).map_err(|_| cs_bad("inner spot truncated"))?;
-        r.end().map_err(|_| cs_bad("trailing clearing snapshot bytes"))?;
+        let spot_data = r
+            .take(spot_len)
+            .map_err(|_| cs_bad("inner spot truncated"))?;
+        r.end()
+            .map_err(|_| cs_bad("trailing clearing snapshot bytes"))?;
         let spot = SpotExchange::from_combined_spot_snapshot_bytes_unverified(
             spot_data,
             expected_permitted,
             clearing_activity,
-        ).map_err(ClearingSnapshotError::Spot)?;
+        )
+        .map_err(ClearingSnapshotError::Spot)?;
         let recovered = Self {
             network,
             contract,
@@ -270,7 +286,9 @@ impl ClearingSandbox {
             mark_policy,
             seen,
         };
-        recovered.verify().map_err(ClearingSnapshotError::Clearing)?;
+        recovered
+            .verify()
+            .map_err(ClearingSnapshotError::Clearing)?;
         if recovered.snapshot_bytes()?.as_slice() != bytes {
             return Err(cs_bad("noncanonical clearing snapshot"));
         }
