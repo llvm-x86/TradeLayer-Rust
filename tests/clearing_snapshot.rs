@@ -407,9 +407,16 @@ fn recomputed_crc_cannot_launder_clearing_history_owner_or_replay_order() {
     }
     let escrow_byte = escrow_byte.unwrap();
     let mut forged = original.clone();
-    forged[escrow_byte] = if forged[escrow_byte] == b'0' { b'1' } else { b'0' };
+    forged[escrow_byte] = if forged[escrow_byte] == b'0' {
+        b'1'
+    } else {
+        b'0'
+    };
     repair_crc(&mut forged);
-    assert!(restore(&forged).is_err(), "undocumented escrow owner must fail");
+    assert!(
+        restore(&forged).is_err(),
+        "undocumented escrow owner must fail"
+    );
 
     let position_count = read_count(&original, &mut at);
     assert_eq!(position_count, 2);
