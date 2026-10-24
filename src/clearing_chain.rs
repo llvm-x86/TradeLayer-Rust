@@ -331,6 +331,9 @@ impl ClearingChainState {
         with_crc(out).map_err(|_| cc_bad("combined checkpoint exceeds size limit"))
     }
 
+    /// Independent network/anchor, contract, collateral and policy arguments
+    /// are deliberately explicit; do not infer trust solely from CRC bytes.
+    #[allow(clippy::too_many_arguments)]
     pub fn from_checkpoint_bytes(
         bytes: &[u8],
         expected_network: TradeLayerMainnet,
@@ -454,6 +457,8 @@ impl ClearingChainState {
         Ok(())
     }
 
+    /// Mirror the explicit independent trust expectations of the byte parser.
+    #[allow(clippy::too_many_arguments)]
     pub fn load_checkpoint(
         path: &Path,
         network: TradeLayerMainnet,
