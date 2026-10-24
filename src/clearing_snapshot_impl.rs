@@ -4,7 +4,6 @@
 //
 // TLCL v1 is an OFFLINE audit artifact. CRC guards accidental corruption,
 // not forged authorization, chain consensus, or an economic proof.
-use crate::clearing_math::PnlRounding;
 use crate::codec::{verify_crc, with_crc, Cursor, MAX_CHECKPOINT_BYTES};
 use crate::spot::SpotSnapshotError;
 
