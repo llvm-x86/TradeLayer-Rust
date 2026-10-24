@@ -426,6 +426,7 @@ impl JointProtocolState {
             .verify_conservation()
             .map_err(SpotError::Ledger)?;
         self.spot.verify_reserves()?;
+        self.spot.reject_foreign_reserves_for_joint_unverified()?;
         if self.spot.processed_through() != self.finalized_height {
             return Err(JointError::InconsistentComponents);
         }
