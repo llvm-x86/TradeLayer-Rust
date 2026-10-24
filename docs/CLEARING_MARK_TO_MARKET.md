@@ -44,6 +44,15 @@ or a signed transaction. The price and height advance **only after** a
 successful clone/check/swap mark settlement. Old or duplicate heights,
 unconfigured policies, and a second policy configuration are refused.
 
+The configured initial mark cannot predate an already finalized spot height,
+or be installed while spot input events remain queued. Once configured,
+spot events/blocks must have a height **strictly greater** than the current
+mark, while a new end-of-block mark must be at least the latest finalized
+spot block and strictly later than the preceding mark. A mark can therefore
+settle the spot activity at the same height but cannot be backdated behind
+it. These checks are *local research ordering constraints*, not verified L1
+order or a replacement for the authenticated Stage 23 replay boundary.
+
 The selected policy uses the pure Stage 24A PnL formulas:
 
 \`\`\`
