@@ -190,3 +190,45 @@ To test the remaining *Rust implementation* trust boundary instead of merely add
 4. **Binary artifact identity.** Connect a reviewed compiler/runtime target and reproducible build to a specific verified executable hash; attach proof metadata, Lean version, trusted assumptions, and a CI attestation. A binary or compiler correctness claim requires a dedicated target-semantics/refinement proof.
 
 This work is a **proof specification and independently checked abstract theorem set**, designed to become one component of a future proof-carrying protocol artifact.
+
+
+## Stage 18: conditional native-key ordered-Vec implementation contract
+
+Stage 17 added the native-key Rust differential oracle and two more bounded
+actual-Vec Kani harnesses, establishing **12 passing harnesses** at the
+validated Stage 17 revision. Stage 16 established mathematical equivalence
+between full-length native account-key updates and the sorted Nat map.
+
+Stage 18 makes the remaining *executable* assumptions explicit in Lean:
+
+| Contract / theorem | Exact role | What remains externally trusted |
+| --- | --- | --- |
+| `NativeRowsValid` | All account strings satisfy the 1–90-byte ASCII parser domain | Actual parser/String behavior and object construction |
+| `OrderedVecSearchContract.lower_bound_exact` | Rust search returns the count of strictly smaller native keys on every valid finite sorted support | Ord, UTF-8 byte ordering, Rust binary_search_by and usize interpretation |
+| `OrderedVecMutationContract.indexed_write_exact` | Given a bounded index, an indexed write produces precisely the full positional insert/replace/zero-delete list | Rust Vec::insert/remove, element movement, memory, failure and compiler assumptions |
+| `OrderedVecInvariantContract` | Each admitted step preserves sorted support and valid keys | Correspondence of successful executable intermediate states to the list model |
+| `contracted_ordered_vec_write_refines` | Given search and mutation contracts, the entire encoded result equals sortedVecPut | Discharging both executable contracts |
+| `contracted_ordered_vec_trace_refines` | Assuming invariant preservation, any finite successful history equals the canonical sorted-map trace | Preservation of intermediate Rust states and the panic/OOM boundary |
+| `contracted_ordered_vec_trace_refines_function` | Final encoded state implements the pure functional balance-update trace | The three contract obligations and initial representation |
+
+These theorems are Lean kernel-checkable *implications* with explicit
+premises. Actual Rust production code has not been formally translated
+into Lean. The contracts make no allocator-totality, panic-free-execution,
+compiler-correctness, process-abort atomicity or authenticated-input claim.
+
+**Successful writes and failed allocation:** In the Rust prototype,
+`stage_validate_commit` provides a boundary for ordinary returned Err
+values after its candidate clone. The Stage 18 proof models successful
+storage operations. A panic during cloned-state construction or mutation
+requires a separate unwind-state test; process abort/OOM is outside the
+rollback theorem. Persistence across a crash is an independent concern.
+
+**Executable checks:** Stage 17's `src/ordered_columns.rs` tests and
+`scripts/audit_native_wallet_order.py` provide finite differential
+evidence. A separate Stage 18 Rust test targets all 90 prefix-related
+account lengths within one property and checkpoint roundtrips.
+
+Further work could formally verify a narrower, self-implemented lower-bound
+routine under a specified slice abstraction or integrate an independently
+validated Rust verification framework. The frozen zero-third-party-crate
+consensus policy remains in force.
