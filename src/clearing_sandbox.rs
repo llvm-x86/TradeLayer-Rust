@@ -43,6 +43,13 @@ pub enum ClearingError {
     TooManyOwners,
     TooManyInputs,
     TooManyTrades,
+    InvalidCollateralPolicy,
+    CollateralPolicyFrozen,
+    InsufficientMargin {
+        account: AccountId,
+        required_atoms: u128,
+        available_atoms: u128,
+    },
     Replay(TxId),
     PositionOverflow,
     ArithmeticOverflow,
@@ -89,6 +96,27 @@ pub struct MatchedContractTrade {
     pub contracts: u64,
 }
 
+/// Explicit research-only collateral policy. This does NOT specify TradeLayer
+/// economic consensus; the caller cannot change it after the first clearing
+/// operation, and no historical contract price or leverage is inferred.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CollateralPolicy {
+    pub initial_atoms_per_contract: u128,
+    pub maintenance_atoms_per_contract: u128,
+}
+
+impl CollateralPolicy {
+    fn validate(self) -> Result<Self, ClearingError> {
+        if self.initial_atoms_per_contract == 0
+            || self.maintenance_atoms_per_contract == 0
+            || self.maintenance_atoms_per_contract > self.initial_atoms_per_contract
+        {
+            return Err(ClearingError::InvalidCollateralPolicy);
+        }
+        Ok(self)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FundingReceipt {
     pub nominal_atoms: u128,
@@ -108,6 +136,7 @@ pub struct ClearingSandbox {
     spot: SpotExchange,
     margin_escrows: BTreeMap<AccountId, AccountId>,
     positions: BTreeMap<AccountId, i64>,
+    collateral_policy: Option<CollateralPolicy>,
     seen: BTreeSet<TxId>,
 }
 
@@ -174,6 +203,7 @@ impl ClearingSandbox {
             spot,
             margin_escrows: BTreeMap::new(),
             positions: BTreeMap::new(),
+            collateral_policy: None,
             seen: BTreeSet::new(),
         };
         candidate.verify()?;
@@ -236,6 +266,24 @@ impl ClearingSandbox {
         staged.verify()?;
         *self = staged;
         Ok(count)
+    }
+
+    /// Configure explicit, bounded synthetic initial/maintenance amounts
+    /// once, before any clearing event. No production consensus activation.
+    pub fn with_collateral_policy_unverified(
+        mut self,
+        policy: CollateralPolicy,
+    ) -> Result<Self, ClearingError> {
+        if self.collateral_policy.is_some() || !self.seen.is_empty() || !self.positions.is_empty() {
+            return Err(ClearingError::CollateralPolicyFrozen);
+        }
+        self.collateral_policy = Some(policy.validate()?);
+        self.verify()?;
+        Ok(self)
+    }
+
+    pub const fn collateral_policy(&self) -> Option<CollateralPolicy> {
+        self.collateral_policy
     }
 
     pub fn processed_count(&self) -> usize {
@@ -408,6 +456,36 @@ impl ClearingSandbox {
         })
     }
 
+    fn check_collateral(
+        &self,
+        owner: &AccountId,
+        contracts: i64,
+        for_increasing_exposure: bool,
+    ) -> Result<(), ClearingError> {
+        if contracts == 0 {
+            return Ok(());
+        }
+        if let Some(policy) = self.collateral_policy {
+            let per_contract = if for_increasing_exposure {
+                policy.initial_atoms_per_contract
+            } else {
+                policy.maintenance_atoms_per_contract
+            };
+            let required = u128::from(contracts.unsigned_abs())
+                .checked_mul(per_contract)
+                .ok_or(ClearingError::ArithmeticOverflow)?;
+            let available = self.margin_atoms(owner);
+            if available < required {
+                return Err(ClearingError::InsufficientMargin {
+                    account: owner.clone(),
+                    required_atoms: required,
+                    available_atoms: available,
+                });
+            }
+        }
+        Ok(())
+    }
+
     /// Matches are only simulated by a caller; no exchange evidence is
     /// established. Equal/opposite updates preserve global signed OI.
     pub fn apply_matched_trades_unverified(
@@ -441,6 +519,13 @@ impl ClearingSandbox {
                     let after = before
                         .checked_add(delta)
                         .ok_or(ClearingError::PositionOverflow)?;
+                    let flipped = before != 0 && after != 0
+                        && before.is_negative() != after.is_negative();
+                    staged.check_collateral(
+                        owner,
+                        after,
+                        flipped || after.unsigned_abs() > before.unsigned_abs(),
+                    )?;
                     if after == 0 {
                         staged.positions.remove(owner);
                     } else {
@@ -629,6 +714,7 @@ impl ClearingSandbox {
             if *size == 0 || !self.margin_escrows.contains_key(owner) {
                 return Err(ClearingError::UnknownMarginOwner);
             }
+            self.check_collateral(owner, *size, false)?;
             net = net
                 .checked_add(i128::from(*size))
                 .ok_or(ClearingError::PositionOverflow)?;
