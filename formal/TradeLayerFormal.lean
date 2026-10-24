@@ -4917,12 +4917,13 @@ def nativeColumnAt : List (NativeAccountKey × Nat) →
 
 /-- Direct native-key indexed read plus native lexicographic comparison.
 A miss is false, although lower-bound only reads in-range positions. -/
-def nativeIndexedPivotBelow
+noncomputable def nativeIndexedPivotBelow
     (rows : List (NativeAccountKey × Nat))
-    (key : NativeAccountKey) (index : Nat) : Bool :=
-  match nativeColumnAt rows index with
-  | none => false
-  | some record => decide (NativeAccountLess record.1 key)
+    (key : NativeAccountKey) (index : Nat) : Bool := by
+  classical
+  exact match nativeColumnAt rows index with
+    | none => false
+    | some record => decide (NativeAccountLess record.1 key)
 
 /-- Encoding preserves both the exact zero-based index and its stored
 amount for all finite lists, including out-of-range indices. -/
@@ -4950,6 +4951,7 @@ theorem native_indexed_pivot_encodes
     nativeIndexedPivotBelow rows key index =
       encodedIndexedPivotBelow (encodeNativeRows rows)
         (encodeNativeAccount key) index := by
+  classical
   induction rows generalizing index with
   | nil =>
       cases index <;>
