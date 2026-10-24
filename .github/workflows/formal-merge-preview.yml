@@ -1,0 +1,45 @@
+name: Formal/Main merge preflight preview
+on:
+  pull_request:
+    branches: [formal/protocol-safety-lean-v1]
+    paths:
+      - '.github/workflows/formal-merge-preview.yml'
+      - 'scripts/preview_formal_main_merge.sh'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: formal-main-preview-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  merged-tree:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout PR head, preserving an unmerged proof tree
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install pinned Rust 1.90
+        run: rustup toolchain install 1.90.0 --profile minimal --component rustfmt --component clippy
+      - name: Merge into ephemeral workspace and run full Rust preflight
+        run: bash scripts/preview_formal_main_merge.sh
+      - name: Lean kernel and independent axiom audit of merged tree
+        uses: leanprover/lean-action@v1
+        with:
+          lake-package-directory: formal
+          build: true
+          test: false
+          lint: false
+          use-mathlib-cache: false
+          leanchecker: true
+          leanchecker-args: 'TradeLayerFormal'
+          axiom-audit: true
+          axiom-audit-root: 'TradeLayerFormal'
+      - name: Kani verification of merged real Rust sources
+        uses: model-checking/kani-github-action@f838096619a707b0f6b2118cf435eaccfa33e51f # v1.1
+        with:
+          kani-version: '0.68.0'
+          command: cargo-kani
