@@ -4667,4 +4667,101 @@ theorem contracted_ordered_vec_trace_function_from_primitives
       writes rows amounts sorted valid validWrites represents
 
 
+
+/-!
+## Stage 19: half-open cursor algorithm and one-pivot read contract
+
+The production search now has a candidate explicit half-open [lo, hi)
+implementation. This theorem isolates its control-flow arithmetic: with
+a sorted list, the *remaining* external requirement is only that each
+indexed comparison correctly reports whether the pivot precedes the
+mathematical native-key lower bound. No Rust Vec indexing, native Ord,
+allocator, usize, compiler or chain semantics are assumed proved.
+-/
+
+/-- A fuel-bounded half-open search. The cursor arithmetic mirrors the
+candidate Rust implementation (lo + (hi-lo)/2), and one step must narrow
+the interval. The predicate is the result of reading a pivot from storage,
+not a hard-coded mathematical comparison. -/
+def halfOpenPredicateSearch
+    (pivotBelow : Nat → Bool) (lo hi : Nat) : Nat → Nat
+  | 0 => lo
+  | fuel + 1 =>
+      if lo < hi then
+        let middle := lo + (hi - lo) / 2
+        if pivotBelow middle then
+          halfOpenPredicateSearch pivotBelow (middle + 1) hi fuel
+        else
+          halfOpenPredicateSearch pivotBelow lo middle fuel
+      else lo
+
+/-- Correctness of half-open binary-search *control flow* under one local
+pivot predicate contract. The proof is unbounded in the support length,
+and the fuel bound follows from the strictly shrinking cursor interval.
+A correct native-row comparison is a separate executable obligation. -/
+theorem half_open_predicate_search_exact
+    (pivotBelow : Nat → Bool) (target size fuel : Nat)
+    (pivotCorrect : ∀ index, index < size →
+      pivotBelow index = decide (index < target)) :
+    ∀ lo hi, lo ≤ target → target ≤ hi → hi ≤ size →
+      hi - lo ≤ fuel →
+      halfOpenPredicateSearch pivotBelow lo hi fuel = target := by
+  induction fuel with
+  | zero =>
+      intro lo hi below above _ budget
+      have equal : lo = target := by omega
+      simp [halfOpenPredicateSearch, equal]
+  | succ remaining ih =>
+      intro lo hi below above bounded budget
+      by_cases advancing : lo < hi
+      · let middle := lo + (hi - lo) / 2
+        have loMiddle : lo ≤ middle := by
+          dsimp [middle]
+          omega
+        have middleHi : middle < hi := by
+          dsimp [middle]
+          omega
+        have middleBound : middle < size := by omega
+        have compare := pivotCorrect middle middleBound
+        by_cases before : middle < target
+        · have nextBelow : middle + 1 ≤ target := by omega
+          have nextBudget : hi - (middle + 1) ≤ remaining := by omega
+          simpa [halfOpenPredicateSearch, advancing, middle, compare, before]
+            using (ih (middle + 1) hi nextBelow above bounded nextBudget)
+        · have nextAbove : target ≤ middle := by omega
+          have nextBudget : middle - lo ≤ remaining := by omega
+          simpa [halfOpenPredicateSearch, advancing, middle, compare, before]
+            using (ih lo middle below nextAbove (by omega) nextBudget)
+      · have equal : lo = target := by omega
+        simp [halfOpenPredicateSearch, advancing, equal]
+
+/-- The concrete lower-bound loop's only remaining local search obligation
+can be phrased as an indexed read/comparison against a validated sorted
+native-key list. This is narrower than assuming that the entire Rust
+binary-search routine returns the correct index. -/
+def nativeHalfOpenSearch
+    (pivotBelow : Nat → Bool)
+    (rows : List (NativeAccountKey × Nat)) : Nat :=
+  halfOpenPredicateSearch pivotBelow 0 rows.length rows.length
+
+theorem native_half_open_search_refines_lower_bound
+    (rows : List (NativeAccountKey × Nat))
+    (key : NativeAccountKey) (pivotBelow : Nat → Bool)
+    (sorted : NativeAccountSorted rows)
+    (valid : NativeRowsValid rows)
+    (keyValid : ValidAccountBytes key.accountBytes)
+    (pivotCorrect : ∀ index, index < rows.length →
+      pivotBelow index =
+        decide (index < nativeAccountCountBefore rows key)) :
+    nativeHalfOpenSearch pivotBelow rows =
+      nativeAccountCountBefore rows key := by
+  have bounded : nativeAccountCountBefore rows key ≤ rows.length := by
+    rw [← native_midpoint_lower_bound_matches_native_scan
+      rows key sorted valid keyValid]
+    exact native_midpoint_lower_bound_is_within_support
+      rows key sorted valid
+  exact half_open_predicate_search_exact pivotBelow
+    (nativeAccountCountBefore rows key) rows.length rows.length
+    pivotCorrect 0 rows.length (by omega) bounded (by omega) (by omega)
+
 end TradeLayerFormal
