@@ -16,6 +16,9 @@ use crate::clearing_pnl::{project_pnl_unverified, PnlError, PnlProjection};
 use crate::funding_audit::{audit_funding, FundingAuditError, FundingMode, FundingPosition};
 use crate::hash256::double_sha256;
 use crate::ledger::{AccountId, Ledger, LedgerError, Operation, PropertyId, TxId};
+use crate::liquidation_audit::{
+    assess_liquidation_risk_unverified, LiquidationAuditError, LiquidationRiskReport,
+};
 use crate::network_profile::TradeLayerMainnet;
 use crate::spot::{SpotError, SpotExchange, UnverifiedSpotPlacement};
 use std::collections::{BTreeMap, BTreeSet};
@@ -45,6 +48,7 @@ pub enum ClearingError {
     TooManyTrades,
     InvalidCollateralPolicy,
     CollateralPolicyFrozen,
+    LiquidationPolicyMissing,
     InvalidMarkPolicy,
     MarkPolicyMissing,
     MarkPolicyFrozen,
@@ -66,6 +70,7 @@ pub enum ClearingError {
     Spot(SpotError),
     Funding(FundingAuditError),
     Pnl(PnlError),
+    Liquidation(LiquidationAuditError),
 }
 
 impl core::fmt::Display for ClearingError {
@@ -98,6 +103,11 @@ impl From<FundingAuditError> for ClearingError {
 impl From<PnlError> for ClearingError {
     fn from(error: PnlError) -> Self {
         Self::Pnl(error)
+    }
+}
+impl From<LiquidationAuditError> for ClearingError {
+    fn from(error: LiquidationAuditError) -> Self {
+        Self::Liquidation(error)
     }
 }
 
@@ -418,6 +428,33 @@ impl ClearingSandbox {
             policy.notional_e8,
             policy.inverse,
             policy.rounding,
+        )?)
+    }
+
+    /// Read-only liquidation preflight at a proposed mark. Uses only real
+    /// margin escrows owned by this sole SpotExchange ledger, never free
+    /// available balances, pending spot order reserves, or a separate JS
+    /// insurance DB. It may report risk when actual mark settlement is denied.
+    /// This API NEVER authorizes an AMM match, margin seizure or insurance.
+    pub fn preview_liquidation_unverified(
+        &self,
+        new_height: u64,
+        new_price_e8: u64,
+    ) -> Result<LiquidationRiskReport, ClearingError> {
+        let policy = self
+            .collateral_policy
+            .ok_or(ClearingError::LiquidationPolicyMissing)?;
+        let mark = self.preview_mark_to_market_unverified(new_height, new_price_e8)?;
+        let posted_margins = self
+            .positions
+            .keys()
+            .map(|owner| (owner.clone(), self.margin_atoms(owner)))
+            .collect::<BTreeMap<_, _>>();
+        Ok(assess_liquidation_risk_unverified(
+            &self.positions,
+            &posted_margins,
+            &mark,
+            policy.maintenance_atoms_per_contract,
         )?)
     }
 
