@@ -3,7 +3,7 @@
 set -Eeuo pipefail
 cd "$(git rev-parse --show-toplevel)"
 proof="b6467d893692f58687445488a9a3a0fa0034cee9"
-expected_main="83080fedd6bfdbc368871e4c29ad26d4332bb70f"
+expected_main="afdb836b501547df4fbcd7a4bd9294b9c03aae38"
 [[ -z "$(git status --porcelain)" ]] || { echo 'dirty preview worktree' >&2; exit 1; }
 git merge-base --is-ancestor "$proof" HEAD || { echo 'proof ancestry changed' >&2; exit 1; }
 git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
@@ -54,7 +54,7 @@ for declaration, anchor in insertions:
             raise SystemExit(f"Missing/ambiguous module anchor {anchor}. Review current main manually.")
         lib = lib.replace(anchor, declaration + "\n" + anchor, 1)
 for declaration in (
-    "pub mod clearing_cadence;", "pub mod clearing_math;", "pub mod funding_audit;", *[row[0] for row in insertions]
+    "pub mod clearing_cadence;", "pub mod clearing_math;", "pub mod clearing_sandbox;", "pub mod funding_audit;", *[row[0] for row in insertions]
 ):
     if mod_count(declaration) != 1:
         raise SystemExit(f"Missing/duplicate required Rust module: {declaration}")
@@ -79,6 +79,8 @@ for check in (
     "Independent Node BigInt funding direction and balance conservation",
     "Independent Node BigInt clearing arithmetic vectors",
     "Optional legacy funding runner parses without local checkout",
+    "Verify Stage 25A isolated margin and funding atomicity",
+    "run: cargo test --frozen --test clearing_sandbox",
     "run: python3 scripts/audit_native_wallet_order.py",
     "run: node scripts/audit_clearing_cadence.cjs --check",
     "run: node scripts/audit_clearing_math.cjs --check",
@@ -102,6 +104,8 @@ ci_path.write_text(ci)
 for module in ("atomic_batch", "canonical_columns", "checked_amounts", "journal_move", "ordered_columns"):
     if not Path(f"src/{module}.rs").exists():
         raise SystemExit(f"Missing proof-source module src/{module}.rs")
+if not Path("src/clearing_sandbox.rs").exists():
+    raise SystemExit("Stage 25A clearing sandbox missing")
 if not Path("formal/TradeLayerFormal.lean").exists():
     raise SystemExit("Formal proofs missing")
 if not Path(".cargo/config.toml").exists() or not Path("security/cargo-dependency-policy.toml").exists():
@@ -144,5 +148,6 @@ python3 scripts/audit_native_wallet_order.py
 node scripts/audit_clearing_cadence.cjs --check
 node scripts/audit_clearing_math.cjs --check
 node scripts/audit_funding_vectors.cjs --check
+cargo test --frozen --test clearing_sandbox
 node --check scripts/check_legacy_funding_runtime.cjs
 echo 'PASS: complete Rust merge preflight and Stage 24 + supply-chain audits; no source pushed.'
