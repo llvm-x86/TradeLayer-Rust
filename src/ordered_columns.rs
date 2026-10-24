@@ -135,6 +135,166 @@ mod tests {
         }
     }
 
+    /// A deterministic native-key corpus spanning the full parser domain,
+    /// including prefixes, boundary byte lengths and u32::MAX property IDs.
+    /// BTreeMap checks storage effects; the separate Python oracle checks
+    /// Rust's native tuple/byte ordering against an independent language.
+    fn native_wallet_keys() -> Vec<(crate::ledger::PropertyId, crate::ledger::AccountId)> {
+        use crate::ledger::{AccountId, PropertyId};
+
+        let properties = [1, 2, 7, 65535, u32::MAX]
+            .map(|id| PropertyId::try_from(id).expect("nonzero property"));
+        let edge_names = vec![
+            "!".to_owned(),
+            "~".to_owned(),
+            "A".to_owned(),
+            "A!".to_owned(),
+            "AA".to_owned(),
+            "A~".to_owned(),
+            "a".repeat(89),
+            "a".repeat(90),
+            format!("{}b", "a".repeat(89)),
+            "~".repeat(90),
+            "!".repeat(90),
+            "Z".repeat(90),
+        ];
+        let mut keys = Vec::with_capacity(1100);
+        for (index, name) in edge_names.iter().enumerate() {
+            let property = properties[index % properties.len()];
+            keys.push((property, AccountId::try_from(name.as_str()).unwrap()));
+        }
+        for index in 0..1024u32 {
+            let property = properties[index as usize % properties.len()];
+            let name = format!("wallet-{index:04}");
+            keys.push((property, AccountId::try_from(name.as_str()).unwrap()));
+        }
+        keys.sort();
+        keys.dedup();
+        assert!(keys.len() >= 1024);
+        keys
+    }
+
+    fn assert_native_matches_tree(
+        actual: &OrderedColumns<(crate::ledger::PropertyId, crate::ledger::AccountId)>,
+        oracle: &BTreeMap<(crate::ledger::PropertyId, crate::ledger::AccountId), u128>,
+        step: usize,
+        canonical: bool,
+    ) {
+        let observed: Vec<_> = actual
+            .iter()
+            .map(|(key, &atoms)| (key.clone(), atoms))
+            .collect();
+        let expected: Vec<_> = oracle
+            .iter()
+            .map(|(key, &atoms)| (key.clone(), atoms))
+            .collect();
+        assert_eq!(observed, expected, "state diverged after mutation {step}");
+        assert!(
+            actual.has_strict_keys(),
+            "unsorted/duplicate keys at {step}"
+        );
+        assert_eq!(actual.len(), oracle.len(), "size mismatch at {step}");
+        if canonical {
+            assert!(
+                observed.iter().all(|(_, atoms)| *atoms > 0),
+                "stored zero under canonical policy at {step}"
+            );
+        }
+    }
+
+    #[test]
+    fn native_keys_canonical_growth_shrink_and_trace_match_btree() {
+        let keys = native_wallet_keys();
+        let mut actual = OrderedColumns::default();
+        let mut oracle = BTreeMap::new();
+        let mut capacity_increases = 0usize;
+        let mut last_capacity = actual.entries.capacity();
+        let mut step = 0usize;
+
+        // Grow through 1, 3, 16, 64, 256 and 1024 occupied slots.
+        // Inserting in sorted order forces back insertion and Vec reallocations.
+        for (index, key) in keys.iter().enumerate() {
+            let amount = (index + 1) as u128;
+            crate::canonical_columns::put_nonzero(&mut actual, key.clone(), amount);
+            oracle.insert(key.clone(), amount);
+            if actual.entries.capacity() > last_capacity {
+                last_capacity = actual.entries.capacity();
+                capacity_increases += 1;
+            }
+            assert_native_matches_tree(&actual, &oracle, step, true);
+            step += 1;
+        }
+        assert!(capacity_increases >= 2, "did not exercise Vec growth");
+        assert!(actual.len() >= 1024);
+
+        // Descending deletions force repeat shrink, including empty support.
+        for key in keys.iter().rev() {
+            crate::canonical_columns::put_nonzero(&mut actual, key.clone(), 0);
+            oracle.remove(key);
+            assert_native_matches_tree(&actual, &oracle, step, true);
+            step += 1;
+        }
+        assert_eq!(actual.len(), 0);
+
+        // The deterministic mixed history forces interior insertions, zero
+        // deletion of absent/present keys, replacement and support changes.
+        let mut seed = 0x17_2026_beef_51a9u64;
+        for iteration in 0..12_000usize {
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
+            let index = ((seed >> 16) as usize) % keys.len();
+            let key = keys[index].clone();
+            let amount = if iteration % 7 == 0 {
+                0
+            } else {
+                u128::from((seed >> 33) % 8192 + 1)
+            };
+            crate::canonical_columns::put_nonzero(&mut actual, key.clone(), amount);
+            if amount == 0 {
+                oracle.remove(&key);
+            } else {
+                oracle.insert(key.clone(), amount);
+            }
+            assert_eq!(actual.get(&key).copied(), oracle.get(&key).copied());
+            assert_native_matches_tree(&actual, &oracle, step, true);
+            step += 1;
+        }
+    }
+
+    #[test]
+    fn native_keys_raw_insert_remove_returns_match_tree() {
+        let keys = native_wallet_keys();
+        let mut actual = OrderedColumns::default();
+        let mut oracle = BTreeMap::new();
+        let mut seed = 0x2026_1700_cafe_f00du64;
+        for step in 0..12_000usize {
+            seed = seed
+                .wrapping_mul(2862933555777941757)
+                .wrapping_add(3037000493);
+            let key = keys[((seed >> 21) as usize) % keys.len()].clone();
+            if step % 5 == 0 {
+                assert_eq!(
+                    actual.remove(&key),
+                    oracle.remove(&key),
+                    "remove result at {step}"
+                );
+            } else {
+                // Raw storage permits zero, unlike canonical account updates.
+                let amount = if step % 11 == 0 {
+                    0
+                } else {
+                    u128::from(seed >> 7)
+                };
+                assert_eq!(
+                    actual.insert(key.clone(), amount),
+                    oracle.insert(key.clone(), amount),
+                    "insert result at {step}"
+                );
+            }
+            assert_eq!(actual.get(&key).copied(), oracle.get(&key).copied());
+            assert_native_matches_tree(&actual, &oracle, step, false);
+        }
+    }
+
     #[test]
     fn front_middle_end_insert_replace_and_delete() {
         let mut map = OrderedColumns::<u16>::default();
@@ -160,6 +320,56 @@ mod tests {
 mod kani_proofs {
     use super::*;
     use crate::canonical_columns::put_nonzero;
+
+    /// The front/tail Kani cases supplement the existing symbolic middle-key
+    /// Vec harness; Rust differentials exercise all other key positions.
+    /// Each case selects zero deletion or positive insertion symbolically.
+    /// The fixed-slot oracle avoids comparator and Vec update semantics.
+    fn assert_fixed_slot_update(target: u8, amount: u8) {
+        let mut columns = OrderedColumns::<u8>::default();
+        assert_eq!(columns.insert(2, 11), None);
+        assert_eq!(columns.insert(4, 33), None);
+
+        // Reference state uses fixed-slot assignment, independent of Vec
+        // positional insert/remove, binary search and sorted iteration.
+        let mut oracle: [Option<u128>; 5] = [None, Some(11), None, Some(33), None];
+        oracle[usize::from(target - 1)] = if amount == 0 {
+            None
+        } else {
+            Some(u128::from(amount))
+        };
+
+        put_nonzero(&mut columns, target, u128::from(amount));
+        assert_eq!(
+            columns.len(),
+            oracle.iter().filter(|entry| entry.is_some()).count()
+        );
+        if columns.len() > 1 {
+            assert!(columns.entries[0].0 < columns.entries[1].0);
+        }
+        if columns.len() > 2 {
+            assert!(columns.entries[1].0 < columns.entries[2].0);
+        }
+        assert_eq!(columns.get(&1).copied(), oracle[0]);
+        assert_eq!(columns.get(&2).copied(), oracle[1]);
+        assert_eq!(columns.get(&3).copied(), oracle[2]);
+        assert_eq!(columns.get(&4).copied(), oracle[3]);
+        assert_eq!(columns.get(&5).copied(), oracle[4]);
+    }
+
+    #[kani::proof]
+    #[kani::unwind(16)]
+    fn actual_vec_before_first_anchor() {
+        let amount = if kani::any() { 0 } else { 17 };
+        assert_fixed_slot_update(1, amount);
+    }
+
+    #[kani::proof]
+    #[kani::unwind(16)]
+    fn actual_vec_after_second_anchor() {
+        let amount = if kani::any() { 0 } else { 17 };
+        assert_fixed_slot_update(5, amount);
+    }
 
     /// Proof is over the actual Vec-backed production column store,
     /// not a substitute two-slot model. Fixed key geometry keeps allocation
