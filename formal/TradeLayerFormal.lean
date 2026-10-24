@@ -4303,6 +4303,7 @@ structure OrderedVecInvariantContract
   preserves_valid :
     ∀ (rows : List (NativeAccountKey × Nat))
       (key : NativeAccountKey) (amount : Nat),
+      NativeAccountSorted rows →
       NativeRowsValid rows →
       ValidAccountBytes key.accountBytes →
       NativeRowsValid
@@ -4368,7 +4369,7 @@ theorem contracted_ordered_vec_trace_refines
         intro write member
         exact validWrites write (List.mem_cons.mpr (Or.inr member))
       have nextValid := invariant.preserves_valid
-        rows key amount valid keyValid
+        rows key amount sorted valid keyValid
       have nextSorted := invariant.preserves_sorted
         rows key amount sorted valid keyValid
       change encodeNativeRows
@@ -4419,6 +4420,251 @@ theorem contracted_ordered_vec_trace_refines_function
       rows sorted valid validWrites]
   exact sorted_vec_write_trace_refines
     (encodeNativeWrites writes) (encodeNativeRows rows) amounts represents
+
+
+
+/-!
+## Stage 18b: discharge native-state representation invariants in Lean
+
+The Stage 18 execution theorem initially enumerated sortedness and valid
+identifiers as additional postcondition assumptions. These lemmas relate
+the list operation's key provenance and the injective order encoding, so
+both invariants can instead be derived from the search/mutation contracts.
+They remain conditional on Rust realizing those primitive contracts.
+-/
+
+/-- Positional insertion, replacement and deletion never introduces a
+native key outside the input support or the validated written key. -/
+theorem native_indexed_put_preserves_valid
+    (index : Nat) (rows : List (NativeAccountKey × Nat))
+    (key : NativeAccountKey) (amount : Nat)
+    (valid : NativeRowsValid rows)
+    (keyValid : ValidAccountBytes key.accountBytes) :
+    NativeRowsValid (nativeIndexedColumnPut index rows key amount) := by
+  induction index generalizing rows with
+  | zero =>
+      cases rows with
+      | nil =>
+          by_cases zero : amount = 0
+          · simp [NativeRowsValid, nativeIndexedColumnPut, zero]
+          · simpa [NativeRowsValid, nativeIndexedColumnPut, zero]
+              using keyValid
+      | cons pair tail =>
+          rcases pair with ⟨stored, old⟩
+          have headValid : ValidAccountBytes stored.accountBytes :=
+            valid (stored, old) (by simp)
+          have tailValid : NativeRowsValid tail := by
+            intro entry member
+            exact valid entry (List.mem_cons.mpr (Or.inr member))
+          by_cases same : stored = key
+          · subst key
+            by_cases zero : amount = 0
+            · simpa [NativeRowsValid, nativeIndexedColumnPut, zero]
+                using tailValid
+            · simp [NativeRowsValid, nativeIndexedColumnPut, zero, headValid]
+              intro a b member
+              exact tailValid (a, b) member
+          · by_cases zero : amount = 0
+            · simpa [nativeIndexedColumnPut, same, zero] using valid
+            · simp [NativeRowsValid, nativeIndexedColumnPut,
+                same, zero, keyValid, headValid]
+              intro a b member
+              exact tailValid (a, b) member
+  | succ index ih =>
+      cases rows with
+      | nil =>
+          simp [NativeRowsValid, nativeIndexedColumnPut]
+      | cons pair tail =>
+          rcases pair with ⟨stored, old⟩
+          have headValid : ValidAccountBytes stored.accountBytes :=
+            valid (stored, old) (by simp)
+          have tailValid : NativeRowsValid tail := by
+            intro entry member
+            exact valid entry (List.mem_cons.mpr (Or.inr member))
+          have nextValid := ih tail tailValid
+          intro entry member
+          have memberCases :
+              entry = (stored, old) ∨
+              entry ∈ nativeIndexedColumnPut index tail key amount := by
+            simpa [nativeIndexedColumnPut] using member
+          rcases memberCases with equal | fromTail
+          · subst entry
+            exact headValid
+          · exact nextValid entry fromTail
+
+/-- Reverse of the Stage 13 forward ordering embedding, on valid rows.
+Thus strictly sorted encoded keys imply native typed-key sortedness. -/
+theorem encoded_sorted_implies_native_sorted
+    (rows : List (NativeAccountKey × Nat))
+    (valid : NativeRowsValid rows)
+    (encodedSorted : SortedVecKeys (encodeNativeRows rows)) :
+    NativeAccountSorted rows := by
+  induction rows with
+  | nil =>
+      trivial
+  | cons pair tail ih =>
+      rcases pair with ⟨key, old⟩
+      have headValid : ValidAccountBytes key.accountBytes :=
+        valid (key, old) (by simp)
+      have tailValid : NativeRowsValid tail := by
+        intro entry member
+        exact valid entry (List.mem_cons.mpr (Or.inr member))
+      have split :
+          (∀ entry ∈ encodeNativeRows tail,
+            encodeNativeAccount key < entry.1) ∧
+          SortedVecKeys (encodeNativeRows tail) := by
+        simpa only [encodeNativeRows, List.map_cons, SortedVecKeys]
+          using encodedSorted
+      constructor
+      · intro entry member
+        have encodedMember :
+            (encodeNativeAccount entry.1, entry.2) ∈ encodeNativeRows tail := by
+          exact List.mem_map.mpr ⟨entry, member, rfl⟩
+        have rankLess := split.1 _ encodedMember
+        exact (native_account_less_iff_rank
+          key entry.1 headValid (tailValid entry member)).2 rankLess
+      · exact ih tailValid split.2
+
+
+
+/-- The two primitive contracts establish equality of the *native* sequence
+update with the explicitly indexed list model before numeric key encoding. -/
+theorem contracted_ordered_vec_matches_native_indexed
+    (locate : List (NativeAccountKey × Nat) → NativeAccountKey → Nat)
+    (writeAt : Nat → List (NativeAccountKey × Nat) →
+      NativeAccountKey → Nat → List (NativeAccountKey × Nat))
+    (search : OrderedVecSearchContract locate)
+    (mutation : OrderedVecMutationContract writeAt)
+    (rows : List (NativeAccountKey × Nat))
+    (key : NativeAccountKey) (amount : Nat)
+    (sorted : NativeAccountSorted rows)
+    (valid : NativeRowsValid rows)
+    (keyValid : ValidAccountBytes key.accountBytes) :
+    contractedOrderedVecWrite locate writeAt rows key amount =
+      nativeLowerBoundIndexedPut rows key amount := by
+  unfold contractedOrderedVecWrite nativeLowerBoundIndexedPut
+  rw [search.lower_bound_exact rows key sorted valid keyValid]
+  have within : nativeAccountCountBefore rows key ≤ rows.length := by
+    rw [← native_midpoint_lower_bound_matches_native_scan
+      rows key sorted valid keyValid]
+    exact native_midpoint_lower_bound_is_within_support rows key sorted valid
+  exact mutation.indexed_write_exact
+    (nativeAccountCountBefore rows key) rows key amount within valid keyValid
+
+/-- Native key provenance is a proved property of *successful* indexed
+writes, given the two executable search/mutation contracts. -/
+theorem contracted_ordered_vec_write_preserves_valid
+    (locate : List (NativeAccountKey × Nat) → NativeAccountKey → Nat)
+    (writeAt : Nat → List (NativeAccountKey × Nat) →
+      NativeAccountKey → Nat → List (NativeAccountKey × Nat))
+    (search : OrderedVecSearchContract locate)
+    (mutation : OrderedVecMutationContract writeAt)
+    (rows : List (NativeAccountKey × Nat))
+    (key : NativeAccountKey) (amount : Nat)
+    (sorted : NativeAccountSorted rows)
+    (valid : NativeRowsValid rows)
+    (keyValid : ValidAccountBytes key.accountBytes) :
+    NativeRowsValid
+      (contractedOrderedVecWrite locate writeAt rows key amount) := by
+  rw [contracted_ordered_vec_matches_native_indexed
+    locate writeAt search mutation rows key amount sorted valid keyValid]
+  exact native_indexed_put_preserves_valid
+    (nativeAccountCountBefore rows key) rows key amount valid keyValid
+
+/-- Native key sortedness follows from the canonical encoded order proved
+in Stage 16 and its Stage 18b reverse order-embedding lemma. -/
+theorem contracted_ordered_vec_write_preserves_sorted
+    (locate : List (NativeAccountKey × Nat) → NativeAccountKey → Nat)
+    (writeAt : Nat → List (NativeAccountKey × Nat) →
+      NativeAccountKey → Nat → List (NativeAccountKey × Nat))
+    (search : OrderedVecSearchContract locate)
+    (mutation : OrderedVecMutationContract writeAt)
+    (rows : List (NativeAccountKey × Nat))
+    (key : NativeAccountKey) (amount : Nat)
+    (sorted : NativeAccountSorted rows)
+    (valid : NativeRowsValid rows)
+    (keyValid : ValidAccountBytes key.accountBytes) :
+    NativeAccountSorted
+      (contractedOrderedVecWrite locate writeAt rows key amount) := by
+  have nextValid := contracted_ordered_vec_write_preserves_valid
+    locate writeAt search mutation rows key amount sorted valid keyValid
+  have encodedSorted :
+      SortedVecKeys (encodeNativeRows
+        (contractedOrderedVecWrite locate writeAt rows key amount)) := by
+    rw [contracted_ordered_vec_write_refines
+      locate writeAt search mutation rows key amount sorted valid keyValid]
+    exact sorted_vec_write_preserves_order
+      (encodeNativeRows rows) (encodeNativeAccount key) amount
+      (native_account_sorted_embeds_in_nat rows sorted valid)
+  exact encoded_sorted_implies_native_sorted
+    (contractedOrderedVecWrite locate writeAt rows key amount)
+      nextValid encodedSorted
+
+/-- Search and indexed-write contracts alone imply the preservation
+contract; a third independent assumption is no longer necessary. -/
+theorem ordered_vec_invariants_follow_from_primitives
+    (locate : List (NativeAccountKey × Nat) → NativeAccountKey → Nat)
+    (writeAt : Nat → List (NativeAccountKey × Nat) →
+      NativeAccountKey → Nat → List (NativeAccountKey × Nat))
+    (search : OrderedVecSearchContract locate)
+    (mutation : OrderedVecMutationContract writeAt) :
+    OrderedVecInvariantContract locate writeAt := by
+  constructor
+  · intro rows key amount sorted valid keyValid
+    exact contracted_ordered_vec_write_preserves_valid
+      locate writeAt search mutation rows key amount sorted valid keyValid
+  · intro rows key amount sorted valid keyValid
+    exact contracted_ordered_vec_write_preserves_sorted
+      locate writeAt search mutation rows key amount sorted valid keyValid
+
+/-- Stronger conditional arbitrary-history theorem, with only search and
+indexed-mutation external contracts. Sorted support and valid keys are
+*derived* for all successful intermediate native-list states. -/
+theorem contracted_ordered_vec_trace_refines_from_primitives
+    (locate : List (NativeAccountKey × Nat) → NativeAccountKey → Nat)
+    (writeAt : Nat → List (NativeAccountKey × Nat) →
+      NativeAccountKey → Nat → List (NativeAccountKey × Nat))
+    (search : OrderedVecSearchContract locate)
+    (mutation : OrderedVecMutationContract writeAt)
+    (writes : List (NativeAccountKey × Nat))
+    (rows : List (NativeAccountKey × Nat))
+    (sorted : NativeAccountSorted rows)
+    (valid : NativeRowsValid rows)
+    (validWrites : ∀ write ∈ writes, ValidAccountBytes write.1.accountBytes) :
+    encodeNativeRows
+      (contractedOrderedVecTrace locate writeAt rows writes) =
+      sortedVecWriteTrace (encodeNativeRows rows)
+        (encodeNativeWrites writes) := by
+  exact contracted_ordered_vec_trace_refines
+    locate writeAt search mutation
+      (ordered_vec_invariants_follow_from_primitives
+        locate writeAt search mutation)
+      writes rows sorted valid validWrites
+
+/-- A correct functional map representation persists for an arbitrary
+successful history from the same two external executable contracts. -/
+theorem contracted_ordered_vec_trace_function_from_primitives
+    (locate : List (NativeAccountKey × Nat) → NativeAccountKey → Nat)
+    (writeAt : Nat → List (NativeAccountKey × Nat) →
+      NativeAccountKey → Nat → List (NativeAccountKey × Nat))
+    (search : OrderedVecSearchContract locate)
+    (mutation : OrderedVecMutationContract writeAt)
+    (writes : List (NativeAccountKey × Nat))
+    (rows : List (NativeAccountKey × Nat))
+    (amounts : Nat → Nat)
+    (sorted : NativeAccountSorted rows)
+    (valid : NativeRowsValid rows)
+    (validWrites : ∀ write ∈ writes, ValidAccountBytes write.1.accountBytes)
+    (represents : SortedColumnRepresents (encodeNativeRows rows) amounts) :
+    SortedColumnRepresents
+      (encodeNativeRows
+        (contractedOrderedVecTrace locate writeAt rows writes))
+      (functionalWriteTrace amounts (encodeNativeWrites writes)) := by
+  exact contracted_ordered_vec_trace_refines_function
+    locate writeAt search mutation
+      (ordered_vec_invariants_follow_from_primitives
+        locate writeAt search mutation)
+      writes rows amounts sorted valid validWrites represents
 
 
 end TradeLayerFormal
