@@ -243,7 +243,7 @@ impl ClearingSandbox {
     /// No independent numeric margin ledger is maintained.
     pub fn margin_atoms(&self, owner: &AccountId) -> u128 {
         self.margin_escrows.get(owner).map_or(0, |escrow| {
-            self.ledger.available_atoms(self.collateral, escrow)
+            self.spot.ledger().available_atoms(self.collateral, escrow)
         })
     }
 
@@ -294,7 +294,10 @@ impl ClearingSandbox {
     }
 
     fn guard_event(&self, external: TxId) -> Result<(), ClearingError> {
-        if self.seen.contains(&external) || self.ledger.is_processed(external) {
+        if self.seen.contains(&external)
+            || self.spot.ledger().is_processed(external)
+            || self.spot.spot_input_ids_unverified().contains(&external)
+        {
             return Err(ClearingError::Replay(external));
         }
         if self.seen.len() >= MAX_CLEARING_INPUTS {
@@ -338,18 +341,16 @@ impl ClearingSandbox {
                     return Err(ClearingError::EscrowCollision);
                 }
             } else if staged.margin_escrows.len() >= MAX_CLEARING_OWNERS
-                || staged.ledger.available_atoms(staged.collateral, &escrow) > 0
+                || staged.spot.ledger().available_atoms(staged.collateral, &escrow) > 0
             {
                 return Err(ClearingError::TooManyOwners);
             }
-            staged.ledger.apply(
+            staged.spot.apply_clearing_transfer_unverified(
                 staged.internal_txid(external, b"deposit", 0)?,
-                Operation::Transfer {
-                    id: staged.collateral,
-                    from: owner.clone(),
-                    to: escrow.clone(),
-                    amount_atoms,
-                },
+                staged.collateral,
+                owner.clone(),
+                escrow.clone(),
+                amount_atoms,
             )?;
             staged.margin_escrows.insert(owner, escrow);
             Ok(())
@@ -377,16 +378,14 @@ impl ClearingSandbox {
                 .get(&owner)
                 .ok_or(ClearingError::UnknownMarginOwner)?
                 .clone();
-            staged.ledger.apply(
+            staged.spot.apply_clearing_transfer_unverified(
                 staged.internal_txid(external, b"withdraw", 0)?,
-                Operation::Transfer {
-                    id: staged.collateral,
-                    from: escrow.clone(),
-                    to: owner.clone(),
-                    amount_atoms,
-                },
+                staged.collateral,
+                escrow.clone(),
+                owner.clone(),
+                amount_atoms,
             )?;
-            if staged.ledger.available_atoms(staged.collateral, &escrow) == 0 {
+            if staged.spot.ledger().available_atoms(staged.collateral, &escrow) == 0 {
                 staged.margin_escrows.remove(&owner);
             }
             Ok(())
@@ -467,14 +466,12 @@ impl ClearingSandbox {
                         before_leg: leg_number,
                     });
                 }
-                staged.ledger.apply(
+                staged.spot.apply_clearing_transfer_unverified(
                     staged.internal_txid(external, b"funding", leg_number)?,
-                    Operation::Transfer {
-                        id: staged.collateral,
-                        from: from.clone(),
-                        to: to.clone(),
-                        amount_atoms: *amount,
-                    },
+                    staged.collateral,
+                    from.clone(),
+                    to.clone(),
+                    *amount,
                 )?;
             }
             if failure_before_leg == Some(legs.len()) {
@@ -575,13 +572,15 @@ impl ClearingSandbox {
     /// positions. This does not claim maintenance margin sufficiency.
     pub fn verify(&self) -> Result<(), ClearingError> {
         if !self
-            .ledger
+            .spot
+            .ledger()
             .has_no_channel_or_settlement_liabilities_unverified()
         {
             return Err(ClearingError::UnsupportedExistingLiabilities);
         }
-        self.ledger.verify_conservation()?;
-        if self.ledger.property(self.collateral).is_none() {
+        self.spot.ledger().verify_conservation()?;
+        self.spot.verify_reserves()?;
+        if self.spot.ledger().property(self.collateral).is_none() {
             return Err(ClearingError::UnknownCollateral);
         }
         if self.margin_escrows.len() > MAX_CLEARING_OWNERS
@@ -599,7 +598,12 @@ impl ClearingSandbox {
                 return Err(ClearingError::EscrowCollision);
             }
         }
-        for (property, account, _) in self.ledger.balances_with_account_prefix("~") {
+        for (property, account, _) in self.spot.ledger().balances_with_account_prefix("~") {
+            // All spot-order reserves are separately matched against their
+            // actual orderbook by SpotExchange::verify_reserves.
+            if account.as_str().starts_with("~spot:") {
+                continue;
+            }
             if property != self.collateral || !escrow_addresses.contains(&account) {
                 return Err(ClearingError::EscrowCollision);
             }
