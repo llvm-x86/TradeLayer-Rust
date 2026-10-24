@@ -14,7 +14,7 @@
 use crate::clearing_math::PnlRounding;
 use crate::clearing_pnl::{project_pnl_unverified, PnlError, PnlProjection};
 use crate::funding_audit::{
-    audit_funding, FundingAuditError, FundingMode, FundingPosition, FundingProjection,
+    audit_funding, FundingAuditError, FundingMode, FundingPosition,
 };
 use crate::hash256::double_sha256;
 use crate::ledger::{AccountId, Ledger, LedgerError, Operation, PropertyId, TxId};
