@@ -4460,12 +4460,13 @@ theorem native_indexed_put_preserves_valid
             by_cases zero : amount = 0
             · simpa [NativeRowsValid, nativeIndexedColumnPut, zero]
                 using tailValid
-            · simp [NativeRowsValid, nativeIndexedColumnPut, zero,
-                headValid, tailValid]
+            · simp [NativeRowsValid, nativeIndexedColumnPut, zero, headValid]
+              exact tailValid
           · by_cases zero : amount = 0
             · simpa [nativeIndexedColumnPut, same, zero] using valid
             · simp [NativeRowsValid, nativeIndexedColumnPut,
-                same, zero, keyValid, headValid, tailValid]
+                same, zero, keyValid, headValid]
+              exact tailValid
   | succ index ih =>
       cases rows with
       | nil =>
