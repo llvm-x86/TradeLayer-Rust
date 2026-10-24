@@ -5127,7 +5127,6 @@ theorem native_locate_reports_exact_indexed_presence
       ∃ atoms, nativeColumnAt rows
         (nativeAccountCountBefore rows key) = some (key, atoms) := by
   classical
-  simp only [nativeLocateResult, nativeIndexedKeyMatches]
   cases atIndex : nativeColumnAt rows (nativeAccountCountBefore rows key) with
   | none =>
       simp [atIndex]
