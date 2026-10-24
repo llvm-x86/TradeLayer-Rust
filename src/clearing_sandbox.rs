@@ -13,9 +13,7 @@
 
 use crate::clearing_math::PnlRounding;
 use crate::clearing_pnl::{project_pnl_unverified, PnlError, PnlProjection};
-use crate::funding_audit::{
-    audit_funding, FundingAuditError, FundingMode, FundingPosition,
-};
+use crate::funding_audit::{audit_funding, FundingAuditError, FundingMode, FundingPosition};
 use crate::hash256::double_sha256;
 use crate::ledger::{AccountId, Ledger, LedgerError, Operation, PropertyId, TxId};
 use crate::network_profile::TradeLayerMainnet;
@@ -730,8 +728,7 @@ impl ClearingSandbox {
         failure_before_leg: Option<usize>,
     ) -> Result<MarkReceipt, ClearingError> {
         self.transaction(external, |staged| {
-            let preview =
-                staged.preview_mark_to_market_unverified(new_height, new_price_e8)?;
+            let preview = staged.preview_mark_to_market_unverified(new_height, new_price_e8)?;
             if preview.net_atoms != 0 {
                 // Never mint, burn or silently redistribute one-atom residuals.
                 // Policy makers must independently specify an apportionment rule
@@ -832,8 +829,7 @@ impl ClearingSandbox {
             } else {
                 receivers.push((
                     escrow,
-                    u128::try_from(*delta_atoms)
-                        .map_err(|_| ClearingError::ArithmeticOverflow)?,
+                    u128::try_from(*delta_atoms).map_err(|_| ClearingError::ArithmeticOverflow)?,
                 ));
             }
         }
