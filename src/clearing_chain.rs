@@ -161,7 +161,7 @@ impl ClearingChainState {
         state.verify()?;
         // Verify this versioned format can preserve all state before putting
         // the source into a reversible history. CRC never authenticates it.
-        state.snapshot_bytes()?;
+        state.snapshot_bytes().map_err(ClearingChainCheckpointError::State)?;
         Ok(Self {
             network,
             contract: state.contract(),
