@@ -498,6 +498,34 @@ mod kani_proofs {
     /// allocation and element shifting. For an arbitrary printable u8
     /// query against one fixed ASCII account, the Rust Ord result must be
     /// exactly the independent byte comparison.
+    /// A proper-prefix and second-byte comparator fixture, with all 94
+    /// printable ASCII suffix bytes symbolically quantified. This isolates
+    /// production AccountId(String) Ord/equals without symbolic Vec shifts.
+    #[kani::proof]
+    #[kani::unwind(24)]
+    fn native_account_two_byte_prefix_ord_matches_byte_oracle() {
+        use crate::ledger::AccountId;
+
+        let suffix: u8 = kani::any();
+        kani::assume((0x21..=0x7e).contains(&suffix));
+        let candidate = [b'A', suffix];
+        let candidate_str = std::str::from_utf8(&candidate).unwrap();
+        let query = AccountId::try_from(candidate_str).unwrap();
+        let prefix = AccountId::try_from("A").unwrap();
+        let anchor = AccountId::try_from("AZ").unwrap();
+
+        // A proper prefix is always smaller than its two-byte extension,
+        // regardless of the printable second byte.
+        assert!(prefix < query);
+        assert!(query > prefix);
+        assert_ne!(query, prefix);
+
+        // First bytes agree: the second byte determines the comparison.
+        assert_eq!(query.cmp(&anchor), suffix.cmp(&b'Z'));
+        assert_eq!(anchor.cmp(&query), b'Z'.cmp(&suffix));
+        assert_eq!(query == anchor, suffix == b'Z');
+    }
+
     #[kani::proof]
     #[kani::unwind(20)]
     fn native_account_one_byte_ascii_ord_matches_byte_oracle() {
