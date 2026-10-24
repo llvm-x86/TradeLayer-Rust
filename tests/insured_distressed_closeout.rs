@@ -238,7 +238,7 @@ fn insufficient_insurance_does_not_credit_any_winner_or_seize_margin() {
 #[test]
 fn full_book_closeout_requires_actual_maintenance_breach_and_policy() {
     let mut s = base();
-    s.deposit_insurance_unverified(tx(10), a("alice"), ONE)
+    s.deposit_insurance_unverified(tx(10), a("alice"), u128::from(ONE))
         .unwrap();
     s.deposit_margin_unverified(tx(11), a("alice"), 200_000_000)
         .unwrap();
@@ -620,7 +620,7 @@ fn synthetic_block_rejects_late_claim_without_committing_previous_deposits() {
 fn generated_pnl_rounding_imbalance_remains_default_deny_even_with_insurance() {
     let mut s = base();
     // Three-party half-atom PnL mismatch should NOT be paid by the insurer.
-    s.deposit_insurance_unverified(tx(10), a("alice"), ONE)
+    s.deposit_insurance_unverified(tx(10), a("alice"), u128::from(ONE))
         .unwrap();
     s.deposit_margin_unverified(tx(11), a("alice"), 100_000_000)
         .unwrap();
