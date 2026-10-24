@@ -30,7 +30,10 @@ fn tx(n: u64) -> TxId {
     TxId::from_bytes(bytes)
 }
 fn tip(h: u64, id: u8) -> Tip {
-    Tip { height: h, id: BlockId([id; 32]) }
+    Tip {
+        height: h,
+        id: BlockId([id; 32]),
+    }
 }
 fn anchor() -> Tip {
     tip(100, 1)
@@ -62,42 +65,75 @@ fn permitted() -> BTreeSet<PropertyId> {
 }
 fn initial_state() -> ClearingSandbox {
     let mut ledger = Ledger::new();
-    ledger.apply_batch([
-        (tx(1), Operation::CreateProperty {
-            id: p(7), issuer: a("alice"), kind: PropertyKind::Fixed,
-            initial_atoms: 1_000_000_000,
-        }),
-        (tx(2), Operation::CreateProperty {
-            id: p(8), issuer: a("bob"), kind: PropertyKind::Fixed,
-            initial_atoms: 1_000_000_000,
-        }),
-        (tx(3), Operation::Transfer {
-            id: p(7), from: a("alice"), to: a("bob"), amount_atoms: 300_000_000,
-        }),
-        (tx(4), Operation::Transfer {
-            id: p(8), from: a("bob"), to: a("alice"), amount_atoms: 200_000_000,
-        }),
-    ]).unwrap();
+    ledger
+        .apply_batch([
+            (
+                tx(1),
+                Operation::CreateProperty {
+                    id: p(7),
+                    issuer: a("alice"),
+                    kind: PropertyKind::Fixed,
+                    initial_atoms: 1_000_000_000,
+                },
+            ),
+            (
+                tx(2),
+                Operation::CreateProperty {
+                    id: p(8),
+                    issuer: a("bob"),
+                    kind: PropertyKind::Fixed,
+                    initial_atoms: 1_000_000_000,
+                },
+            ),
+            (
+                tx(3),
+                Operation::Transfer {
+                    id: p(7),
+                    from: a("alice"),
+                    to: a("bob"),
+                    amount_atoms: 300_000_000,
+                },
+            ),
+            (
+                tx(4),
+                Operation::Transfer {
+                    id: p(8),
+                    from: a("bob"),
+                    to: a("alice"),
+                    amount_atoms: 200_000_000,
+                },
+            ),
+        ])
+        .unwrap();
     let spot = SpotExchange::from_ledger_unverified(ledger, permitted()).unwrap();
-    ClearingSandbox::from_spot_unverified(
-        TradeLayerMainnet::Litecoin, 19, p(7), spot
-    ).unwrap()
-    .with_collateral_policy_unverified(policy()).unwrap()
-    .with_mark_policy_unverified(mark()).unwrap()
+    ClearingSandbox::from_spot_unverified(TradeLayerMainnet::Litecoin, 19, p(7), spot)
+        .unwrap()
+        .with_collateral_policy_unverified(policy())
+        .unwrap()
+        .with_mark_policy_unverified(mark())
+        .unwrap()
 }
 fn chain(limit: usize) -> ClearingChainState {
     ClearingChainState::new_unverified(
-        TradeLayerMainnet::Litecoin, anchor(), initial_state(), limit
-    ).unwrap()
+        TradeLayerMainnet::Litecoin,
+        anchor(),
+        initial_state(),
+        limit,
+    )
+    .unwrap()
 }
 fn spot(id: u64, actor: &str, offer: u32, want: u32, height: u64) -> UnverifiedClearingEvent {
     UnverifiedClearingEvent::SpotPlace(UnverifiedSpotPlacement {
-        txid: tx(id), actor: a(actor), height,
+        txid: tx(id),
+        actor: a(actor),
+        height,
         intent: SpotIntent {
-            offered: p(offer), desired: p(want),
+            offered: p(offer),
+            desired: p(want),
             offered_atoms: 10_000_000,
             expected_atoms: 10_000_000,
-            post: false, stop: false,
+            post: false,
+            stop: false,
         },
     })
 }
@@ -110,63 +146,100 @@ fn event_block(
     UnverifiedClearingBlock {
         network: TradeLayerMainnet::Litecoin,
         header: BlockHeader {
-            height, id: BlockId([block_id; 32]), parent: BlockId([parent; 32]),
+            height,
+            id: BlockId([block_id; 32]),
+            parent: BlockId([parent; 32]),
         },
         events,
     }
 }
 fn first_block() -> UnverifiedClearingBlock {
-    event_block(101, 2, 1, vec![
-        UnverifiedClearingEvent::MarginDeposit {
-            txid: tx(10), owner: a("alice"), atoms: 100_000_000,
-        },
-        UnverifiedClearingEvent::MarginDeposit {
-            txid: tx(11), owner: a("bob"), atoms: 100_000_000,
-        },
-        UnverifiedClearingEvent::MatchedTrades {
-            txid: tx(12),
-            trades: vec![MatchedContractTrade {
-                long: a("alice"), short: a("bob"), contracts: 1,
-            }],
-        },
-        spot(13, "alice", 7, 8, 101),
-        spot(14, "bob", 8, 7, 101),
-        UnverifiedClearingEvent::Funding {
-            txid: tx(15), notional_atoms: ATOMS, rate_bps_e4: 100_000,
-        },
-        UnverifiedClearingEvent::Mark {
-            txid: tx(16), new_price_e8: 100 * ATOMS + 1,
-        },
-    ])
+    event_block(
+        101,
+        2,
+        1,
+        vec![
+            UnverifiedClearingEvent::MarginDeposit {
+                txid: tx(10),
+                owner: a("alice"),
+                atoms: 100_000_000,
+            },
+            UnverifiedClearingEvent::MarginDeposit {
+                txid: tx(11),
+                owner: a("bob"),
+                atoms: 100_000_000,
+            },
+            UnverifiedClearingEvent::MatchedTrades {
+                txid: tx(12),
+                trades: vec![MatchedContractTrade {
+                    long: a("alice"),
+                    short: a("bob"),
+                    contracts: 1,
+                }],
+            },
+            spot(13, "alice", 7, 8, 101),
+            spot(14, "bob", 8, 7, 101),
+            UnverifiedClearingEvent::Funding {
+                txid: tx(15),
+                notional_atoms: ATOMS,
+                rate_bps_e4: 100_000,
+            },
+            UnverifiedClearingEvent::Mark {
+                txid: tx(16),
+                new_price_e8: 100 * ATOMS + 1,
+            },
+        ],
+    )
 }
 fn second_block() -> UnverifiedClearingBlock {
-    event_block(102, 3, 2, vec![
-        UnverifiedClearingEvent::Ordinary {
-            txid: tx(17), operation: Operation::Transfer {
-                id: p(8), from: a("bob"), to: a("alice"), amount_atoms: 1_000_000,
+    event_block(
+        102,
+        3,
+        2,
+        vec![
+            UnverifiedClearingEvent::Ordinary {
+                txid: tx(17),
+                operation: Operation::Transfer {
+                    id: p(8),
+                    from: a("bob"),
+                    to: a("alice"),
+                    amount_atoms: 1_000_000,
+                },
             },
-        },
-        UnverifiedClearingEvent::MatchedTrades {
-            txid: tx(18),
-            trades: vec![MatchedContractTrade {
-                long: a("bob"), short: a("alice"), contracts: 1,
-            }],
-        },
-        UnverifiedClearingEvent::MarginWithdraw {
-            txid: tx(19), owner: a("alice"), atoms: 1_000_000,
-        },
-        UnverifiedClearingEvent::Mark {
-            txid: tx(20), new_price_e8: 100 * ATOMS + 2,
-        },
-    ])
+            UnverifiedClearingEvent::MatchedTrades {
+                txid: tx(18),
+                trades: vec![MatchedContractTrade {
+                    long: a("bob"),
+                    short: a("alice"),
+                    contracts: 1,
+                }],
+            },
+            UnverifiedClearingEvent::MarginWithdraw {
+                txid: tx(19),
+                owner: a("alice"),
+                atoms: 1_000_000,
+            },
+            UnverifiedClearingEvent::Mark {
+                txid: tx(20),
+                new_price_e8: 100 * ATOMS + 2,
+            },
+        ],
+    )
 }
-fn checkpoint_load(bytes: &[u8], limit: usize) -> Result<
-    ClearingChainState,
-    tradelayer_core::clearing_chain::ClearingChainCheckpointError,
-> {
+fn checkpoint_load(
+    bytes: &[u8],
+    limit: usize,
+) -> Result<ClearingChainState, tradelayer_core::clearing_chain::ClearingChainCheckpointError> {
     ClearingChainState::from_checkpoint_bytes(
-        bytes, TradeLayerMainnet::Litecoin, anchor(), 19, p(7),
-        &permitted(), Some(policy()), Some(terms()), limit,
+        bytes,
+        TradeLayerMainnet::Litecoin,
+        anchor(),
+        19,
+        p(7),
+        &permitted(),
+        Some(policy()),
+        Some(terms()),
+        limit,
     )
 }
 fn repair_crc(bytes: &mut [u8]) {
@@ -237,17 +310,26 @@ fn checkpoint_recovery_allows_fork_replacement_but_not_stale_ids() {
     ));
     assert_eq!(recovered, old);
     recovered.rollback_tip(tip(102, 3)).unwrap();
-    let fork = event_block(102, 44, 2, vec![
-        UnverifiedClearingEvent::Ordinary {
-            txid: tx(99),
-            operation: Operation::Transfer {
-                id: p(7), from: a("alice"), to: a("bob"), amount_atoms: 1234,
+    let fork = event_block(
+        102,
+        44,
+        2,
+        vec![
+            UnverifiedClearingEvent::Ordinary {
+                txid: tx(99),
+                operation: Operation::Transfer {
+                    id: p(7),
+                    from: a("alice"),
+                    to: a("bob"),
+                    amount_atoms: 1234,
+                },
             },
-        },
-        UnverifiedClearingEvent::Mark {
-            txid: tx(100), new_price_e8: 100 * ATOMS + 3,
-        },
-    ]);
+            UnverifiedClearingEvent::Mark {
+                txid: tx(100),
+                new_price_e8: 100 * ATOMS + 3,
+            },
+        ],
+    );
     recovered.apply_unverified_block(&fork).unwrap();
     assert_eq!(recovered.tip(), tip(102, 44));
     assert_eq!(recovered.state().ledger().verify_conservation(), Ok(()));
@@ -270,13 +352,20 @@ fn invalid_late_events_revert_spot_escrow_and_margin_atomically() {
         Err(ClearingChainError::MarkMustEndBlock)
     ));
     assert_eq!(c, original);
-    let late_failure = event_block(101, 2, 1, vec![
-        UnverifiedClearingEvent::MarginDeposit {
-            txid: tx(10), owner: a("alice"), atoms: 100_000_000,
-        },
-        spot(13, "alice", 7, 8, 101),
-        UnverifiedClearingEvent::UnsupportedSettlement,
-    ]);
+    let late_failure = event_block(
+        101,
+        2,
+        1,
+        vec![
+            UnverifiedClearingEvent::MarginDeposit {
+                txid: tx(10),
+                owner: a("alice"),
+                atoms: 100_000_000,
+            },
+            spot(13, "alice", 7, 8, 101),
+            UnverifiedClearingEvent::UnsupportedSettlement,
+        ],
+    );
     assert!(matches!(
         c.apply_unverified_block(&late_failure),
         Err(ClearingChainError::UnsupportedEconomicSettlement)
@@ -308,8 +397,10 @@ fn wrong_chain_parent_height_duplicate_block_and_overlimit_default_deny() {
         Err(ClearingChainError::InvalidHeight)
     ));
     let huge = event_block(
-        101, 2, 1,
-        vec![UnverifiedClearingEvent::UnsupportedSettlement; MAX_CLEARING_BLOCK_EVENTS + 1]
+        101,
+        2,
+        1,
+        vec![UnverifiedClearingEvent::UnsupportedSettlement; MAX_CLEARING_BLOCK_EVENTS + 1],
     );
     assert!(matches!(
         c.apply_unverified_block(&huge),
@@ -328,15 +419,24 @@ fn wrong_chain_parent_height_duplicate_block_and_overlimit_default_deny() {
 fn insufficient_spot_or_margin_balance_prevents_partial_block_commit() {
     let mut c = chain(2);
     let original = c.clone();
-    let bad = event_block(101, 2, 1, vec![
-        UnverifiedClearingEvent::MarginDeposit {
-            txid: tx(10), owner: a("alice"), atoms: 50_000_000,
-        },
-        spot(13, "alice", 7, 8, 101),
-        UnverifiedClearingEvent::MarginDeposit {
-            txid: tx(11), owner: a("bob"), atoms: u128::MAX,
-        },
-    ]);
+    let bad = event_block(
+        101,
+        2,
+        1,
+        vec![
+            UnverifiedClearingEvent::MarginDeposit {
+                txid: tx(10),
+                owner: a("alice"),
+                atoms: 50_000_000,
+            },
+            spot(13, "alice", 7, 8, 101),
+            UnverifiedClearingEvent::MarginDeposit {
+                txid: tx(11),
+                owner: a("bob"),
+                atoms: u128::MAX,
+            },
+        ],
+    );
     assert!(matches!(
         c.apply_unverified_block(&bad),
         Err(ClearingChainError::Clearing(_))
@@ -350,7 +450,10 @@ fn durable_file_collision_and_missing_directory_leave_all_state_unchanged() {
     let dir = std::env::temp_dir().join(format!(
         "tradelayer-stage25d-{}-{}",
         std::process::id(),
-        SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
     ));
     fs::create_dir(&dir).unwrap();
     let path = dir.join("first.tlcc");
@@ -363,14 +466,25 @@ fn durable_file_collision_and_missing_directory_leave_all_state_unchanged() {
     assert_eq!(c, initial);
     assert_eq!(fs::read(&path).unwrap(), b"do not overwrite");
     let missing_dir = dir.join("missing").join("fail.tlcc");
-    assert!(c.apply_unverified_block_and_checkpoint(&first_block(), &missing_dir).is_err());
+    assert!(c
+        .apply_unverified_block_and_checkpoint(&first_block(), &missing_dir)
+        .is_err());
     assert_eq!(c, initial);
     let success = dir.join("success.tlcc");
-    c.apply_unverified_block_and_checkpoint(&first_block(), &success).unwrap();
+    c.apply_unverified_block_and_checkpoint(&first_block(), &success)
+        .unwrap();
     let from_disk = ClearingChainState::load_checkpoint(
-        &success, TradeLayerMainnet::Litecoin, anchor(), 19, p(7),
-        &permitted(), Some(policy()), Some(terms()), 3
-    ).unwrap();
+        &success,
+        TradeLayerMainnet::Litecoin,
+        anchor(),
+        19,
+        p(7),
+        &permitted(),
+        Some(policy()),
+        Some(terms()),
+        3,
+    )
+    .unwrap();
     assert_eq!(from_disk, c);
     assert_eq!(fs::read(&success).unwrap(), c.checkpoint_bytes().unwrap());
     assert!(c.write_new_checkpoint(&success).is_err());
@@ -400,13 +514,29 @@ fn old_checkpoints_are_not_a_combined_history_and_crc_forgery_is_rejected() {
     }
     assert!(checkpoint_load(&baseline[..baseline.len() - 1], 3).is_err());
     assert!(ClearingChainState::from_checkpoint_bytes(
-        &baseline, TradeLayerMainnet::Litecoin, anchor(), 20, p(7),
-        &permitted(), Some(policy()), Some(terms()), 3
-    ).is_err());
+        &baseline,
+        TradeLayerMainnet::Litecoin,
+        anchor(),
+        20,
+        p(7),
+        &permitted(),
+        Some(policy()),
+        Some(terms()),
+        3
+    )
+    .is_err());
     assert!(ClearingChainState::from_checkpoint_bytes(
-        &baseline, TradeLayerMainnet::Litecoin, anchor(), 19, p(7),
-        &permitted(), None, Some(terms()), 3
-    ).is_err());
+        &baseline,
+        TradeLayerMainnet::Litecoin,
+        anchor(),
+        19,
+        p(7),
+        &permitted(),
+        None,
+        Some(terms()),
+        3
+    )
+    .is_err());
     assert!(checkpoint_load(&baseline, 2).is_err());
 }
 
@@ -415,7 +545,8 @@ fn reorg_history_is_bounded_and_deep_rollback_denies_without_mutation() {
     let mut c = chain(2);
     c.apply_unverified_block(&first_block()).unwrap();
     c.apply_unverified_block(&second_block()).unwrap();
-    c.apply_unverified_block(&event_block(103, 4, 3, vec![])).unwrap();
+    c.apply_unverified_block(&event_block(103, 4, 3, vec![]))
+        .unwrap();
     assert_eq!(c.rollback_depth(), 2);
     let encoded = c.checkpoint_bytes().unwrap();
     let mut restored = checkpoint_load(&encoded, 2).unwrap();
@@ -434,7 +565,8 @@ fn reorg_history_is_bounded_and_deep_rollback_denies_without_mutation() {
 #[test]
 fn a_successful_empty_block_finalizes_spot_and_reversible_history() {
     let mut c = chain(2);
-    c.apply_unverified_block(&event_block(101, 2, 1, vec![])).unwrap();
+    c.apply_unverified_block(&event_block(101, 2, 1, vec![]))
+        .unwrap();
     assert_eq!(c.state().spot().processed_through(), Some(101));
     assert_eq!(c.state().mark_policy().unwrap().height, 100);
     let bytes = c.checkpoint_bytes().unwrap();
