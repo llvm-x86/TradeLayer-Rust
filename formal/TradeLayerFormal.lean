@@ -4732,8 +4732,11 @@ theorem half_open_predicate_search_exact
           have nextBudget : middle - lo ≤ remaining := by omega
           simpa [halfOpenPredicateSearch, advancing, middle, compare, before]
             using (ih lo middle below nextAbove (by omega) nextBudget)
-      · have equal : lo = target := by omega
-        simp [halfOpenPredicateSearch, advancing, equal]
+      · have loHi : lo = hi := by omega
+        have loTarget : lo = target := by omega
+        subst hi
+        subst target
+        simp [halfOpenPredicateSearch]
 
 /-- The concrete lower-bound loop's only remaining local search obligation
 can be phrased as an indexed read/comparison against a validated sorted
