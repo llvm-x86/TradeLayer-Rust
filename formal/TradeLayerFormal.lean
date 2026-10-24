@@ -4270,13 +4270,15 @@ theorem contracted_ordered_vec_write_frames
     sortedVecGet (encodeNativeRows rows) (encodeNativeAccount other) := by
   rw [contracted_ordered_vec_write_refines locate writeAt
     search mutation rows key amount sorted valid keyValid]
-  apply sorted_vec_put_keeps_other_keys
+  have rankDifferent :
+      encodeNativeAccount other ≠ encodeNativeAccount key := by
+    intro equal
+    exact different (encode_native_account_injective_on_valid
+      other key otherValid keyValid equal)
+  exact sorted_vec_put_keeps_other_keys
     (encodeNativeRows rows) (encodeNativeAccount key)
-      (encodeNativeAccount other) amount
-    · exact native_account_sorted_embeds_in_nat rows sorted valid
-    · intro equal
-      exact different (encode_native_account_injective_on_valid
-        other key otherValid keyValid equal)
+    (encodeNativeAccount other) amount
+    (native_account_sorted_embeds_in_nat rows sorted valid) rankDifferent
 
 
 end TradeLayerFormal
