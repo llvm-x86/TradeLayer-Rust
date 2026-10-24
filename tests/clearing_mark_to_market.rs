@@ -552,6 +552,29 @@ fn one_ledger_forbids_backdated_marks_and_spot_orders() {
 }
 
 #[test]
+fn due_spot_orders_must_clear_before_marking_the_same_height() {
+    let mut state = opened();
+    state
+        .enqueue_spot_order_unverified(spot_order(13, "alice", 7, 8))
+        .unwrap();
+    let queued = state.clone();
+    assert_eq!(
+        state.settle_mark_to_market_unverified(tx(14), 101, 101 * ONE),
+        Err(ClearingError::PendingSpotOrders)
+    );
+    assert_eq!(state, queued);
+    state.process_spot_block_unverified(101).unwrap();
+    assert_eq!(state.spot().pending_count(), 0);
+    assert_eq!(state.spot().open_count(), 1);
+    let receipt = state
+        .settle_mark_to_market_unverified(tx(14), 101, 101 * ONE)
+        .unwrap();
+    assert_eq!(receipt.ledger_transfer_legs, 1);
+    assert_eq!(state.spot().open_count(), 1);
+    assert_eq!(state.verify(), Ok(()));
+}
+
+#[test]
 fn mark_policy_cannot_retroactively_precede_spot_finalization() {
     let mut state = base();
     state.process_spot_block_unverified(120).unwrap();
