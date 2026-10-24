@@ -3,6 +3,8 @@
 //! exact source with Kani, for symbolic inputs across the entire u128 domain.
 //! This function does not establish transaction authorization or chain origin.
 
+#![allow(unexpected_cfgs)]
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum MoveError {
     Zero,

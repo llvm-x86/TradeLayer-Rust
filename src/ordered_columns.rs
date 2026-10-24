@@ -6,6 +6,8 @@
 //! production balance mutations use the canonical delete-on-zero helper.
 //! Prototype O(n) updates: NOT suitable for high-throughput production.
 
+#![allow(unexpected_cfgs)]
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct OrderedColumns<K: Ord> {
     entries: Vec<(K, u128)>,

@@ -19,11 +19,19 @@ concurrency:
 jobs:
   check:
     runs-on: ubuntu-24.04
+    env:
+      CARGO_NET_OFFLINE: "true"
     steps:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
       - name: Install pinned Rust toolchain
         run: rustup toolchain install 1.90.0 --profile minimal --component rustfmt --component clippy
+      - name: Enforce zero external Rust crates and frozen toolchain
+        run: python3 scripts/check_rust_supply_chain.py
+      - name: Dependency gate adversarial mutation tests
+        run: python3 -m unittest discover -s tests -p test_rust_supply_chain.py -v
       - name: Check formatting
         run: cargo fmt --all -- --check
       - name: Check included snapshot file formatting
@@ -33,9 +41,13 @@ jobs:
       - name: Check included joint snapshot file formatting
         run: rustfmt --check --edition 2021 src/joint_snapshot_impl.rs
       - name: Lint
-        run: cargo clippy --all-targets --locked -- -D warnings
+        run: cargo clippy --all-targets --frozen -- -D warnings
       - name: Run tests
-        run: cargo test --locked
+        run: cargo test --frozen
+      - name: Verify Stage 25A isolated margin and funding atomicity
+        run: cargo test --frozen --test clearing_sandbox
+      - name: Release build without network or lockfile changes
+        run: cargo build --all-targets --release --frozen
       - name: Native wallet-key Ord and binary-search cross-language oracle
         run: python3 scripts/audit_native_wallet_order.py
       - name: Legacy withdrawal amount mismatch audit
@@ -45,9 +57,9 @@ jobs:
       - name: Binary wire vector audit
         run: node scripts/generate_v1_vectors.mjs --check
       - name: Offline real transaction fixture audit
-        run: cargo run --locked --bin tradelayer-scan -- fixtures/real_transactions.tsv
+        run: cargo run --frozen --bin tradelayer-scan -- fixtures/real_transactions.tsv
       - name: Offline synthetic marker fixture audit
-        run: cargo run --locked --bin tradelayer-scan -- fixtures/synthetic_transactions.tsv
+        run: cargo run --frozen --bin tradelayer-scan -- fixtures/synthetic_transactions.tsv
       - name: Offline Litecoin RPC collector tests
         run: python3 -m unittest discover -s tests -p test_collect_litecoin_rpc.py -v
       - name: Litecoin first-input source trace and reorg tests (fake RPC only)
@@ -56,7 +68,7 @@ jobs:
         run: node tests/test_compare_legacy.cjs
       - name: Rust diagnostic export smoke test
         run: |
-          cargo run --locked --bin tradelayer-legacy-fields -- fixtures/synthetic_transactions.tsv > /tmp/tradelayer-rust-fields.tsv
+          cargo run --frozen --bin tradelayer-legacy-fields -- fixtures/synthetic_transactions.tsv > /tmp/tradelayer-rust-fields.tsv
           grep -q 'send' /tmp/tradelayer-rust-fields.tsv
       - name: Independent mainnet genesis identity audit
         run: python3 scripts/audit_network_profiles.py
@@ -68,13 +80,21 @@ jobs:
         run: python3 scripts/audit_bitcoin_forks.py
       - name: Historical Bitcoin genesis-to-block1 CLI header work smoke test
         run: |
-          cargo run --locked --bin tradelayer-bitcoin-work -- fixtures/bitcoin_mainnet_genesis_block1_headers.txt > /tmp/bitcoin-work-report.txt
+          cargo run --frozen --bin tradelayer-bitcoin-work -- fixtures/bitcoin_mainnet_genesis_block1_headers.txt > /tmp/bitcoin-work-report.txt
           grep -Fxq 'anchor=PUBLISHED_BITCOIN_MAINNET_GENESIS' /tmp/bitcoin-work-report.txt
           grep -Fxq 'sha256d_pow=CHECKED' /tmp/bitcoin-work-report.txt
           grep -Fxq 'difficulty_transitions=CHECKED' /tmp/bitcoin-work-report.txt
           grep -Fxq 'last_height=1' /tmp/bitcoin-work-report.txt
           grep -Fxq 'chainwork=0000000000000000000000000000000000000000000000000000000200020002' /tmp/bitcoin-work-report.txt
           grep -Fxq 'best_active_chain=UNVERIFIED' /tmp/bitcoin-work-report.txt
+      - name: Independent Node clearing call cadence and funding bucket vectors
+        run: node scripts/audit_clearing_cadence.cjs --check
+      - name: Independent Node BigInt funding direction and balance conservation
+        run: node scripts/audit_funding_vectors.cjs --check
+      - name: Optional legacy funding runner parses without local checkout
+        run: node --check scripts/check_legacy_funding_runtime.cjs
+      - name: Independent Node BigInt clearing arithmetic vectors
+        run: node scripts/audit_clearing_math.cjs --check
       - name: Independent Node BigInt spot matching vectors
         run: node scripts/audit_spot_vectors.cjs --check
       - name: TLPT state commitment cross-language audit
@@ -82,13 +102,13 @@ jobs:
       - name: zkTL Cairo bridge Python checks
         run: python3 -m unittest discover -s tests -p test_tlzk_export.py -v
       - name: zkTL Cairo checkpoint metadata fixture audit
-        run: cargo run --locked --bin tradelayer-zk-inspect -- fixtures/zkTL_sample_batch.tsv
+        run: cargo run --frozen --bin tradelayer-zk-inspect -- fixtures/zkTL_sample_batch.tsv
       - name: Synthetic TLPT zkTL root-bridge CLI smoke test
         run: |
           tmp_dir="$(mktemp -d)"
           trap 'rm -rf "$tmp_dir"' EXIT
           python3 scripts/make_synthetic_tlpt_bridge.py "$tmp_dir"
-          cargo run --locked --bin tradelayer-root-reconcile -- \
+          cargo run --frozen --bin tradelayer-root-reconcile -- \
             "$tmp_dir/synthetic_tlpt.tsv" fixtures/zkTL_sample_batch.tsv \
             "$tmp_dir/synthetic_observations.tsv" \
             "$(printf '0b%.0s' {1..32})" 132899 "$(printf '13%.0s' {1..32})" \

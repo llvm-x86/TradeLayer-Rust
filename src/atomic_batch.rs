@@ -1,6 +1,8 @@
 //! Atomic clone-validate-commit boundary for the offline ledger.
 //! Validator side effects outside the supplied state are caller-owned.
 
+#![allow(unexpected_cfgs)]
+
 /// All in-memory state changes remain private until validation succeeds.
 /// Kani covers concrete scalar instantiations; the real Ledger map operations
 /// are covered by regression tests. This is not a generic proof of Clone.

@@ -6,6 +6,8 @@
 //! Kani checks the shared branch with fixed-size symbolic stores and also
 //! checks bounded operations on the actual Vec-backed production store.
 
+#![allow(unexpected_cfgs)]
+
 use crate::ordered_columns::OrderedColumns;
 use std::collections::BTreeMap;
 

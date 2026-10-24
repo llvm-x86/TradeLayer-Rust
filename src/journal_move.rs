@@ -6,6 +6,8 @@
 //! The BTreeMap adapter is covered by Rust unit and integration tests;
 //! this is not a bit-precise proof of the standard-library tree itself.
 
+#![allow(unexpected_cfgs)]
+
 use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
