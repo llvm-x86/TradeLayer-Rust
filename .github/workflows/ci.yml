@@ -46,6 +46,12 @@ jobs:
         run: cargo test --frozen
       - name: Verify Stage 25A isolated margin and funding atomicity
         run: cargo test --frozen --test clearing_sandbox
+      - name: Verify Stage 25B single-ledger spot and clearing invariants
+        run: cargo test --frozen --test spot_clearing_one_ledger
+      - name: Verify Stage 25B collateral floors and fail-closed funding
+        run: cargo test --frozen --test clearing_collateral_policy
+      - name: Reject orphaned clearing replay history in legacy spot checkpoints
+        run: cargo test --frozen --test clearing_checkpoint_fence
       - name: Release build without network or lockfile changes
         run: cargo build --all-targets --release --frozen
       - name: Native wallet-key Ord and binary-search cross-language oracle

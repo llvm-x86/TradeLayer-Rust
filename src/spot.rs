@@ -183,6 +183,8 @@ pub struct SpotExchange {
     fills: Vec<SpotFill>,
     next_sequence: u64,
     processed_through: Option<u64>,
+    /// Irreversible in this version: TLSP cannot encode clearing history.
+    clearing_activity: bool,
 }
 
 impl SpotExchange {
@@ -199,10 +201,7 @@ impl SpotExchange {
             return Err(SpotError::UnknownProperty);
         }
         ledger.verify_conservation()?;
-        if !ledger
-            .balances_with_account_prefix(ESCROW_PREFIX)
-            .is_empty()
-        {
+        if !ledger.balances_with_account_prefix("~").is_empty() {
             return Err(SpotError::EscrowCollision);
         }
         Ok(Self {
@@ -214,6 +213,7 @@ impl SpotExchange {
             fills: Vec::new(),
             next_sequence: 0,
             processed_through: None,
+            clearing_activity: false,
         })
     }
 
@@ -241,15 +241,14 @@ impl SpotExchange {
         operation: Operation,
     ) -> Result<(), SpotError> {
         let allowed = match &operation {
-            Operation::CreateProperty { issuer, .. } => !issuer.as_str().starts_with(ESCROW_PREFIX),
+            Operation::CreateProperty { issuer, .. } => !issuer.as_str().starts_with('~'),
             Operation::Transfer { from, to, .. } => {
-                !from.as_str().starts_with(ESCROW_PREFIX) && !to.as_str().starts_with(ESCROW_PREFIX)
+                !from.as_str().starts_with('~') && !to.as_str().starts_with('~')
             }
             Operation::Mint { issuer, to, .. } => {
-                !issuer.as_str().starts_with(ESCROW_PREFIX)
-                    && !to.as_str().starts_with(ESCROW_PREFIX)
+                !issuer.as_str().starts_with('~') && !to.as_str().starts_with('~')
             }
-            Operation::Burn { issuer, .. } => !issuer.as_str().starts_with(ESCROW_PREFIX),
+            Operation::Burn { issuer, .. } => !issuer.as_str().starts_with('~'),
             _ => return Err(SpotError::UnsupportedProtocolOperation),
         };
         if !allowed {
@@ -264,6 +263,53 @@ impl SpotExchange {
         *self = candidate;
         Ok(())
     }
+    /// Stage 25B research-only collateral transfer into/between/out of
+    /// clearing escrows while this SpotExchange retains the SOLE Ledger.
+    /// Never accepts an existing spot escrow or an arbitrary '~' namespace.
+    /// The caller must derive and validate clearing escrow identities and
+    /// preserve the accompanying clearing position metadata atomically.
+    pub(crate) fn apply_clearing_transfer_unverified(
+        &mut self,
+        txid: TxId,
+        id: PropertyId,
+        from: AccountId,
+        to: AccountId,
+        amount_atoms: u128,
+    ) -> Result<(), SpotError> {
+        let margin_from = from.as_str().starts_with("~clrm:");
+        let margin_to = to.as_str().starts_with("~clrm:");
+        if !(margin_from || margin_to) {
+            return Err(SpotError::ReservedAccount);
+        }
+        if from.as_str().starts_with('~') && !margin_from {
+            return Err(SpotError::ReservedAccount);
+        }
+        if to.as_str().starts_with('~') && !margin_to {
+            return Err(SpotError::ReservedAccount);
+        }
+        if self.seen.contains(&txid) || self.ledger.is_processed(txid) {
+            return Err(SpotError::Replay(txid));
+        }
+        let mut candidate = self.clone();
+        candidate.ledger.apply(
+            txid,
+            Operation::Transfer {
+                id,
+                from,
+                to,
+                amount_atoms,
+            },
+        )?;
+        candidate.verify_reserves()?;
+        candidate.clearing_activity = true;
+        *self = candidate;
+        Ok(())
+    }
+
+    pub(crate) fn has_clearing_activity_unverified(&self) -> bool {
+        self.clearing_activity
+    }
+
     pub fn processed_through(&self) -> Option<u64> {
         self.processed_through
     }
@@ -271,7 +317,8 @@ impl SpotExchange {
     /// Initial state from the caller's prefunded offline ledger, before
     /// any spot event has been queued, matched, or canceled.
     pub fn is_pristine_unverified(&self) -> bool {
-        self.processed_through.is_none()
+        !self.clearing_activity
+            && self.processed_through.is_none()
             && self.seen.is_empty()
             && self.queued.is_empty()
             && self.books.is_empty()
@@ -314,7 +361,7 @@ impl SpotExchange {
         if self.processed_through.is_some_and(|h| entry.height <= h) {
             return Err(SpotError::HeightRegression);
         }
-        if entry.actor.as_str().starts_with(ESCROW_PREFIX) {
+        if entry.actor.as_str().starts_with('~') {
             return Err(SpotError::ReservedAccount);
         }
         self.check_pair(entry.intent.offered, entry.intent.desired)?;
@@ -547,7 +594,7 @@ impl SpotExchange {
         if request.height <= finalized {
             return Err(SpotError::HeightRegression);
         }
-        if request.actor.as_str().starts_with(ESCROW_PREFIX) {
+        if request.actor.as_str().starts_with('~') {
             return Err(SpotError::ReservedAccount);
         }
         let pair = self.check_pair(request.offered, request.desired)?;
@@ -620,6 +667,24 @@ impl SpotExchange {
     /// output semantics, channel column selection and fee accounting.
     pub fn type3_utxo_trade_unverified(&self) -> Result<(), SpotError> {
         Err(SpotError::AuthenticatedUtxoProofRequired)
+    }
+
+    /// Stage 25B: ordinary JointProtocolState/TLJP contains *only* spot
+    /// escrow metadata. Refuse imported clearing margin balances lacking
+    /// signed positions, ownership, loss policy and a combined checkpoint.
+    pub(crate) fn reject_foreign_reserves_for_joint_unverified(&self) -> Result<(), SpotError> {
+        if self.clearing_activity {
+            return Err(SpotError::ReservedAccount);
+        }
+        if self
+            .ledger
+            .balances_with_account_prefix("~")
+            .iter()
+            .any(|(_, account, _)| !account.as_str().starts_with(ESCROW_PREFIX))
+        {
+            return Err(SpotError::ReservedAccount);
+        }
+        Ok(())
     }
 
     /// Canonical accounting invariant across all outstanding orders.
