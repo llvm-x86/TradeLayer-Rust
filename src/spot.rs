@@ -336,6 +336,13 @@ impl SpotExchange {
     pub fn pending_count(&self) -> usize {
         self.queued.len()
     }
+
+    /// Research-only ordering check for the combined clearing mark lane.
+    /// Marking an epoch before all due spot queue entries are applied would
+    /// manufacture an end-of-block result with a different economic order.
+    pub(crate) fn has_queued_spot_at_or_before_unverified(&self, height: u64) -> bool {
+        self.queued.iter().any(|entry| entry.height <= height)
+    }
     pub fn open_count(&self) -> usize {
         self.books.values().map(Vec::len).sum()
     }
