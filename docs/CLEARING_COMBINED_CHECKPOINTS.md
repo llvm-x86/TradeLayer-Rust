@@ -45,7 +45,9 @@ The legacy TLSP writer/reader are **unchanged in authority**: they
 continue to refuse any state with clearing history or a foreign escrow.
 Only crate-private combined snapshot methods permit the inner payload
 to carry \`~clrm:\` accounts. The *outer* TLCL loader checks all escrow
-derivations, replay-ID uniqueness across all lanes, position sum zero,
+derivations, disjoint spot-order versus clearing event IDs (while
+preserving intentional ordinary-operation overlap with the underlying
+Ledger's processed IDs), position sum zero,
 actual collateral floors, spot book reserves and token-supply conservation.
 It rejects duplicate/unsorted owner or transaction records and re-encodes
 every recovered byte to enforce canonical representation.
