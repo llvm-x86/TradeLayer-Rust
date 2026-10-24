@@ -926,9 +926,7 @@ impl ClearingSandbox {
         }
         // Clearing replay markers are not part of the old spot format. A
         // restored combined state MUST retain their permanent history fence.
-        if (!self.seen.is_empty()
-            || !self.margin_escrows.is_empty()
-            || !self.positions.is_empty())
+        if (!self.seen.is_empty() || !self.margin_escrows.is_empty() || !self.positions.is_empty())
             && !self.spot.has_clearing_activity_unverified()
         {
             return Err(ClearingError::EscrowCollision);
