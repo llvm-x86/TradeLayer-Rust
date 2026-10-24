@@ -40,6 +40,10 @@ jobs:
           axiom-audit-root: 'TradeLayerFormal'
       - name: Kani verification of merged real Rust sources
         uses: model-checking/kani-github-action@f838096619a707b0f6b2118cf435eaccfa33e51f # v1.1
+        # Kani itself is separately provisioned auditor tooling. The consensus
+        # crate was already built and checked offline with --frozen.
+        env:
+          CARGO_NET_OFFLINE: 'false'
         with:
           kani-version: '0.68.0'
           command: cargo-kani
