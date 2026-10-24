@@ -324,7 +324,7 @@ fn rounded_multi_party_imbalance_is_observable_but_cannot_mutate_state() {
     let mut state = base().with_mark_policy_unverified(policy).unwrap();
     for (id, name) in [(10, "alice"), (11, "bob"), (12, "carol")] {
         state
-            .deposit_margin_unverified(tx(id), a(name), ONE)
+            .deposit_margin_unverified(tx(id), a(name), u128::from(ONE))
             .unwrap();
     }
     state
@@ -491,7 +491,7 @@ fn invalid_mark_policy_frozen_after_clearing_activity() {
         base().with_mark_policy_unverified(bad),
         Err(ClearingError::InvalidMarkPolicy)
     );
-    let mut state = opened();
+    let state = opened();
     let snapshot = state.clone();
     assert_eq!(
         state.clone().with_mark_policy_unverified(default_policy()),
