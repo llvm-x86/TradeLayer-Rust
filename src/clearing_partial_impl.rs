@@ -71,10 +71,7 @@ impl ClearingSandbox {
             // No implicit spot/derivative maker priority is inferred.
             // Pending spot events at or before this height make a local
             // end-of-block price order ambiguous and must reject.
-            if staged
-                .spot
-                .has_queued_spot_at_or_before_unverified(height)
-            {
+            if staged.spot.has_queued_spot_at_or_before_unverified(height) {
                 return Err(ClearingError::PendingSpotOrders);
             }
 
@@ -91,8 +88,7 @@ impl ClearingSandbox {
             if long_before <= 0 || short_before >= 0 {
                 return Err(ClearingError::MissingOppositePosition);
             }
-            let q = i64::try_from(fill.contracts)
-                .map_err(|_| ClearingError::PositionOverflow)?;
+            let q = i64::try_from(fill.contracts).map_err(|_| ClearingError::PositionOverflow)?;
             // Exactly one strict partial pair; full closures, flips,
             // opening synthetic liquidity, or oversized claims do not
             // belong to the admitted Stage25F slice.
@@ -219,11 +215,6 @@ impl ClearingSandbox {
         fill: &SyntheticBilateralReduction,
         fail_before_leg: usize,
     ) -> Result<SyntheticPartialReceipt, ClearingError> {
-        self.synthetic_bilateral_inner(
-            external,
-            execution_height,
-            fill,
-            Some(fail_before_leg),
-        )
+        self.synthetic_bilateral_inner(external, execution_height, fill, Some(fail_before_leg))
     }
 }
