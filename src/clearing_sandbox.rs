@@ -49,6 +49,7 @@ pub enum ClearingError {
     MarkPolicyMissing,
     MarkPolicyFrozen,
     StaleMark,
+    PendingSpotOrders,
     PnlRoundingImbalance(i128),
     InsufficientMargin {
         account: AccountId,
@@ -400,6 +401,12 @@ impl ClearingSandbox {
         }
         if new_price_e8 == 0 {
             return Err(ClearingError::InvalidMarkPolicy);
+        }
+        if self
+            .spot
+            .has_queued_spot_at_or_before_unverified(new_height)
+        {
+            return Err(ClearingError::PendingSpotOrders);
         }
         Ok(project_pnl_unverified(
             &self.positions,
