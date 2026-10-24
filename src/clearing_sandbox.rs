@@ -302,7 +302,10 @@ impl ClearingSandbox {
         &mut self,
         entry: UnverifiedSpotPlacement,
     ) -> Result<(), ClearingError> {
-        if self.seen.contains(&entry.txid) || self.ledger().is_processed(entry.txid) {
+        if self.seen.contains(&entry.txid)
+            || self.ledger().is_processed(entry.txid)
+            || self.spot.spot_input_ids_unverified().contains(&entry.txid)
+        {
             return Err(ClearingError::Replay(entry.txid));
         }
         if self
@@ -924,6 +927,23 @@ impl ClearingSandbox {
         if self.seen.len() > MAX_CLEARING_INPUTS {
             return Err(ClearingError::TooManyInputs);
         }
+        // Clearing replay markers are not part of the old spot format. A
+        // restored combined state MUST retain their permanent history fence.
+        if (!self.seen.is_empty() || !self.margin_escrows.is_empty() || !self.positions.is_empty())
+            && !self.spot.has_clearing_activity_unverified()
+        {
+            return Err(ClearingError::EscrowCollision);
+        }
+        for id in &self.seen {
+            // Ordinary operations intentionally use the SAME external ID in
+            // this clearing event journal and the underlying Ledger's
+            // processed set. That overlap is valid and must survive TLCL.
+            // An external spot order ID, however, is disjoint from every
+            // outer clearing/ordinary replay marker.
+            if self.spot.spot_input_ids_unverified().contains(id) {
+                return Err(ClearingError::Replay(*id));
+            }
+        }
         let mut escrow_addresses = BTreeSet::new();
         for (owner, escrow) in &self.margin_escrows {
             Self::validate_owner(owner)?;
@@ -957,3 +977,6 @@ impl ClearingSandbox {
         Ok(())
     }
 }
+
+// Stage 25D codec shares private escrow/position ownership with this type.
+include!("clearing_snapshot_impl.rs");
