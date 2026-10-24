@@ -195,7 +195,12 @@ impl ClearingSandbox {
         Ok(AccountId::try_from(address.as_str())?)
     }
 
-    fn internal_txid(&self, outer: TxId, purpose: &[u8], leg: usize) -> Result<TxId, ClearingError> {
+    fn internal_txid(
+        &self,
+        outer: TxId,
+        purpose: &[u8],
+        leg: usize,
+    ) -> Result<TxId, ClearingError> {
         let leg = u32::try_from(leg).map_err(|_| ClearingError::ArithmeticOverflow)?;
         let mut input = Vec::with_capacity(128);
         input.extend_from_slice(b"TradeLayer/clearing-internal/stage25a");
@@ -332,14 +337,16 @@ impl ClearingSandbox {
                 if trade.contracts == 0 {
                     return Err(ClearingError::ZeroContracts);
                 }
-                let size = i64::try_from(trade.contracts)
-                    .map_err(|_| ClearingError::PositionOverflow)?;
+                let size =
+                    i64::try_from(trade.contracts).map_err(|_| ClearingError::PositionOverflow)?;
                 for (owner, delta) in [(&trade.long, size), (&trade.short, -size)] {
                     if staged.margin_atoms(owner) == 0 {
                         return Err(ClearingError::UnknownMarginOwner);
                     }
                     let before = staged.positions.get(owner).copied().unwrap_or(0);
-                    let after = before.checked_add(delta).ok_or(ClearingError::PositionOverflow)?;
+                    let after = before
+                        .checked_add(delta)
+                        .ok_or(ClearingError::PositionOverflow)?;
                     if after == 0 {
                         staged.positions.remove(owner);
                     } else {
@@ -462,7 +469,11 @@ impl ClearingSandbox {
             if amount == 0 || payers[payer].0 == receivers[receiver].0 {
                 return Err(ClearingError::EscrowCollision);
             }
-            legs.push((payers[payer].0.clone(), receivers[receiver].0.clone(), amount));
+            legs.push((
+                payers[payer].0.clone(),
+                receivers[receiver].0.clone(),
+                amount,
+            ));
             payers[payer].1 -= amount;
             receivers[receiver].1 -= amount;
             if payers[payer].1 == 0 {
@@ -472,7 +483,8 @@ impl ClearingSandbox {
                 receiver += 1;
             }
         }
-        if payer != payers.len() || receiver != receivers.len()
+        if payer != payers.len()
+            || receiver != receivers.len()
             || legs.len() > MAX_CLEARING_OWNERS * 2
         {
             return Err(ClearingError::OpenInterestImbalance);
@@ -483,7 +495,10 @@ impl ClearingSandbox {
     /// Check every escrow against this *same* Ledger's inventory and net
     /// positions. This does not claim maintenance margin sufficiency.
     pub fn verify(&self) -> Result<(), ClearingError> {
-        if !self.ledger.has_no_channel_or_settlement_liabilities_unverified() {
+        if !self
+            .ledger
+            .has_no_channel_or_settlement_liabilities_unverified()
+        {
             return Err(ClearingError::UnsupportedExistingLiabilities);
         }
         self.ledger.verify_conservation()?;
@@ -501,9 +516,7 @@ impl ClearingSandbox {
         let mut escrow_addresses = BTreeSet::new();
         for (owner, escrow) in &self.margin_escrows {
             Self::validate_owner(owner)?;
-            if *escrow != self.derived_escrow(owner)?
-                || !escrow_addresses.insert(escrow.clone())
-            {
+            if *escrow != self.derived_escrow(owner)? || !escrow_addresses.insert(escrow.clone()) {
                 return Err(ClearingError::EscrowCollision);
             }
         }
