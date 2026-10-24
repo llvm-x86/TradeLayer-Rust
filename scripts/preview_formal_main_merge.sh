@@ -33,7 +33,7 @@ insertions = [
     ("mod canonical_columns; // Canonical nonzero map mutations for wallet and channel columns.",
      "pub mod chain;"),
     ("mod checked_amounts; // Bit-precise checked debit/credit arithmetic; Kani proof harnesses.",
-     "pub mod clearing_math;"),
+     "pub mod clearing_cadence;"),
     ("mod journal_move; // Fail-closed single-use settlement journal movement; Kani harness.",
      "pub mod ledger;"),
     ("mod ordered_columns; // Sorted Vec backend for wallet and channel accounting columns.",
