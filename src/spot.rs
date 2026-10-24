@@ -660,6 +660,21 @@ impl SpotExchange {
         Err(SpotError::AuthenticatedUtxoProofRequired)
     }
 
+    /// Stage 25B: ordinary JointProtocolState/TLJP contains *only* spot
+    /// escrow metadata. Refuse imported clearing margin balances lacking
+    /// signed positions, ownership, loss policy and a combined checkpoint.
+    pub(crate) fn reject_foreign_reserves_for_joint_unverified(&self) -> Result<(), SpotError> {
+        if self
+            .ledger
+            .balances_with_account_prefix("~")
+            .iter()
+            .any(|(_, account, _)| !account.as_str().starts_with(ESCROW_PREFIX))
+        {
+            return Err(SpotError::ReservedAccount);
+        }
+        Ok(())
+    }
+
     /// Canonical accounting invariant across all outstanding orders.
     pub fn verify_reserves(&self) -> Result<(), SpotError> {
         let mut expected = BTreeMap::new();
