@@ -169,7 +169,7 @@ fn unmatched_spot_order_and_open_margin_cannot_spend_one_another_reserves() {
             tx(15),
             Operation::Transfer {
                 id: p(7),
-                from: escrow,
+                from: escrow.clone(),
                 to: a("bob"),
                 amount_atoms: 1,
             }
