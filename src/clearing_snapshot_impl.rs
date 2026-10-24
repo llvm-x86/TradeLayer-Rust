@@ -7,7 +7,8 @@
 use crate::codec::{verify_crc, with_crc, Cursor, MAX_CHECKPOINT_BYTES};
 use crate::spot::SpotSnapshotError;
 
-const CLEARING_STATE_MAGIC: &[u8; 5] = b"TLCL\x01";
+const CLEARING_STATE_MAGIC_V1: &[u8; 5] = b"TLCL\x01";
+const CLEARING_STATE_MAGIC_V2: &[u8; 5] = b"TLCL\x02";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MarkTerms {
@@ -98,7 +99,11 @@ impl ClearingSandbox {
     /// This is distinct from historical TLSP/TLJP/TLJC checkpoint lanes.
     pub fn snapshot_bytes(&self) -> Result<Vec<u8>, ClearingSnapshotError> {
         self.verify().map_err(ClearingSnapshotError::Clearing)?;
-        let mut bytes = CLEARING_STATE_MAGIC.to_vec();
+        let mut bytes = if self.insurance_policy.is_some() {
+            CLEARING_STATE_MAGIC_V2.to_vec()
+        } else {
+            CLEARING_STATE_MAGIC_V1.to_vec()
+        };
         bytes.push(self.network.tag());
         bytes.extend_from_slice(&self.network.genesis().0);
         bytes.extend_from_slice(&self.network.chain_id().0);
@@ -122,6 +127,9 @@ impl ClearingSandbox {
                 bytes.push(u8::from(mark.inverse));
                 cs_write_rounding(&mut bytes, mark.rounding);
             }
+        }
+        if let Some(insurance) = &self.insurance_policy {
+            cs_put_account(&mut bytes, &insurance.sponsor);
         }
         bytes.push(u8::from(self.spot.has_clearing_activity_unverified()));
         cs_u32(&mut bytes, self.margin_escrows.len())?;
@@ -160,10 +168,42 @@ impl ClearingSandbox {
         expected_collateral_policy: Option<CollateralPolicy>,
         expected_mark_terms: Option<MarkTerms>,
     ) -> Result<Self, ClearingSnapshotError> {
+        Self::from_snapshot_bytes_with_insurance(
+            bytes,
+            network,
+            expected_contract,
+            expected_collateral,
+            expected_permitted,
+            expected_collateral_policy,
+            expected_mark_terms,
+            None,
+        )
+    }
+
+    /// Only the explicit independent insurer sponsor expected by the caller
+    /// allows TLCL v2 restoration. A v1 snapshot can never conjure an
+    /// insurer policy or a previously reserved amount.
+    #[allow(clippy::too_many_arguments)]
+    pub fn from_snapshot_bytes_with_insurance(
+        bytes: &[u8],
+        network: TradeLayerMainnet,
+        expected_contract: u32,
+        expected_collateral: PropertyId,
+        expected_permitted: &BTreeSet<PropertyId>,
+        expected_collateral_policy: Option<CollateralPolicy>,
+        expected_mark_terms: Option<MarkTerms>,
+        expected_insurance_policy: Option<&InsurancePolicy>,
+    ) -> Result<Self, ClearingSnapshotError> {
         let payload = verify_crc(bytes).map_err(|_| cs_bad("clearing CRC or size"))?;
         let mut r = Cursor::new(payload);
-        if r.fixed::<5>().map_err(|_| cs_bad("clearing magic"))? != *CLEARING_STATE_MAGIC {
-            return Err(cs_bad("clearing snapshot version"));
+        let version = r.fixed::<5>().map_err(|_| cs_bad("clearing magic"))?;
+        let with_insurance = match version {
+            version if version == *CLEARING_STATE_MAGIC_V1 => false,
+            version if version == *CLEARING_STATE_MAGIC_V2 => true,
+            _ => return Err(cs_bad("clearing snapshot version")),
+        };
+        if with_insurance != expected_insurance_policy.is_some() {
+            return Err(cs_bad("insurance checkpoint policy/version mismatch"));
         }
         let tag = r.u8().map_err(|_| cs_bad("network tag"))?;
         let genesis = r.fixed::<32>().map_err(|_| cs_bad("network genesis"))?;
@@ -214,6 +254,18 @@ impl ClearingSandbox {
         {
             return Err(cs_bad("mark terms mismatch"));
         }
+        let insurance_policy = if with_insurance {
+            let policy = InsurancePolicy {
+                sponsor: cs_read_account(&mut r)?,
+            };
+            policy.validate().map_err(ClearingSnapshotError::Clearing)?;
+            if expected_insurance_policy != Some(&policy) {
+                return Err(cs_bad("insurance sponsor policy mismatch"));
+            }
+            Some(policy)
+        } else {
+            None
+        };
         let clearing_activity = cs_read_bool(&mut r)?;
         let count = cs_read_count(&mut r, MAX_CLEARING_OWNERS)?;
         let mut margin_escrows = BTreeMap::new();
@@ -284,6 +336,7 @@ impl ClearingSandbox {
             positions,
             collateral_policy,
             mark_policy,
+            insurance_policy,
             seen,
         };
         recovered
