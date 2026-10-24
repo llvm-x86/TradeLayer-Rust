@@ -17,6 +17,7 @@ use crate::funding_audit::{
 use crate::hash256::double_sha256;
 use crate::ledger::{AccountId, Ledger, LedgerError, Operation, PropertyId, TxId};
 use crate::network_profile::TradeLayerMainnet;
+use crate::spot::{SpotError, SpotExchange, UnverifiedSpotPlacement};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write;
 
@@ -42,11 +43,21 @@ pub enum ClearingError {
     TooManyOwners,
     TooManyInputs,
     TooManyTrades,
+    InvalidCollateralPolicy,
+    CollateralPolicyFrozen,
+    InsufficientMargin {
+        account: AccountId,
+        required_atoms: u128,
+        available_atoms: u128,
+    },
     Replay(TxId),
     PositionOverflow,
     ArithmeticOverflow,
-    InjectedFailure { before_leg: usize },
+    InjectedFailure {
+        before_leg: usize,
+    },
     Ledger(LedgerError),
+    Spot(SpotError),
     Funding(FundingAuditError),
 }
 
@@ -62,6 +73,15 @@ impl From<LedgerError> for ClearingError {
         Self::Ledger(error)
     }
 }
+impl From<SpotError> for ClearingError {
+    fn from(error: SpotError) -> Self {
+        match error {
+            SpotError::Ledger(inner) => Self::Ledger(inner),
+            other => Self::Spot(other),
+        }
+    }
+}
+
 impl From<FundingAuditError> for ClearingError {
     fn from(error: FundingAuditError) -> Self {
         Self::Funding(error)
@@ -76,6 +96,27 @@ pub struct MatchedContractTrade {
     pub long: AccountId,
     pub short: AccountId,
     pub contracts: u64,
+}
+
+/// Explicit research-only collateral policy. This does NOT specify TradeLayer
+/// economic consensus; the caller cannot change it after the first clearing
+/// operation, and no historical contract price or leverage is inferred.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CollateralPolicy {
+    pub initial_atoms_per_contract: u128,
+    pub maintenance_atoms_per_contract: u128,
+}
+
+impl CollateralPolicy {
+    fn validate(self) -> Result<Self, ClearingError> {
+        if self.initial_atoms_per_contract == 0
+            || self.maintenance_atoms_per_contract == 0
+            || self.maintenance_atoms_per_contract > self.initial_atoms_per_contract
+        {
+            return Err(ClearingError::InvalidCollateralPolicy);
+        }
+        Ok(self)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -94,9 +135,10 @@ pub struct ClearingSandbox {
     network: TradeLayerMainnet,
     contract: u32,
     collateral: PropertyId,
-    ledger: Ledger,
+    spot: SpotExchange,
     margin_escrows: BTreeMap<AccountId, AccountId>,
     positions: BTreeMap<AccountId, i64>,
+    collateral_policy: Option<CollateralPolicy>,
     seen: BTreeSet<TxId>,
 }
 
@@ -123,13 +165,50 @@ impl ClearingSandbox {
             return Err(ClearingError::EscrowCollision);
         }
         ledger.verify_conservation()?;
+        let spot = SpotExchange::from_ledger_unverified(ledger, BTreeSet::new())?;
+        Self::from_spot_unverified(network, contract, collateral, spot)
+    }
+
+    /// Consume a preexisting spot exchange and its SOLE owned token ledger.
+    /// This is an offline research lane and not a JointChainState migration.
+    pub fn from_spot_unverified(
+        network: TradeLayerMainnet,
+        contract: u32,
+        collateral: PropertyId,
+        spot: SpotExchange,
+    ) -> Result<Self, ClearingError> {
+        if contract == 0 {
+            return Err(ClearingError::InvalidContract);
+        }
+        if spot.ledger().property(collateral).is_none() {
+            return Err(ClearingError::UnknownCollateral);
+        }
+        if !spot
+            .ledger()
+            .has_no_channel_or_settlement_liabilities_unverified()
+        {
+            return Err(ClearingError::UnsupportedExistingLiabilities);
+        }
+        spot.verify_reserves()?;
+        if spot.has_clearing_activity_unverified() {
+            return Err(ClearingError::EscrowCollision);
+        }
+        if spot
+            .ledger()
+            .balances_with_account_prefix("~")
+            .iter()
+            .any(|(_, account, _)| !account.as_str().starts_with("~spot:"))
+        {
+            return Err(ClearingError::EscrowCollision);
+        }
         let candidate = Self {
             network,
             contract,
             collateral,
-            ledger,
+            spot,
             margin_escrows: BTreeMap::new(),
             positions: BTreeMap::new(),
+            collateral_policy: None,
             seen: BTreeSet::new(),
         };
         candidate.verify()?;
@@ -149,7 +228,67 @@ impl ClearingSandbox {
     }
 
     pub fn ledger(&self) -> &Ledger {
-        &self.ledger
+        self.spot.ledger()
+    }
+
+    pub fn spot(&self) -> &SpotExchange {
+        &self.spot
+    }
+
+    /// Caller assertions, not authenticated chain inputs. Ordinary ledger
+    /// mutations cannot touch either spot or clearing reserved addresses.
+    pub fn apply_ordinary_operation_unverified(
+        &mut self,
+        external: TxId,
+        operation: Operation,
+    ) -> Result<(), ClearingError> {
+        self.transaction(external, move |staged| {
+            staged
+                .spot
+                .apply_joint_ledger_operation_unverified(external, operation)?;
+            Ok(())
+        })
+    }
+
+    /// Spot orders and margin obligations share one available balance.
+    pub fn enqueue_spot_order_unverified(
+        &mut self,
+        entry: UnverifiedSpotPlacement,
+    ) -> Result<(), ClearingError> {
+        if self.seen.contains(&entry.txid) || self.ledger().is_processed(entry.txid) {
+            return Err(ClearingError::Replay(entry.txid));
+        }
+        let mut staged = self.clone();
+        staged.spot.enqueue_type5_unverified(entry)?;
+        staged.verify()?;
+        *self = staged;
+        Ok(())
+    }
+
+    pub fn process_spot_block_unverified(&mut self, height: u64) -> Result<usize, ClearingError> {
+        let mut staged = self.clone();
+        let count = staged.spot.process_through_unverified(height)?;
+        staged.verify()?;
+        *self = staged;
+        Ok(count)
+    }
+
+    /// Configure explicit, bounded synthetic initial/maintenance amounts
+    /// once, before any clearing event. No production consensus activation.
+    pub fn with_collateral_policy_unverified(
+        mut self,
+        policy: CollateralPolicy,
+    ) -> Result<Self, ClearingError> {
+        if self.collateral_policy.is_some() || !self.seen.is_empty() || !self.positions.is_empty() {
+            return Err(ClearingError::CollateralPolicyFrozen);
+        }
+        self.collateral_policy = Some(policy.validate()?);
+        self.verify()?;
+        Ok(self)
+    }
+
+    pub const fn collateral_policy(&self) -> Option<CollateralPolicy> {
+        self.collateral_policy
     }
 
     pub fn processed_count(&self) -> usize {
@@ -164,7 +303,7 @@ impl ClearingSandbox {
     /// No independent numeric margin ledger is maintained.
     pub fn margin_atoms(&self, owner: &AccountId) -> u128 {
         self.margin_escrows.get(owner).map_or(0, |escrow| {
-            self.ledger.available_atoms(self.collateral, escrow)
+            self.spot.ledger().available_atoms(self.collateral, escrow)
         })
     }
 
@@ -215,7 +354,10 @@ impl ClearingSandbox {
     }
 
     fn guard_event(&self, external: TxId) -> Result<(), ClearingError> {
-        if self.seen.contains(&external) || self.ledger.is_processed(external) {
+        if self.seen.contains(&external)
+            || self.spot.ledger().is_processed(external)
+            || self.spot.spot_input_ids_unverified().contains(&external)
+        {
             return Err(ClearingError::Replay(external));
         }
         if self.seen.len() >= MAX_CLEARING_INPUTS {
@@ -259,18 +401,20 @@ impl ClearingSandbox {
                     return Err(ClearingError::EscrowCollision);
                 }
             } else if staged.margin_escrows.len() >= MAX_CLEARING_OWNERS
-                || staged.ledger.available_atoms(staged.collateral, &escrow) > 0
+                || staged
+                    .spot
+                    .ledger()
+                    .available_atoms(staged.collateral, &escrow)
+                    > 0
             {
                 return Err(ClearingError::TooManyOwners);
             }
-            staged.ledger.apply(
+            staged.spot.apply_clearing_transfer_unverified(
                 staged.internal_txid(external, b"deposit", 0)?,
-                Operation::Transfer {
-                    id: staged.collateral,
-                    from: owner.clone(),
-                    to: escrow.clone(),
-                    amount_atoms,
-                },
+                staged.collateral,
+                owner.clone(),
+                escrow.clone(),
+                amount_atoms,
             )?;
             staged.margin_escrows.insert(owner, escrow);
             Ok(())
@@ -298,20 +442,53 @@ impl ClearingSandbox {
                 .get(&owner)
                 .ok_or(ClearingError::UnknownMarginOwner)?
                 .clone();
-            staged.ledger.apply(
+            staged.spot.apply_clearing_transfer_unverified(
                 staged.internal_txid(external, b"withdraw", 0)?,
-                Operation::Transfer {
-                    id: staged.collateral,
-                    from: escrow.clone(),
-                    to: owner.clone(),
-                    amount_atoms,
-                },
+                staged.collateral,
+                escrow.clone(),
+                owner.clone(),
+                amount_atoms,
             )?;
-            if staged.ledger.available_atoms(staged.collateral, &escrow) == 0 {
+            if staged
+                .spot
+                .ledger()
+                .available_atoms(staged.collateral, &escrow)
+                == 0
+            {
                 staged.margin_escrows.remove(&owner);
             }
             Ok(())
         })
+    }
+
+    fn check_collateral(
+        &self,
+        owner: &AccountId,
+        contracts: i64,
+        for_increasing_exposure: bool,
+    ) -> Result<(), ClearingError> {
+        if contracts == 0 {
+            return Ok(());
+        }
+        if let Some(policy) = self.collateral_policy {
+            let per_contract = if for_increasing_exposure {
+                policy.initial_atoms_per_contract
+            } else {
+                policy.maintenance_atoms_per_contract
+            };
+            let required = u128::from(contracts.unsigned_abs())
+                .checked_mul(per_contract)
+                .ok_or(ClearingError::ArithmeticOverflow)?;
+            let available = self.margin_atoms(owner);
+            if available < required {
+                return Err(ClearingError::InsufficientMargin {
+                    account: owner.clone(),
+                    required_atoms: required,
+                    available_atoms: available,
+                });
+            }
+        }
+        Ok(())
     }
 
     /// Matches are only simulated by a caller; no exchange evidence is
@@ -347,6 +524,13 @@ impl ClearingSandbox {
                     let after = before
                         .checked_add(delta)
                         .ok_or(ClearingError::PositionOverflow)?;
+                    let flipped =
+                        before != 0 && after != 0 && before.is_negative() != after.is_negative();
+                    staged.check_collateral(
+                        owner,
+                        after,
+                        flipped || after.unsigned_abs() > before.unsigned_abs(),
+                    )?;
                     if after == 0 {
                         staged.positions.remove(owner);
                     } else {
@@ -388,14 +572,12 @@ impl ClearingSandbox {
                         before_leg: leg_number,
                     });
                 }
-                staged.ledger.apply(
+                staged.spot.apply_clearing_transfer_unverified(
                     staged.internal_txid(external, b"funding", leg_number)?,
-                    Operation::Transfer {
-                        id: staged.collateral,
-                        from: from.clone(),
-                        to: to.clone(),
-                        amount_atoms: *amount,
-                    },
+                    staged.collateral,
+                    from.clone(),
+                    to.clone(),
+                    *amount,
                 )?;
             }
             if failure_before_leg == Some(legs.len()) {
@@ -496,13 +678,15 @@ impl ClearingSandbox {
     /// positions. This does not claim maintenance margin sufficiency.
     pub fn verify(&self) -> Result<(), ClearingError> {
         if !self
-            .ledger
+            .spot
+            .ledger()
             .has_no_channel_or_settlement_liabilities_unverified()
         {
             return Err(ClearingError::UnsupportedExistingLiabilities);
         }
-        self.ledger.verify_conservation()?;
-        if self.ledger.property(self.collateral).is_none() {
+        self.spot.ledger().verify_conservation()?;
+        self.spot.verify_reserves()?;
+        if self.spot.ledger().property(self.collateral).is_none() {
             return Err(ClearingError::UnknownCollateral);
         }
         if self.margin_escrows.len() > MAX_CLEARING_OWNERS
@@ -520,7 +704,12 @@ impl ClearingSandbox {
                 return Err(ClearingError::EscrowCollision);
             }
         }
-        for (property, account, _) in self.ledger.balances_with_account_prefix("~") {
+        for (property, account, _) in self.spot.ledger().balances_with_account_prefix("~") {
+            // All spot-order reserves are separately matched against their
+            // actual orderbook by SpotExchange::verify_reserves.
+            if account.as_str().starts_with("~spot:") {
+                continue;
+            }
             if property != self.collateral || !escrow_addresses.contains(&account) {
                 return Err(ClearingError::EscrowCollision);
             }
@@ -530,6 +719,7 @@ impl ClearingSandbox {
             if *size == 0 || !self.margin_escrows.contains_key(owner) {
                 return Err(ClearingError::UnknownMarginOwner);
             }
+            self.check_collateral(owner, *size, false)?;
             net = net
                 .checked_add(i128::from(*size))
                 .ok_or(ClearingError::PositionOverflow)?;
