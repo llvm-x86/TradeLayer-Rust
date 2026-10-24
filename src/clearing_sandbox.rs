@@ -304,6 +304,12 @@ impl ClearingSandbox {
         if self.seen.contains(&entry.txid) || self.ledger().is_processed(entry.txid) {
             return Err(ClearingError::Replay(entry.txid));
         }
+        if self
+            .mark_policy
+            .is_some_and(|mark| entry.height <= mark.height)
+        {
+            return Err(ClearingError::StaleMark);
+        }
         let mut staged = self.clone();
         staged.spot.enqueue_type5_unverified(entry)?;
         staged.verify()?;
@@ -312,6 +318,9 @@ impl ClearingSandbox {
     }
 
     pub fn process_spot_block_unverified(&mut self, height: u64) -> Result<usize, ClearingError> {
+        if self.mark_policy.is_some_and(|mark| height <= mark.height) {
+            return Err(ClearingError::StaleMark);
+        }
         let mut staged = self.clone();
         let count = staged.spot.process_through_unverified(height)?;
         staged.verify()?;
@@ -350,7 +359,20 @@ impl ClearingSandbox {
         {
             return Err(ClearingError::MarkPolicyFrozen);
         }
-        self.mark_policy = Some(policy.validate()?);
+        let policy = policy.validate()?;
+        // The initial mark cannot predate a previously finalized spot block;
+        // a pending spot queue also has no authenticated ordering yet.
+        if self.spot.pending_count() > 0 {
+            return Err(ClearingError::MarkPolicyFrozen);
+        }
+        if self
+            .spot
+            .processed_through()
+            .is_some_and(|height| policy.height < height)
+        {
+            return Err(ClearingError::StaleMark);
+        }
+        self.mark_policy = Some(policy);
         self.verify()?;
         Ok(self)
     }
@@ -368,7 +390,12 @@ impl ClearingSandbox {
         new_price_e8: u64,
     ) -> Result<PnlProjection, ClearingError> {
         let policy = self.mark_policy.ok_or(ClearingError::MarkPolicyMissing)?;
-        if new_height <= policy.height {
+        if new_height <= policy.height
+            || self
+                .spot
+                .processed_through()
+                .is_some_and(|height| new_height < height)
+        {
             return Err(ClearingError::StaleMark);
         }
         if new_price_e8 == 0 {
