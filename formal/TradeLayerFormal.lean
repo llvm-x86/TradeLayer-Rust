@@ -4767,4 +4767,135 @@ theorem native_half_open_search_refines_lower_bound
     (nativeAccountCountBefore rows key) rows.length rows.length
     pivotCorrect 0 rows.length (by omega) bounded (by omega) (by omega)
 
+
+/-!
+## Stage 19b: discharge mathematical pivot reads on sorted encoded rows
+
+Stage 19's half-open cursor proof assumed each pivot comparison matched
+the ideal lower-bound target. That condition now follows *mathematically*
+from a strictly ordered list and a correct indexed row read. The remaining
+source-level obligation is the Rust Vec indexed-read/native Ord contract.
+-/
+
+/-- Any in-range finite-list index has an exact stored row. -/
+theorem column_at_exists_in_range
+    (rows : List (Nat × Nat)) (index : Nat)
+    (inRange : index < rows.length) :
+    ∃ row, columnAt rows index = some row := by
+  induction rows generalizing index with
+  | nil =>
+      simp at inRange
+  | cons head tail ih =>
+      cases index with
+      | zero =>
+          exact ⟨head, rfl⟩
+      | succ index =>
+          have tailRange : index < tail.length := by
+            simpa using inRange
+          obtain ⟨row, found⟩ := ih index tailRange
+          exact ⟨row, found⟩
+
+/-- The pivot at a valid index is smaller than the query precisely when
+that index precedes the independently scanned lower-bound count. -/
+theorem sorted_column_pivot_iff_before_count
+    (rows : List (Nat × Nat)) (query index : Nat)
+    (sorted : SortedVecKeys rows) (inRange : index < rows.length) :
+    (∃ row, columnAt rows index = some row ∧ row.1 < query) ↔
+      index < columnCountBefore rows query := by
+  induction rows generalizing index with
+  | nil =>
+      simp at inRange
+  | cons pair tail ih =>
+      rcases pair with ⟨stored, atoms⟩
+      obtain ⟨higher, tailSorted⟩ := sorted
+      have noTail (notBelow : ¬ stored < query) :
+          columnCountBefore tail query = 0 :=
+        column_count_before_none tail query (by
+          intro entry member
+          have gt := higher entry member
+          omega)
+      cases index with
+      | zero =>
+          by_cases smaller : stored < query
+          · simp [columnAt, columnCountBefore, smaller] <;> omega
+          · simp [columnAt, columnCountBefore, smaller, noTail smaller]
+      | succ index =>
+          have tailRange : index < tail.length := by
+            simpa using inRange
+          have tailTheorem := ih index tailSorted tailRange
+          by_cases smaller : stored < query
+          · have shift :
+                (index < columnCountBefore tail query) ↔
+                  (index + 1 < 1 + columnCountBefore tail query) := by
+              omega
+            have exactResult := tailTheorem.trans shift
+            simpa [columnAt, columnCountBefore, smaller,
+              Nat.succ_eq_add_one] using exactResult
+          · have noCount : columnCountBefore tail query = 0 := noTail smaller
+            have impossible :
+                ¬∃ row, columnAt tail index = some row ∧ row.1 < query := by
+              rw [tailTheorem]
+              omega
+            simp [columnAt, columnCountBefore, smaller, noCount, impossible]
+
+/-- This predicate is the mathematical image of a single indexed key read
+followed by a comparison. Missing indices are false. -/
+def encodedIndexedPivotBelow
+    (rows : List (Nat × Nat)) (query index : Nat) : Bool :=
+  match columnAt rows index with
+  | none => false
+  | some row => decide (row.1 < query)
+
+/-- Mathematically valid indexed reads on a strict sorted support
+completely discharge Stage 19's per-pivot correctness premise. -/
+theorem encoded_pivot_below_iff_lower_count
+    (rows : List (Nat × Nat)) (query index : Nat)
+    (sorted : SortedVecKeys rows)
+    (inRange : index < rows.length) :
+    encodedIndexedPivotBelow rows query index =
+      decide (index < columnCountBefore rows query) := by
+  obtain ⟨row, found⟩ := column_at_exists_in_range rows index inRange
+  have equivalence :=
+    sorted_column_pivot_iff_before_count rows query index sorted inRange
+  by_cases smaller : row.1 < query
+  · have before : index < columnCountBefore rows query :=
+      equivalence.mp ⟨row, found, smaller⟩
+    simp [encodedIndexedPivotBelow, found, smaller, before]
+  · have notBefore : ¬index < columnCountBefore rows query := by
+      intro before
+      obtain ⟨other, atOther, otherBelow⟩ := equivalence.mpr before
+      rw [found] at atOther
+      have equal : row = other := Option.some.inj atOther
+      subst other
+      exact smaller otherBelow
+    simp [encodedIndexedPivotBelow, found, smaller, notBefore]
+
+/-- The complete native-key mathematical midpoint-cursor search is exact.
+This proof connects Stages 13–14 and 19 without a separate pivot axiom:
+once native keys are validated and ordered, the encoded indexed-row
+comparison returns the independent lower-bound scan's exact position.
+It does not assert that Rust's Vec and Ord implement those Lean functions. -/
+theorem native_encoded_half_open_search_exact
+    (rows : List (NativeAccountKey × Nat)) (key : NativeAccountKey)
+    (sorted : NativeAccountSorted rows)
+    (valid : NativeRowsValid rows)
+    (keyValid : ValidAccountBytes key.accountBytes) :
+    nativeHalfOpenSearch
+        (encodedIndexedPivotBelow (encodeNativeRows rows)
+          (encodeNativeAccount key)) rows =
+      nativeAccountCountBefore rows key := by
+  apply native_half_open_search_refines_lower_bound
+    rows key _ sorted valid keyValid
+  intro index inRange
+  have sortedEncoded :=
+    native_account_sorted_embeds_in_nat rows sorted valid
+  have rangeEncoded : index < (encodeNativeRows rows).length := by
+    simpa [encodeNativeRows] using inRange
+  have pivot := encoded_pivot_below_iff_lower_count
+    (encodeNativeRows rows) (encodeNativeAccount key)
+      index sortedEncoded rangeEncoded
+  rw [native_account_lower_bound_count_refines
+    rows key valid keyValid] at pivot
+  exact pivot
+
 end TradeLayerFormal
