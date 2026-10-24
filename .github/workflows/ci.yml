@@ -44,6 +44,8 @@ jobs:
         run: cargo clippy --all-targets --frozen -- -D warnings
       - name: Run tests
         run: cargo test --frozen
+      - name: Verify Stage 25A isolated margin and funding atomicity
+        run: cargo test --frozen --test clearing_sandbox
       - name: Release build without network or lockfile changes
         run: cargo build --all-targets --release --frozen
       - name: Legacy withdrawal amount mismatch audit
