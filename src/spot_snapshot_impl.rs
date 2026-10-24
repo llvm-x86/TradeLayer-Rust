@@ -85,6 +85,17 @@ impl SpotExchange {
     /// Re-run independently checkable invariants for each serialized state
     /// before encoding or publishing a recovered checkpoint.
     fn validate_spot_snapshot(&self) -> Result<(), SpotSnapshotError> {
+        // An isolated TLSP snapshot cannot restore clearing positions or
+        // escrow ownership metadata. Refuse all non-spot reserved balances
+        // rather than accepting a stranded spendable collateral account.
+        if self
+            .ledger
+            .balances_with_account_prefix("~")
+            .iter()
+            .any(|(_, account, _)| !account.as_str().starts_with(ESCROW_PREFIX))
+        {
+            return Err(spot_invalid("non-spot escrow needs combined checkpoint"));
+        }
         if self
             .permitted
             .iter()
@@ -106,7 +117,7 @@ impl SpotExchange {
         let mut sequences = BTreeSet::new();
         for queued in &self.queued {
             if queued.height <= height
-                || queued.actor.as_str().starts_with(ESCROW_PREFIX)
+                || queued.actor.as_str().starts_with('~')
                 || queued.intent.post
                 || queued.intent.stop
                 || queued.intent.offered_atoms == 0
@@ -146,7 +157,7 @@ impl SpotExchange {
                 if SpotPair::new(order.offered, order.desired) != Ok(*pair)
                     || order.height == 0
                     || order.height > height
-                    || order.owner.as_str().starts_with(ESCROW_PREFIX)
+                    || order.owner.as_str().starts_with('~')
                     || order.offered_atoms == 0
                     || order.expected_atoms == 0
                     || order.remaining_offered == 0
