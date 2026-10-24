@@ -17,6 +17,7 @@ use crate::funding_audit::{
 use crate::hash256::double_sha256;
 use crate::ledger::{AccountId, Ledger, LedgerError, Operation, PropertyId, TxId};
 use crate::network_profile::TradeLayerMainnet;
+use crate::spot::{SpotError, SpotExchange, UnverifiedSpotPlacement};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write;
 
@@ -47,6 +48,7 @@ pub enum ClearingError {
     ArithmeticOverflow,
     InjectedFailure { before_leg: usize },
     Ledger(LedgerError),
+    Spot(SpotError),
     Funding(FundingAuditError),
 }
 
@@ -62,6 +64,15 @@ impl From<LedgerError> for ClearingError {
         Self::Ledger(error)
     }
 }
+impl From<SpotError> for ClearingError {
+    fn from(error: SpotError) -> Self {
+        match error {
+            SpotError::Ledger(inner) => Self::Ledger(inner),
+            other => Self::Spot(other),
+        }
+    }
+}
+
 impl From<FundingAuditError> for ClearingError {
     fn from(error: FundingAuditError) -> Self {
         Self::Funding(error)
@@ -94,7 +105,7 @@ pub struct ClearingSandbox {
     network: TradeLayerMainnet,
     contract: u32,
     collateral: PropertyId,
-    ledger: Ledger,
+    spot: SpotExchange,
     margin_escrows: BTreeMap<AccountId, AccountId>,
     positions: BTreeMap<AccountId, i64>,
     seen: BTreeSet<TxId>,
@@ -123,11 +134,39 @@ impl ClearingSandbox {
             return Err(ClearingError::EscrowCollision);
         }
         ledger.verify_conservation()?;
+        let spot = SpotExchange::from_ledger_unverified(ledger, BTreeSet::new())?;
+        Self::from_spot_unverified(network, contract, collateral, spot)
+    }
+
+    /// Consume a preexisting spot exchange and its SOLE owned token ledger.
+    /// This is an offline research lane and not a JointChainState migration.
+    pub fn from_spot_unverified(
+        network: TradeLayerMainnet,
+        contract: u32,
+        collateral: PropertyId,
+        spot: SpotExchange,
+    ) -> Result<Self, ClearingError> {
+        if contract == 0 {
+            return Err(ClearingError::InvalidContract);
+        }
+        if spot.ledger().property(collateral).is_none() {
+            return Err(ClearingError::UnknownCollateral);
+        }
+        if !spot.ledger().has_no_channel_or_settlement_liabilities_unverified() {
+            return Err(ClearingError::UnsupportedExistingLiabilities);
+        }
+        spot.verify_reserves()?;
+        if spot.ledger().balances_with_account_prefix("~")
+            .iter()
+            .any(|(_, account, _)| !account.as_str().starts_with("~spot:"))
+        {
+            return Err(ClearingError::EscrowCollision);
+        }
         let candidate = Self {
             network,
             contract,
             collateral,
-            ledger,
+            spot,
             margin_escrows: BTreeMap::new(),
             positions: BTreeMap::new(),
             seen: BTreeSet::new(),
@@ -149,7 +188,47 @@ impl ClearingSandbox {
     }
 
     pub fn ledger(&self) -> &Ledger {
-        &self.ledger
+        self.spot.ledger()
+    }
+
+    pub fn spot(&self) -> &SpotExchange {
+        &self.spot
+    }
+
+    /// Caller assertions, not authenticated chain inputs. Ordinary ledger
+    /// mutations cannot touch either spot or clearing reserved addresses.
+    pub fn apply_ordinary_operation_unverified(
+        &mut self,
+        external: TxId,
+        operation: Operation,
+    ) -> Result<(), ClearingError> {
+        self.transaction(external, move |staged| {
+            staged.spot.apply_joint_ledger_operation_unverified(external, operation)?;
+            Ok(())
+        })
+    }
+
+    /// Spot orders and margin obligations share one available balance.
+    pub fn enqueue_spot_order_unverified(
+        &mut self,
+        entry: UnverifiedSpotPlacement,
+    ) -> Result<(), ClearingError> {
+        if self.seen.contains(&entry.txid) || self.ledger().is_processed(entry.txid) {
+            return Err(ClearingError::Replay(entry.txid));
+        }
+        let mut staged = self.clone();
+        staged.spot.enqueue_type5_unverified(entry)?;
+        staged.verify()?;
+        *self = staged;
+        Ok(())
+    }
+
+    pub fn process_spot_block_unverified(&mut self, height: u64) -> Result<usize, ClearingError> {
+        let mut staged = self.clone();
+        let count = staged.spot.process_through_unverified(height)?;
+        staged.verify()?;
+        *self = staged;
+        Ok(count)
     }
 
     pub fn processed_count(&self) -> usize {
