@@ -37,6 +37,13 @@ pub enum UnverifiedClearingEvent {
         owner: AccountId,
         atoms: u128,
     },
+    /// Only a policy-designated research sponsor may DONATE real atoms into
+    /// a segregated insurer escrow. No insurer debit event is supported.
+    InsuranceDeposit {
+        txid: TxId,
+        sponsor: AccountId,
+        atoms: u128,
+    },
     MarginWithdraw {
         txid: TxId,
         owner: AccountId,
@@ -243,6 +250,9 @@ impl ClearingChainState {
                 }
                 UnverifiedClearingEvent::MarginDeposit { txid, owner, atoms } => {
                     staged.deposit_margin_unverified(*txid, owner.clone(), *atoms)?;
+                }
+                UnverifiedClearingEvent::InsuranceDeposit { txid, sponsor, atoms } => {
+                    staged.deposit_insurance_unverified(*txid, sponsor.clone(), *atoms)?;
                 }
                 UnverifiedClearingEvent::MarginWithdraw { txid, owner, atoms } => {
                     staged.withdraw_margin_unverified(*txid, owner.clone(), *atoms)?;
