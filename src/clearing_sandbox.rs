@@ -932,9 +932,12 @@ impl ClearingSandbox {
             return Err(ClearingError::EscrowCollision);
         }
         for id in &self.seen {
-            if self.spot.ledger().is_processed(*id)
-                || self.spot.spot_input_ids_unverified().contains(id)
-            {
+            // Ordinary operations intentionally use the SAME external ID in
+            // this clearing event journal and the underlying Ledger's
+            // processed set. That overlap is valid and must survive TLCL.
+            // An external spot order ID, however, is disjoint from every
+            // outer clearing/ordinary replay marker.
+            if self.spot.spot_input_ids_unverified().contains(id) {
                 return Err(ClearingError::Replay(*id));
             }
         }
