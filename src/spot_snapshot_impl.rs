@@ -462,7 +462,11 @@ impl SpotExchange {
             clearing_activity,
         };
         result.validate_spot_snapshot_mode(allow_combined_clearing)?;
-        if result.snapshot_bytes_mode(allow_combined_clearing)?.as_slice() != bytes {
+        if result
+            .snapshot_bytes_mode(allow_combined_clearing)?
+            .as_slice()
+            != bytes
+        {
             return Err(spot_invalid("noncanonical spot encoding"));
         }
         Ok(result)
