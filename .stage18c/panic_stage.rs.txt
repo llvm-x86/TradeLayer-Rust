@@ -72,7 +72,10 @@ fn panic_after_two_real_staged_transfers_preserves_live_ledger_and_replay() {
         let _ = ledger.apply_batch(PanicAfterTwoStagedWrites { id, next_index: 0 });
     }));
     assert!(caught.is_err(), "expected injected iterator panic");
-    assert_eq!(ledger, original, "partial staged data leaked into live ledger");
+    assert_eq!(
+        ledger, original,
+        "partial staged data leaked into live ledger"
+    );
     assert_eq!(ledger.snapshot_bytes().unwrap(), original_bytes);
     assert_eq!(ledger.processed_count(), original_markers);
     assert!(!ledger.is_processed(tx(2)));
