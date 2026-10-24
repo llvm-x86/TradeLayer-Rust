@@ -86,7 +86,9 @@ impl SpotExchange {
     /// before encoding or publishing a recovered checkpoint.
     fn validate_spot_snapshot(&self) -> Result<(), SpotSnapshotError> {
         if self.clearing_activity {
-            return Err(spot_invalid("clearing event history requires a combined checkpoint"));
+            return Err(spot_invalid(
+                "clearing event history requires a combined checkpoint",
+            ));
         }
         // An isolated TLSP snapshot cannot restore clearing positions or
         // escrow ownership metadata. Refuse all non-spot reserved balances
