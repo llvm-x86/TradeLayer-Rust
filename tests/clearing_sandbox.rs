@@ -109,16 +109,23 @@ fn opening_funding_and_escrow_moves_use_exactly_one_token_ledger() {
     ];
     assert_ne!(escrows[0], escrows[1]);
     assert_ne!(escrows[0], escrows[2]);
-    assert!(escrows.iter().all(|account| account.as_str().starts_with("~clrm:")));
+    assert!(escrows
+        .iter()
+        .all(|account| account.as_str().starts_with("~clrm:")));
 
-    let receipt = book.settle_funding_unverified(tx(8), 100_000_000, 100_000).unwrap();
+    let receipt = book
+        .settle_funding_unverified(tx(8), 100_000_000, 100_000)
+        .unwrap();
     assert_eq!(receipt.nominal_atoms, 300_000);
     assert_eq!(receipt.ledger_transfer_legs, 2);
     assert_eq!(receipt.active_positions, 3);
     assert_eq!(book.margin_atoms(&a("alice")), 49_700_000);
     assert_eq!(book.margin_atoms(&a("bob")), 40_200_000);
     assert_eq!(book.margin_atoms(&a("carol")), 25_100_000);
-    assert_eq!(book.ledger().property(p()).unwrap().total_supply_atoms, 1_000_000_000);
+    assert_eq!(
+        book.ledger().property(p()).unwrap().total_supply_atoms,
+        1_000_000_000
+    );
     assert_eq!(book.ledger().verify_conservation(), Ok(()));
     assert_eq!(book.verify(), Ok(()));
 }
@@ -126,7 +133,9 @@ fn opening_funding_and_escrow_moves_use_exactly_one_token_ledger() {
 #[test]
 fn negative_funding_charges_shorts_not_longs() {
     let mut book = opening();
-    let receipt = book.settle_funding_unverified(tx(8), 100_000_000, -100_000).unwrap();
+    let receipt = book
+        .settle_funding_unverified(tx(8), 100_000_000, -100_000)
+        .unwrap();
     assert_eq!(receipt.nominal_atoms, 300_000);
     assert_eq!(book.margin_atoms(&a("alice")), 50_300_000);
     assert_eq!(book.margin_atoms(&a("bob")), 39_800_000);
@@ -141,11 +150,16 @@ fn fault_before_every_funding_leg_or_commit_reverts_state_and_markers() {
         let mut book = original.clone();
         let result =
             book.settle_funding_fault_injected_unverified(tx(8), 100_000_000, 100_000, leg);
-        assert_eq!(result, Err(ClearingError::InjectedFailure { before_leg: leg }));
+        assert_eq!(
+            result,
+            Err(ClearingError::InjectedFailure { before_leg: leg })
+        );
         assert_eq!(book, original, "injected failure at leg {leg}");
         assert_eq!(book.verify(), Ok(()));
         // The same external ID must remain usable after an aborted attempt.
-        let receipt = book.settle_funding_unverified(tx(8), 100_000_000, 100_000).unwrap();
+        let receipt = book
+            .settle_funding_unverified(tx(8), 100_000_000, 100_000)
+            .unwrap();
         assert_eq!(receipt.ledger_transfer_legs, 2);
         assert_eq!(book.processed_count(), original.processed_count() + 1);
     }
@@ -164,7 +178,8 @@ fn duplicate_external_replay_and_baseline_ledger_ids_are_rejected() {
         Err(ClearingError::Replay(tx(2)))
     );
     assert_eq!(book, before);
-    book.settle_funding_unverified(tx(8), 100_000_000, 100_000).unwrap();
+    book.settle_funding_unverified(tx(8), 100_000_000, 100_000)
+        .unwrap();
     let after = book.clone();
     assert_eq!(
         book.settle_funding_unverified(tx(8), 100_000_000, 100_000),
@@ -180,7 +195,9 @@ fn depositing_without_funds_and_withdrawing_open_margin_are_atomic() {
     let failure = book.deposit_margin_unverified(tx(8), a("bob"), 400_000_000);
     assert!(matches!(
         failure,
-        Err(ClearingError::Ledger(LedgerError::InsufficientAvailable { .. }))
+        Err(ClearingError::Ledger(
+            LedgerError::InsufficientAvailable { .. }
+        ))
     ));
     assert_eq!(book, before);
     assert_eq!(
@@ -240,13 +257,15 @@ fn invalid_second_match_rolls_back_first_match_and_replay_marker() {
     assert_eq!(bad, Err(ClearingError::UnknownMarginOwner));
     assert_eq!(book, before);
     assert_eq!(book.verify(), Ok(()));
-    book.settle_funding_unverified(tx(8), 100_000_000, 100_000).unwrap();
+    book.settle_funding_unverified(tx(8), 100_000_000, 100_000)
+        .unwrap();
 }
 
 #[test]
 fn insufficient_locked_collateral_denies_full_transfer_batch_atomically() {
     let mut book = sandbox();
-    book.deposit_margin_unverified(tx(4), a("alice"), 1_000_000).unwrap();
+    book.deposit_margin_unverified(tx(4), a("alice"), 1_000_000)
+        .unwrap();
     book.deposit_margin_unverified(tx(5), a("bob"), 1).unwrap();
     book.apply_matched_trades_unverified(
         tx(6),
@@ -295,15 +314,16 @@ fn foreign_reserved_balances_and_channels_cannot_join_a_margin_sandbox() {
 #[test]
 fn namespacing_changes_between_mainnets_and_contracts() {
     let network_one = sandbox();
-    let network_two = ClearingSandbox::from_ledger_unverified(
-        TradeLayerMainnet::Dogecoin, 19, p(), prefunded(),
-    ).unwrap();
-    let another_contract = ClearingSandbox::from_ledger_unverified(
-        TradeLayerMainnet::Litecoin, 20, p(), prefunded(),
-    ).unwrap();
+    let network_two =
+        ClearingSandbox::from_ledger_unverified(TradeLayerMainnet::Dogecoin, 19, p(), prefunded())
+            .unwrap();
+    let another_contract =
+        ClearingSandbox::from_ledger_unverified(TradeLayerMainnet::Litecoin, 20, p(), prefunded())
+            .unwrap();
     let mut books = [network_one, network_two, another_contract];
     for book in &mut books {
-        book.deposit_margin_unverified(tx(4), a("alice"), 1).unwrap();
+        book.deposit_margin_unverified(tx(4), a("alice"), 1)
+            .unwrap();
     }
     let names: Vec<_> = books
         .iter()
@@ -388,7 +408,10 @@ fn deterministic_seeded_funding_cycles_preserve_supply_and_net_open_interest() {
             .settle_funding_unverified(event, notional, rate)
             .unwrap();
         assert!(receipt.ledger_transfer_legs <= 2);
-        assert_eq!(book.ledger().property(p()).unwrap().total_supply_atoms, total_supply);
+        assert_eq!(
+            book.ledger().property(p()).unwrap().total_supply_atoms,
+            total_supply
+        );
         assert_eq!(book.ledger().verify_conservation(), Ok(()));
         assert_eq!(book.verify(), Ok(()));
         assert_eq!(book.positions(), before.positions());
