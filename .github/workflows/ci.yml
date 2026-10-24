@@ -44,6 +44,8 @@ jobs:
         run: cargo clippy --all-targets --frozen -- -D warnings
       - name: Run tests
         run: cargo test --frozen
+      - name: Stage 25C atomic PnL and replay fence tests
+        run: cargo test --frozen --test clearing_mark_to_market
       - name: Verify Stage 25A isolated margin and funding atomicity
         run: cargo test --frozen --test clearing_sandbox
       - name: Verify Stage 25B single-ledger spot and clearing invariants
@@ -97,6 +99,8 @@ jobs:
         run: node scripts/audit_funding_vectors.cjs --check
       - name: Optional legacy funding runner parses without local checkout
         run: node --check scripts/check_legacy_funding_runtime.cjs
+      - name: Independent Node BigInt cross-position PnL projections
+        run: node scripts/audit_clearing_pnl.cjs --check
       - name: Independent Node BigInt clearing arithmetic vectors
         run: node scripts/audit_clearing_math.cjs --check
       - name: Independent Node BigInt spot matching vectors

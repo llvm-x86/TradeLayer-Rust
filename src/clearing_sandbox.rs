@@ -1,4 +1,4 @@
-//! Stage 25A: an isolated, zero-crate Rust margin and funding state machine.
+//! Stage 25C: an isolated, zero-crate Rust margin, funding and mark-to-market state machine.
 //!
 //! A single owned Ledger holds every atom, including contract-margin escrows.
 //! Signed positions and escrow ownership are *metadata*, never second balances.
@@ -11,9 +11,9 @@
 //! NOT an executable authorization for derivative or type 23/31 settlement.
 //! Initial margin requirements, liquidation and insurance are not implemented.
 
-use crate::funding_audit::{
-    audit_funding, FundingAuditError, FundingMode, FundingPosition, FundingProjection,
-};
+use crate::clearing_math::PnlRounding;
+use crate::clearing_pnl::{project_pnl_unverified, PnlError, PnlProjection};
+use crate::funding_audit::{audit_funding, FundingAuditError, FundingMode, FundingPosition};
 use crate::hash256::double_sha256;
 use crate::ledger::{AccountId, Ledger, LedgerError, Operation, PropertyId, TxId};
 use crate::network_profile::TradeLayerMainnet;
@@ -45,6 +45,12 @@ pub enum ClearingError {
     TooManyTrades,
     InvalidCollateralPolicy,
     CollateralPolicyFrozen,
+    InvalidMarkPolicy,
+    MarkPolicyMissing,
+    MarkPolicyFrozen,
+    StaleMark,
+    PendingSpotOrders,
+    PnlRoundingImbalance(i128),
     InsufficientMargin {
         account: AccountId,
         required_atoms: u128,
@@ -59,6 +65,7 @@ pub enum ClearingError {
     Ledger(LedgerError),
     Spot(SpotError),
     Funding(FundingAuditError),
+    Pnl(PnlError),
 }
 
 impl core::fmt::Display for ClearingError {
@@ -85,6 +92,12 @@ impl From<SpotError> for ClearingError {
 impl From<FundingAuditError> for ClearingError {
     fn from(error: FundingAuditError) -> Self {
         Self::Funding(error)
+    }
+}
+
+impl From<PnlError> for ClearingError {
+    fn from(error: PnlError) -> Self {
+        Self::Pnl(error)
     }
 }
 
@@ -126,6 +139,38 @@ pub struct FundingReceipt {
     pub active_positions: usize,
 }
 
+/// One trusted-by-caller research configuration for a synthetic contract.
+/// The height and price are not authenticated oracle observations. Only the
+/// price/height advance after a successful mark settlement; the notional,
+/// inverse convention and rounding model stay frozen for this sandbox.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MarkPolicy {
+    pub height: u64,
+    pub price_e8: u64,
+    pub notional_e8: u64,
+    pub inverse: bool,
+    pub rounding: PnlRounding,
+}
+
+impl MarkPolicy {
+    fn validate(self) -> Result<Self, ClearingError> {
+        if self.height == 0 || self.price_e8 == 0 || self.notional_e8 == 0 {
+            return Err(ClearingError::InvalidMarkPolicy);
+        }
+        Ok(self)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MarkReceipt {
+    pub from_price_e8: u64,
+    pub to_price_e8: u64,
+    pub new_height: u64,
+    pub gross_transfer_atoms: u128,
+    pub ledger_transfer_legs: usize,
+    pub active_positions: usize,
+}
+
 /// The only ledger is inside this owner. No separate shadow balance map.
 /// Escrow addresses are domain-separated by network genesis, contract,
 /// collateral ID and participant; they cannot be supplied as transaction
@@ -139,6 +184,7 @@ pub struct ClearingSandbox {
     margin_escrows: BTreeMap<AccountId, AccountId>,
     positions: BTreeMap<AccountId, i64>,
     collateral_policy: Option<CollateralPolicy>,
+    mark_policy: Option<MarkPolicy>,
     seen: BTreeSet<TxId>,
 }
 
@@ -209,6 +255,7 @@ impl ClearingSandbox {
             margin_escrows: BTreeMap::new(),
             positions: BTreeMap::new(),
             collateral_policy: None,
+            mark_policy: None,
             seen: BTreeSet::new(),
         };
         candidate.verify()?;
@@ -258,6 +305,12 @@ impl ClearingSandbox {
         if self.seen.contains(&entry.txid) || self.ledger().is_processed(entry.txid) {
             return Err(ClearingError::Replay(entry.txid));
         }
+        if self
+            .mark_policy
+            .is_some_and(|mark| entry.height <= mark.height)
+        {
+            return Err(ClearingError::StaleMark);
+        }
         let mut staged = self.clone();
         staged.spot.enqueue_type5_unverified(entry)?;
         staged.verify()?;
@@ -266,6 +319,9 @@ impl ClearingSandbox {
     }
 
     pub fn process_spot_block_unverified(&mut self, height: u64) -> Result<usize, ClearingError> {
+        if self.mark_policy.is_some_and(|mark| height <= mark.height) {
+            return Err(ClearingError::StaleMark);
+        }
         let mut staged = self.clone();
         let count = staged.spot.process_through_unverified(height)?;
         staged.verify()?;
@@ -289,6 +345,77 @@ impl ClearingSandbox {
 
     pub const fn collateral_policy(&self) -> Option<CollateralPolicy> {
         self.collateral_policy
+    }
+
+    /// Select one explicit economic rounding/price convention before any
+    /// clearing event, never inferred from a client's raw transaction.
+    pub fn with_mark_policy_unverified(
+        mut self,
+        policy: MarkPolicy,
+    ) -> Result<Self, ClearingError> {
+        if self.mark_policy.is_some()
+            || !self.seen.is_empty()
+            || !self.positions.is_empty()
+            || self.spot.has_clearing_activity_unverified()
+        {
+            return Err(ClearingError::MarkPolicyFrozen);
+        }
+        let policy = policy.validate()?;
+        // The initial mark cannot predate a previously finalized spot block;
+        // a pending spot queue also has no authenticated ordering yet.
+        if self.spot.pending_count() > 0 {
+            return Err(ClearingError::MarkPolicyFrozen);
+        }
+        if self
+            .spot
+            .processed_through()
+            .is_some_and(|height| policy.height < height)
+        {
+            return Err(ClearingError::StaleMark);
+        }
+        self.mark_policy = Some(policy);
+        self.verify()?;
+        Ok(self)
+    }
+
+    pub const fn mark_policy(&self) -> Option<MarkPolicy> {
+        self.mark_policy
+    }
+
+    /// Observe the per-owner signed PnL, including any independent-rounding
+    /// residual, WITHOUT writing balances. Imbalanced projections may be
+    /// diagnosed here but are never accepted by settle_mark_to_market.
+    pub fn preview_mark_to_market_unverified(
+        &self,
+        new_height: u64,
+        new_price_e8: u64,
+    ) -> Result<PnlProjection, ClearingError> {
+        let policy = self.mark_policy.ok_or(ClearingError::MarkPolicyMissing)?;
+        if new_height <= policy.height
+            || self
+                .spot
+                .processed_through()
+                .is_some_and(|height| new_height < height)
+        {
+            return Err(ClearingError::StaleMark);
+        }
+        if new_price_e8 == 0 {
+            return Err(ClearingError::InvalidMarkPolicy);
+        }
+        if self
+            .spot
+            .has_queued_spot_at_or_before_unverified(new_height)
+        {
+            return Err(ClearingError::PendingSpotOrders);
+        }
+        Ok(project_pnl_unverified(
+            &self.positions,
+            policy.price_e8,
+            new_price_e8,
+            policy.notional_e8,
+            policy.inverse,
+            policy.rounding,
+        )?)
     }
 
     pub fn processed_count(&self) -> usize {
@@ -379,6 +506,9 @@ impl ClearingSandbox {
         if !staged.seen.insert(external) {
             return Err(ClearingError::Replay(external));
         }
+        // Even a no-op funding or zero-position mark must permanently fence
+        // older spot-only snapshots which omit clearing replay identifiers.
+        staged.spot.note_clearing_event_unverified();
         staged.verify()?;
         *self = staged;
         Ok(result)
@@ -565,7 +695,17 @@ impl ClearingSandbox {
                 rate_bps_e4,
                 FundingMode::ConservingProposal,
             )?;
-            let legs = staged.settlement_legs(&projection)?;
+            let signed: Vec<(AccountId, i128)> = projection
+                .deltas
+                .iter()
+                .map(|delta| {
+                    Ok((
+                        AccountId::try_from(delta.account.as_str())?,
+                        delta.delta_atoms,
+                    ))
+                })
+                .collect::<Result<_, ClearingError>>()?;
+            let legs = staged.settlement_legs(&signed, projection.net_atoms)?;
             for (leg_number, (from, to, amount)) in legs.iter().enumerate() {
                 if failure_before_leg == Some(leg_number) {
                     return Err(ClearingError::InjectedFailure {
@@ -614,32 +754,116 @@ impl ClearingSandbox {
         self.funding_inner(external, notional_atoms, rate_bps_e4, Some(fail_before_leg))
     }
 
+    fn mark_inner(
+        &mut self,
+        external: TxId,
+        new_height: u64,
+        new_price_e8: u64,
+        failure_before_leg: Option<usize>,
+    ) -> Result<MarkReceipt, ClearingError> {
+        self.transaction(external, |staged| {
+            let preview = staged.preview_mark_to_market_unverified(new_height, new_price_e8)?;
+            if preview.net_atoms != 0 {
+                // Never mint, burn or silently redistribute one-atom residuals.
+                // Policy makers must independently specify an apportionment rule
+                // before such multi-party scenarios become executable.
+                return Err(ClearingError::PnlRoundingImbalance(preview.net_atoms));
+            }
+            let signed: Vec<_> = preview
+                .deltas
+                .iter()
+                .map(|entry| (entry.account.clone(), entry.delta_atoms))
+                .collect();
+            let legs = staged.settlement_legs(&signed, preview.net_atoms)?;
+            for (leg_number, (from, to, amount)) in legs.iter().enumerate() {
+                if failure_before_leg == Some(leg_number) {
+                    return Err(ClearingError::InjectedFailure {
+                        before_leg: leg_number,
+                    });
+                }
+                staged.spot.apply_clearing_transfer_unverified(
+                    staged.internal_txid(external, b"mark-pnl", leg_number)?,
+                    staged.collateral,
+                    from.clone(),
+                    to.clone(),
+                    *amount,
+                )?;
+            }
+            if failure_before_leg == Some(legs.len()) {
+                return Err(ClearingError::InjectedFailure {
+                    before_leg: legs.len(),
+                });
+            }
+            let policy = staged.mark_policy.ok_or(ClearingError::MarkPolicyMissing)?;
+            staged.mark_policy = Some(MarkPolicy {
+                height: new_height,
+                price_e8: new_price_e8,
+                ..policy
+            });
+            // transaction() checks maintenance floors, supply conservation,
+            // reserve ownership and replay markers before the atomic swap.
+            Ok(MarkReceipt {
+                from_price_e8: preview.from_price_e8,
+                to_price_e8: preview.to_price_e8,
+                new_height,
+                gross_transfer_atoms: preview.payer_atoms,
+                ledger_transfer_legs: legs.len(),
+                active_positions: preview.deltas.len(),
+            })
+        })
+    }
+
+    /// Apply one unverified mark step to the sole token ledger. No arbitrary
+    /// external payer or recipient is accepted; the signed position map
+    /// determines every margin escrow debited or credited.
+    pub fn settle_mark_to_market_unverified(
+        &mut self,
+        external: TxId,
+        new_height: u64,
+        new_price_e8: u64,
+    ) -> Result<MarkReceipt, ClearingError> {
+        self.mark_inner(external, new_height, new_price_e8, None)
+    }
+
+    /// Research-only fault injection at every margin transfer, including the
+    /// boundary after the final leg but before the complete state is swapped.
+    pub fn settle_mark_fault_injected_unverified(
+        &mut self,
+        external: TxId,
+        new_height: u64,
+        new_price_e8: u64,
+        fail_before_leg: usize,
+    ) -> Result<MarkReceipt, ClearingError> {
+        self.mark_inner(external, new_height, new_price_e8, Some(fail_before_leg))
+    }
+
+    /// One deterministic transfer graph for signed funding or mark PnL.
+    /// All edges remain inside this sandbox's owned clearing-margin accounts.
     fn settlement_legs(
         &self,
-        projection: &FundingProjection,
+        deltas: &[(AccountId, i128)],
+        net_atoms: i128,
     ) -> Result<Vec<(AccountId, AccountId, u128)>, ClearingError> {
-        if projection.net_atoms != 0 {
+        if net_atoms != 0 {
             return Err(ClearingError::OpenInterestImbalance);
         }
         let mut payers = Vec::new();
         let mut receivers = Vec::new();
-        for entry in &projection.deltas {
-            if entry.delta_atoms == 0 {
+        for (owner, delta_atoms) in deltas {
+            if *delta_atoms == 0 {
                 continue;
             }
-            let owner = AccountId::try_from(entry.account.as_str())?;
             let escrow = self
                 .margin_escrows
-                .get(&owner)
+                .get(owner)
                 .ok_or(ClearingError::UnknownMarginOwner)?
                 .clone();
-            if entry.delta_atoms < 0 {
-                payers.push((escrow, entry.delta_atoms.unsigned_abs()));
+            if *delta_atoms < 0 {
+                payers.push((escrow, delta_atoms.unsigned_abs()));
             } else {
                 receivers.push((
                     escrow,
-                    u128::try_from(entry.delta_atoms)
-                        .map_err(|_| ClearingError::ArithmeticOverflow)?,
+                    u128::try_from(*delta_atoms).map_err(|_| ClearingError::ArithmeticOverflow)?,
                 ));
             }
         }
@@ -686,6 +910,9 @@ impl ClearingSandbox {
         }
         self.spot.ledger().verify_conservation()?;
         self.spot.verify_reserves()?;
+        if let Some(mark) = self.mark_policy {
+            mark.validate()?;
+        }
         if self.spot.ledger().property(self.collateral).is_none() {
             return Err(ClearingError::UnknownCollateral);
         }
