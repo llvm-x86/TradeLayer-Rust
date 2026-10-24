@@ -333,7 +333,7 @@ fn corrupt_version_truncation_oversize_and_trailing_bytes_are_rejected() {
 }
 
 #[test]
-fn TLCL_without_clearing_events_still_restores_original_spot_only_state() {
+fn tlcl_without_clearing_events_still_restores_original_spot_only_state() {
     let s = seeded_state();
     let bytes = s.snapshot_bytes().unwrap();
     let recovered = restore(&bytes).unwrap();
