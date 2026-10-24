@@ -1,7 +1,7 @@
 //! Canonical ordered token columns stored as a sorted vector.
 //!
 //! This replaces BTreeMap only for wallet and channel escrow balances.
-//! Indices come from binary search; every insert preserves strict key order.
+//! Indices come from an explicit half-open lower-bound loop; updates preserve strict key order.
 //! A raw insert permits zero for snapshot corruption tests, while all
 //! production balance mutations use the canonical delete-on-zero helper.
 //! Prototype O(n) updates: NOT suitable for high-throughput production.
@@ -26,9 +26,32 @@ fn refs<K>(pair: &(K, u128)) -> (&K, &u128) {
 }
 
 impl<K: Ord> OrderedColumns<K> {
+    /// Exact lower-bound position in the half-open [left, right) interval.
+    ///
+    /// On a strictly sorted support, every index below left has a key
+    /// smaller than the query; every index from right onward has a key
+    /// greater than or equal to the query. The interval shrinks on each
+    /// iteration. left + (right - left) / 2 avoids midpoint overflow.
+    fn lower_bound(&self, key: &K) -> usize {
+        let mut left = 0usize;
+        let mut right = self.entries.len();
+        while left < right {
+            let middle = left + (right - left) / 2;
+            if self.entries[middle].0.cmp(key).is_lt() {
+                left = middle + 1;
+            } else {
+                right = middle;
+            }
+        }
+        left
+    }
+
     fn locate(&self, key: &K) -> Result<usize, usize> {
-        self.entries
-            .binary_search_by(|(existing, _)| existing.cmp(key))
+        let index = self.lower_bound(key);
+        match self.entries.get(index) {
+            Some((stored, _)) if stored == key => Ok(index),
+            _ => Err(index),
+        }
     }
 
     pub(crate) fn get(&self, key: &K) -> Option<&u128> {
@@ -292,6 +315,44 @@ mod tests {
             }
             assert_eq!(actual.get(&key).copied(), oracle.get(&key).copied());
             assert_native_matches_tree(&actual, &oracle, step, false);
+        }
+    }
+
+    #[test]
+    fn native_lower_bound_matches_independent_linear_count() {
+        use crate::ledger::{AccountId, PropertyId};
+
+        let keys = native_wallet_keys();
+        let mut columns = OrderedColumns::default();
+        for (index, key) in keys.iter().enumerate() {
+            assert_eq!(columns.insert(key.clone(), (index + 1) as u128), None);
+        }
+        let mut queries = keys.clone();
+        // All 1–90-byte prefix lengths, two families, and both extreme
+        // properties: tests prefix matching and missing query insertion.
+        for property in [1u32, u32::MAX] {
+            let property = PropertyId::try_from(property).unwrap();
+            for width in 1..=90 {
+                for symbol in ["A", "~"] {
+                    queries.push((
+                        property,
+                        AccountId::try_from(symbol.repeat(width).as_str()).unwrap(),
+                    ));
+                }
+            }
+        }
+        assert!(queries.len() > 1_000);
+        for (case, query) in queries.iter().enumerate() {
+            let index = keys.iter().take_while(|existing| *existing < query).count();
+            let present = keys.get(index).is_some_and(|existing| existing == query);
+            let expected = if present { Ok(index) } else { Err(index) };
+            assert_eq!(columns.locate(query), expected, "query {case}");
+            assert_eq!(columns.lower_bound(query), index);
+            assert_eq!(
+                columns.get(query).copied(),
+                present.then_some((index + 1) as u128),
+                "query {case}"
+            );
         }
     }
 
