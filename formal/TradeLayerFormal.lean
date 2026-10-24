@@ -4898,4 +4898,113 @@ theorem native_encoded_half_open_search_exact
     rows key valid keyValid] at pivot
   exact pivot
 
+
+/-!
+## Stage 20: native-key indexed reads compose with the verified pivot model
+
+The Stage 19b pivot theorem operated on encoded Nat-key lists. Here an
+independent direct-index native-key list read is related to the same
+operation after the proved rank embedding. This is an abstract finite-list
+theorem, not a proof about source Rust Vec indexing or the compiler.
+-/
+
+/-- An exact finite-list indexed read retaining the original native key. -/
+def nativeColumnAt : List (NativeAccountKey × Nat) →
+    Nat → Option (NativeAccountKey × Nat)
+  | [], _ => none
+  | entry :: _, 0 => some entry
+  | _ :: rest, index + 1 => nativeColumnAt rest index
+
+/-- Direct native-key indexed read plus native lexicographic comparison.
+A miss is false, although lower-bound only reads in-range positions. -/
+noncomputable def nativeIndexedPivotBelow
+    (rows : List (NativeAccountKey × Nat))
+    (key : NativeAccountKey) (index : Nat) : Bool := by
+  classical
+  exact match nativeColumnAt rows index with
+    | none => false
+    | some record => decide (NativeAccountLess record.1 key)
+
+/-- Encoding preserves both the exact zero-based index and its stored
+amount for all finite lists, including out-of-range indices. -/
+theorem native_column_at_encodes
+    (rows : List (NativeAccountKey × Nat)) (index : Nat) :
+    columnAt (encodeNativeRows rows) index =
+      (nativeColumnAt rows index).map
+        (fun record => (encodeNativeAccount record.1, record.2)) := by
+  induction rows generalizing index with
+  | nil =>
+      cases index <;> rfl
+  | cons record tail ih =>
+      cases index with
+      | zero => rfl
+      | succ index =>
+          simpa [nativeColumnAt, columnAt, encodeNativeRows] using ih index
+
+/-- Native ASCII key comparison and encoded Nat rank comparison give
+identical Boolean outcomes at every indexed read on validated input. -/
+theorem native_indexed_pivot_encodes
+    (rows : List (NativeAccountKey × Nat))
+    (key : NativeAccountKey) (index : Nat)
+    (validRows : NativeRowsValid rows)
+    (validKey : ValidAccountBytes key.accountBytes) :
+    nativeIndexedPivotBelow rows key index =
+      encodedIndexedPivotBelow (encodeNativeRows rows)
+        (encodeNativeAccount key) index := by
+  classical
+  induction rows generalizing index with
+  | nil =>
+      cases index <;>
+        simp [nativeIndexedPivotBelow, encodedIndexedPivotBelow,
+          nativeColumnAt, columnAt, encodeNativeRows]
+  | cons record tail ih =>
+      rcases record with ⟨stored, atoms⟩
+      have validHead : ValidAccountBytes stored.accountBytes :=
+        validRows (stored, atoms) (by simp)
+      have validTail : NativeRowsValid tail := by
+        intro entry member
+        exact validRows entry (List.mem_cons.mpr (Or.inr member))
+      cases index with
+      | zero =>
+          have rank := native_account_less_iff_rank
+            stored key validHead validKey
+          by_cases smaller : NativeAccountLess stored key
+          · have encodedSmaller := rank.mp smaller
+            simp [nativeIndexedPivotBelow, encodedIndexedPivotBelow,
+              nativeColumnAt, columnAt, encodeNativeRows,
+              smaller, encodedSmaller]
+          · have encodedNotSmaller :
+                ¬ encodeNativeAccount stored < encodeNativeAccount key :=
+              fun h => smaller (rank.mpr h)
+            simp [nativeIndexedPivotBelow, encodedIndexedPivotBelow,
+              nativeColumnAt, columnAt, encodeNativeRows,
+              smaller, encodedNotSmaller]
+      | succ index =>
+          simpa [nativeIndexedPivotBelow, encodedIndexedPivotBelow,
+            nativeColumnAt, columnAt, encodeNativeRows] using
+              (ih index validTail)
+
+/-- The complete native-key list-indexed half-open search equals the
+independent native-key full-scan lower bound, for arbitrary valid finite
+sorted supports. This removes the ghost encoding from the search
+predicate itself; the remaining executable obligation is whether actual
+Rust Vec index and native Ord realize these direct-list operations. -/
+theorem native_direct_pivot_half_open_search_exact
+    (rows : List (NativeAccountKey × Nat)) (key : NativeAccountKey)
+    (sorted : NativeAccountSorted rows)
+    (validRows : NativeRowsValid rows)
+    (validKey : ValidAccountBytes key.accountBytes) :
+    nativeHalfOpenSearch (nativeIndexedPivotBelow rows key) rows =
+      nativeAccountCountBefore rows key := by
+  have samePredicate :
+      nativeIndexedPivotBelow rows key =
+        encodedIndexedPivotBelow (encodeNativeRows rows)
+          (encodeNativeAccount key) := by
+    funext index
+    exact native_indexed_pivot_encodes
+      rows key index validRows validKey
+  rw [samePredicate]
+  exact native_encoded_half_open_search_exact
+    rows key sorted validRows validKey
+
 end TradeLayerFormal
