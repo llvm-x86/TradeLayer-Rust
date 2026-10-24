@@ -370,6 +370,64 @@ fn corrupt_version_truncation_oversize_and_trailing_bytes_are_rejected() {
 }
 
 #[test]
+fn recomputed_crc_cannot_launder_clearing_history_owner_or_replay_order() {
+    let original = active().snapshot_bytes().unwrap();
+    let mut at = 5 + 1 + 32 + 32 + 4 + 4;
+    // The fixture has both policy records.
+    assert_eq!(original[at], 1);
+    at += 1 + 16 + 16;
+    assert_eq!(original[at], 1);
+    at += 1 + 8 + 8 + 8 + 1 + 1;
+    let history_flag = at;
+    assert_eq!(original[history_flag], 1);
+    let mut forged = original.clone();
+    forged[history_flag] = 0;
+    repair_crc(&mut forged);
+    assert!(restore(&forged).is_err(), "history flag must be permanent");
+
+    at += 1;
+    let read_count = |raw: &[u8], pos: &mut usize| {
+        let n = u32::from_be_bytes(raw[*pos..*pos + 4].try_into().unwrap()) as usize;
+        *pos += 4;
+        n
+    };
+    let owner_count = read_count(&original, &mut at);
+    assert_eq!(owner_count, 2);
+    let mut escrow_byte = None;
+    for _ in 0..owner_count {
+        let owner_len = usize::from(original[at]);
+        at += 1 + owner_len;
+        let escrow_len = usize::from(original[at]);
+        assert!(escrow_len > 10);
+        at += 1;
+        if escrow_byte.is_none() {
+            escrow_byte = Some(at + 7);
+        }
+        at += escrow_len;
+    }
+    let escrow_byte = escrow_byte.unwrap();
+    let mut forged = original.clone();
+    forged[escrow_byte] = if forged[escrow_byte] == b'0' { b'1' } else { b'0' };
+    repair_crc(&mut forged);
+    assert!(restore(&forged).is_err(), "undocumented escrow owner must fail");
+
+    let position_count = read_count(&original, &mut at);
+    assert_eq!(position_count, 2);
+    for _ in 0..position_count {
+        let length = usize::from(original[at]);
+        at += 1 + length + 8;
+    }
+    let replay_count = read_count(&original, &mut at);
+    assert!(replay_count >= 2);
+    let mut forged = original.clone();
+    for index in 0..32 {
+        forged.swap(at + index, at + 32 + index);
+    }
+    repair_crc(&mut forged);
+    assert!(restore(&forged).is_err(), "unsorted replay IDs must fail");
+}
+
+#[test]
 fn tlcl_without_clearing_events_still_restores_original_spot_only_state() {
     let s = seeded_state();
     let bytes = s.snapshot_bytes().unwrap();
