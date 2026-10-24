@@ -321,23 +321,17 @@ mod kani_proofs {
     use super::*;
     use crate::canonical_columns::put_nonzero;
 
-    /// Real Vec-backed storage compared with an independent fixed-slot model.
-    /// The symbolic key spans before/between/after and present positions;
-    /// the symbolic choice between zero and positive balances exercises
-    /// deletion and insertion while keeping bounded Vec proof exploration.
-    /// The original harness checks unrestricted symbolic u8 balance values.
-    #[kani::proof]
-    #[kani::unwind(16)]
-    fn actual_vec_symbolic_position_matches_fixed_slot_oracle() {
-        let target: u8 = kani::any();
-        kani::assume((1..=5).contains(&target));
-        let amount: u8 = if kani::any() { 0 } else { 17 };
-
+    /// The five key positions cover missing keys before, between and after
+    /// two anchors, as well as updates of either existing anchor key. Each
+    /// proof uses symbolic u8 amounts and an independent fixed-slot oracle.
+    /// Separate finite harnesses limit solver branching from Vec internals.
+    fn assert_fixed_slot_update(target: u8, amount: u8) {
         let mut columns = OrderedColumns::<u8>::default();
         assert_eq!(columns.insert(2, 11), None);
         assert_eq!(columns.insert(4, 33), None);
 
-        // Fixed array assignment contains no Vec shifts or binary search.
+        // Reference state uses fixed-slot assignment, independent of Vec
+        // positional insert/remove, binary search and sorted iteration.
         let mut oracle: [Option<u128>; 5] = [None, Some(11), None, Some(33), None];
         oracle[usize::from(target - 1)] = if amount == 0 {
             None
@@ -361,6 +355,36 @@ mod kani_proofs {
         assert_eq!(columns.get(&3).copied(), oracle[2]);
         assert_eq!(columns.get(&4).copied(), oracle[3]);
         assert_eq!(columns.get(&5).copied(), oracle[4]);
+    }
+
+    #[kani::proof]
+    #[kani::unwind(16)]
+    fn actual_vec_before_first_anchor() {
+        assert_fixed_slot_update(1, kani::any());
+    }
+
+    #[kani::proof]
+    #[kani::unwind(16)]
+    fn actual_vec_update_first_anchor() {
+        assert_fixed_slot_update(2, kani::any());
+    }
+
+    #[kani::proof]
+    #[kani::unwind(16)]
+    fn actual_vec_between_two_anchors() {
+        assert_fixed_slot_update(3, kani::any());
+    }
+
+    #[kani::proof]
+    #[kani::unwind(16)]
+    fn actual_vec_update_second_anchor() {
+        assert_fixed_slot_update(4, kani::any());
+    }
+
+    #[kani::proof]
+    #[kani::unwind(16)]
+    fn actual_vec_after_second_anchor() {
+        assert_fixed_slot_update(5, kani::any());
     }
 
     /// Proof is over the actual Vec-backed production column store,
