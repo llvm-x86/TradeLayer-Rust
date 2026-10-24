@@ -215,7 +215,10 @@ fn ordinary_token_transaction_replay_id_is_present_in_both_outer_and_ledger_hist
         .apply_ordinary_operation_unverified(
             tx(10),
             Operation::Transfer {
-                id: p(7), from: a("alice"), to: a("bob"), amount_atoms: 10,
+                id: p(7),
+                from: a("alice"),
+                to: a("bob"),
+                amount_atoms: 10,
             },
         )
         .unwrap();
@@ -232,7 +235,10 @@ fn ordinary_token_transaction_replay_id_is_present_in_both_outer_and_ledger_hist
         restored.clone().apply_ordinary_operation_unverified(
             tx(10),
             Operation::Transfer {
-                id: p(7), from: a("alice"), to: a("bob"), amount_atoms: 1,
+                id: p(7),
+                from: a("alice"),
+                to: a("bob"),
+                amount_atoms: 1,
             }
         ),
         Err(ClearingError::Replay(tx(10)))
