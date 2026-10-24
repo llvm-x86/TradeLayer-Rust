@@ -275,10 +275,13 @@ impl SpotExchange {
     ) -> Result<(), SpotError> {
         let margin_from = from.as_str().starts_with("~clrm:");
         let margin_to = to.as_str().starts_with("~clrm:");
-        if (!margin_from && !margin_to)
-            || (from.as_str().starts_with('~') && !margin_from)
-            || (to.as_str().starts_with('~') && !margin_to)
-        {
+        if !(margin_from || margin_to) {
+            return Err(SpotError::ReservedAccount);
+        }
+        if from.as_str().starts_with('~') && !margin_from {
+            return Err(SpotError::ReservedAccount);
+        }
+        if to.as_str().starts_with('~') && !margin_to {
             return Err(SpotError::ReservedAccount);
         }
         if self.seen.contains(&txid) || self.ledger.is_processed(txid) {
