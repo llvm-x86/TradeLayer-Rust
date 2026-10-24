@@ -199,10 +199,7 @@ impl SpotExchange {
             return Err(SpotError::UnknownProperty);
         }
         ledger.verify_conservation()?;
-        if !ledger
-            .balances_with_account_prefix(ESCROW_PREFIX)
-            .is_empty()
-        {
+        if !ledger.balances_with_account_prefix("~").is_empty() {
             return Err(SpotError::EscrowCollision);
         }
         Ok(Self {
@@ -241,15 +238,14 @@ impl SpotExchange {
         operation: Operation,
     ) -> Result<(), SpotError> {
         let allowed = match &operation {
-            Operation::CreateProperty { issuer, .. } => !issuer.as_str().starts_with(ESCROW_PREFIX),
+            Operation::CreateProperty { issuer, .. } => !issuer.as_str().starts_with('~'),
             Operation::Transfer { from, to, .. } => {
-                !from.as_str().starts_with(ESCROW_PREFIX) && !to.as_str().starts_with(ESCROW_PREFIX)
+                !from.as_str().starts_with('~') && !to.as_str().starts_with('~')
             }
             Operation::Mint { issuer, to, .. } => {
-                !issuer.as_str().starts_with(ESCROW_PREFIX)
-                    && !to.as_str().starts_with(ESCROW_PREFIX)
+                !issuer.as_str().starts_with('~') && !to.as_str().starts_with('~')
             }
-            Operation::Burn { issuer, .. } => !issuer.as_str().starts_with(ESCROW_PREFIX),
+            Operation::Burn { issuer, .. } => !issuer.as_str().starts_with('~'),
             _ => return Err(SpotError::UnsupportedProtocolOperation),
         };
         if !allowed {
@@ -264,6 +260,45 @@ impl SpotExchange {
         *self = candidate;
         Ok(())
     }
+    /// Stage 25B research-only collateral transfer into/between/out of
+    /// clearing escrows while this SpotExchange retains the SOLE Ledger.
+    /// Never accepts an existing spot escrow or an arbitrary '~' namespace.
+    /// The caller must derive and validate clearing escrow identities and
+    /// preserve the accompanying clearing position metadata atomically.
+    pub(crate) fn apply_clearing_transfer_unverified(
+        &mut self,
+        txid: TxId,
+        id: PropertyId,
+        from: AccountId,
+        to: AccountId,
+        amount_atoms: u128,
+    ) -> Result<(), SpotError> {
+        let margin_from = from.as_str().starts_with("~clrm:");
+        let margin_to = to.as_str().starts_with("~clrm:");
+        if (!margin_from && !margin_to)
+            || (from.as_str().starts_with('~') && !margin_from)
+            || (to.as_str().starts_with('~') && !margin_to)
+        {
+            return Err(SpotError::ReservedAccount);
+        }
+        if self.seen.contains(&txid) || self.ledger.is_processed(txid) {
+            return Err(SpotError::Replay(txid));
+        }
+        let mut candidate = self.clone();
+        candidate.ledger.apply(
+            txid,
+            Operation::Transfer {
+                id,
+                from,
+                to,
+                amount_atoms,
+            },
+        )?;
+        candidate.verify_reserves()?;
+        *self = candidate;
+        Ok(())
+    }
+
     pub fn processed_through(&self) -> Option<u64> {
         self.processed_through
     }
@@ -314,7 +349,7 @@ impl SpotExchange {
         if self.processed_through.is_some_and(|h| entry.height <= h) {
             return Err(SpotError::HeightRegression);
         }
-        if entry.actor.as_str().starts_with(ESCROW_PREFIX) {
+        if entry.actor.as_str().starts_with('~') {
             return Err(SpotError::ReservedAccount);
         }
         self.check_pair(entry.intent.offered, entry.intent.desired)?;
@@ -547,7 +582,7 @@ impl SpotExchange {
         if request.height <= finalized {
             return Err(SpotError::HeightRegression);
         }
-        if request.actor.as_str().starts_with(ESCROW_PREFIX) {
+        if request.actor.as_str().starts_with('~') {
             return Err(SpotError::ReservedAccount);
         }
         let pair = self.check_pair(request.offered, request.desired)?;
