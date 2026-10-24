@@ -49,22 +49,42 @@ fn seeded_state() -> ClearingSandbox {
     let mut ledger = Ledger::new();
     ledger
         .apply_batch([
-            (tx(1), Operation::CreateProperty {
-                id: p(7), issuer: a("alice"), kind: PropertyKind::Fixed,
-                initial_atoms: 1_000_000_000,
-            }),
-            (tx(2), Operation::CreateProperty {
-                id: p(8), issuer: a("bob"), kind: PropertyKind::Fixed,
-                initial_atoms: 1_000_000_000,
-            }),
-            (tx(3), Operation::Transfer {
-                id: p(7), from: a("alice"), to: a("bob"),
-                amount_atoms: 350_000_000,
-            }),
-            (tx(4), Operation::Transfer {
-                id: p(8), from: a("bob"), to: a("alice"),
-                amount_atoms: 200_000_000,
-            }),
+            (
+                tx(1),
+                Operation::CreateProperty {
+                    id: p(7),
+                    issuer: a("alice"),
+                    kind: PropertyKind::Fixed,
+                    initial_atoms: 1_000_000_000,
+                },
+            ),
+            (
+                tx(2),
+                Operation::CreateProperty {
+                    id: p(8),
+                    issuer: a("bob"),
+                    kind: PropertyKind::Fixed,
+                    initial_atoms: 1_000_000_000,
+                },
+            ),
+            (
+                tx(3),
+                Operation::Transfer {
+                    id: p(7),
+                    from: a("alice"),
+                    to: a("bob"),
+                    amount_atoms: 350_000_000,
+                },
+            ),
+            (
+                tx(4),
+                Operation::Transfer {
+                    id: p(8),
+                    from: a("bob"),
+                    to: a("alice"),
+                    amount_atoms: 200_000_000,
+                },
+            ),
         ])
         .unwrap();
     let spot = SpotExchange::from_ledger_unverified(ledger, permitted()).unwrap();
@@ -81,32 +101,49 @@ fn order(id: u64) -> UnverifiedSpotPlacement {
         actor: a("alice"),
         height: 101,
         intent: SpotIntent {
-            offered: p(7), desired: p(8),
-            offered_atoms: 60_000_000, expected_atoms: 60_000_000,
-            post: false, stop: false,
+            offered: p(7),
+            desired: p(8),
+            offered_atoms: 60_000_000,
+            expected_atoms: 60_000_000,
+            post: false,
+            stop: false,
         },
     }
 }
 fn active() -> ClearingSandbox {
     let mut s = seeded_state();
-    s.deposit_margin_unverified(tx(10), a("alice"), 200_000_000).unwrap();
-    s.deposit_margin_unverified(tx(11), a("bob"), 150_000_000).unwrap();
+    s.deposit_margin_unverified(tx(10), a("alice"), 200_000_000)
+        .unwrap();
+    s.deposit_margin_unverified(tx(11), a("bob"), 150_000_000)
+        .unwrap();
     s.apply_matched_trades_unverified(
         tx(12),
         &[MatchedContractTrade {
-            long: a("alice"), short: a("bob"), contracts: 1,
+            long: a("alice"),
+            short: a("bob"),
+            contracts: 1,
         }],
-    ).unwrap();
+    )
+    .unwrap();
     s.enqueue_spot_order_unverified(order(13)).unwrap();
     s.process_spot_block_unverified(101).unwrap();
-    s.settle_mark_to_market_unverified(tx(14), 101, 100_000_001).unwrap();
-    s.settle_funding_unverified(tx(15), 100_000_000, 100_000).unwrap();
+    s.settle_mark_to_market_unverified(tx(14), 101, 100_000_001)
+        .unwrap();
+    s.settle_funding_unverified(tx(15), 100_000_000, 100_000)
+        .unwrap();
     s
 }
-fn restore(bytes: &[u8]) -> Result<ClearingSandbox, tradelayer_core::clearing_sandbox::ClearingSnapshotError> {
+fn restore(
+    bytes: &[u8],
+) -> Result<ClearingSandbox, tradelayer_core::clearing_sandbox::ClearingSnapshotError> {
     ClearingSandbox::from_snapshot_bytes(
-        bytes, TradeLayerMainnet::Litecoin, 19, p(7),
-        &permitted(), Some(collateral_policy()), Some(terms()),
+        bytes,
+        TradeLayerMainnet::Litecoin,
+        19,
+        p(7),
+        &permitted(),
+        Some(collateral_policy()),
+        Some(terms()),
     )
 }
 fn repair_crc(bytes: &mut [u8]) {
@@ -164,7 +201,9 @@ fn replay_and_monotonic_mark_protection_survive_round_trip() {
         Err(ClearingError::Replay(tx(13)))
     );
     assert_eq!(restored, before);
-    restored.settle_mark_to_market_unverified(tx(16), 102, 100_000_002).unwrap();
+    restored
+        .settle_mark_to_market_unverified(tx(16), 102, 100_000_002)
+        .unwrap();
     assert_eq!(restored.mark_policy().unwrap().height, 102);
     assert_eq!(restored.verify(), Ok(()));
 }
@@ -172,7 +211,9 @@ fn replay_and_monotonic_mark_protection_survive_round_trip() {
 #[test]
 fn zero_balance_clearing_event_history_cannot_reenter_legacy_snapshot() {
     let mut state = seeded_state();
-    state.settle_mark_to_market_unverified(tx(10), 101, 100_000_001).unwrap();
+    state
+        .settle_mark_to_market_unverified(tx(10), 101, 100_000_001)
+        .unwrap();
     assert_eq!(state.processed_count(), 1);
     assert_eq!(state.margin_atoms(&a("alice")), 0);
     assert!(state.spot().snapshot_bytes().is_err());
@@ -181,8 +222,12 @@ fn zero_balance_clearing_event_history_cannot_reenter_legacy_snapshot() {
     assert_eq!(restored.snapshot_bytes().unwrap(), bytes);
     assert!(restored.spot().snapshot_bytes().is_err());
     assert!(ClearingSandbox::from_spot_unverified(
-        TradeLayerMainnet::Litecoin, 19, p(7), restored.spot().clone()
-    ).is_err());
+        TradeLayerMainnet::Litecoin,
+        19,
+        p(7),
+        restored.spot().clone()
+    )
+    .is_err());
 }
 
 #[test]
@@ -190,31 +235,70 @@ fn explicit_expected_identity_and_policy_mismatch_fail_closed() {
     let bytes = active().snapshot_bytes().unwrap();
     for wrong in [TradeLayerMainnet::Bitcoin, TradeLayerMainnet::Dogecoin] {
         assert!(ClearingSandbox::from_snapshot_bytes(
-            &bytes, wrong, 19, p(7), &permitted(),
-            Some(collateral_policy()), Some(terms())
-        ).is_err());
+            &bytes,
+            wrong,
+            19,
+            p(7),
+            &permitted(),
+            Some(collateral_policy()),
+            Some(terms())
+        )
+        .is_err());
     }
     assert!(ClearingSandbox::from_snapshot_bytes(
-        &bytes, TradeLayerMainnet::Litecoin, 20, p(7), &permitted(),
-        Some(collateral_policy()), Some(terms())
-    ).is_err());
+        &bytes,
+        TradeLayerMainnet::Litecoin,
+        20,
+        p(7),
+        &permitted(),
+        Some(collateral_policy()),
+        Some(terms())
+    )
+    .is_err());
     assert!(ClearingSandbox::from_snapshot_bytes(
-        &bytes, TradeLayerMainnet::Litecoin, 19, p(8), &permitted(),
-        Some(collateral_policy()), Some(terms())
-    ).is_err());
+        &bytes,
+        TradeLayerMainnet::Litecoin,
+        19,
+        p(8),
+        &permitted(),
+        Some(collateral_policy()),
+        Some(terms())
+    )
+    .is_err());
     assert!(ClearingSandbox::from_snapshot_bytes(
-        &bytes, TradeLayerMainnet::Litecoin, 19, p(7), &BTreeSet::from([p(7)]),
-        Some(collateral_policy()), Some(terms())
-    ).is_err());
+        &bytes,
+        TradeLayerMainnet::Litecoin,
+        19,
+        p(7),
+        &BTreeSet::from([p(7)]),
+        Some(collateral_policy()),
+        Some(terms())
+    )
+    .is_err());
     assert!(ClearingSandbox::from_snapshot_bytes(
-        &bytes, TradeLayerMainnet::Litecoin, 19, p(7), &permitted(),
-        None, Some(terms())
-    ).is_err());
-    let terms_bad = MarkTerms { inverse: true, ..terms() };
+        &bytes,
+        TradeLayerMainnet::Litecoin,
+        19,
+        p(7),
+        &permitted(),
+        None,
+        Some(terms())
+    )
+    .is_err());
+    let terms_bad = MarkTerms {
+        inverse: true,
+        ..terms()
+    };
     assert!(ClearingSandbox::from_snapshot_bytes(
-        &bytes, TradeLayerMainnet::Litecoin, 19, p(7), &permitted(),
-        Some(collateral_policy()), Some(terms_bad)
-    ).is_err());
+        &bytes,
+        TradeLayerMainnet::Litecoin,
+        19,
+        p(7),
+        &permitted(),
+        Some(collateral_policy()),
+        Some(terms_bad)
+    )
+    .is_err());
 }
 
 #[test]
@@ -264,8 +348,10 @@ fn exposed_state_is_read_only_and_does_not_make_a_checkpoint_an_authorization() 
     let bytes = s.snapshot_bytes().unwrap();
     let loaded = restore(&bytes).unwrap();
     assert_eq!(loaded.ledger().verify_conservation(), Ok(()));
-    assert_eq!(loaded.margin_atoms(&a("alice")) + loaded.margin_atoms(&a("bob")),
-        s.margin_atoms(&a("alice")) + s.margin_atoms(&a("bob")));
+    assert_eq!(
+        loaded.margin_atoms(&a("alice")) + loaded.margin_atoms(&a("bob")),
+        s.margin_atoms(&a("alice")) + s.margin_atoms(&a("bob"))
+    );
     assert!(loaded.spot().snapshot_bytes().is_err());
     // No method here turns a decoded checkpoint into an authenticated
     // chain transaction, a proof of trade matching or insurance coverage.
