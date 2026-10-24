@@ -302,7 +302,10 @@ impl ClearingSandbox {
         &mut self,
         entry: UnverifiedSpotPlacement,
     ) -> Result<(), ClearingError> {
-        if self.seen.contains(&entry.txid) || self.ledger().is_processed(entry.txid) {
+        if self.seen.contains(&entry.txid)
+            || self.ledger().is_processed(entry.txid)
+            || self.spot.spot_input_ids_unverified().contains(&entry.txid)
+        {
             return Err(ClearingError::Replay(entry.txid));
         }
         if self
