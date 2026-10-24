@@ -5129,12 +5129,12 @@ theorem native_locate_reports_exact_indexed_presence
   classical
   cases atIndex : nativeColumnAt rows (nativeAccountCountBefore rows key) with
   | none =>
-      simp [atIndex]
+      simp [nativeLocateResult, nativeIndexedKeyMatches, atIndex]
   | some pair =>
       rcases pair with ⟨stored, atoms⟩
       by_cases equal : stored = key
       · subst key
-        simp [atIndex]
-      · simp [atIndex, equal]
+        simp [nativeLocateResult, nativeIndexedKeyMatches, atIndex]
+      · simp [nativeLocateResult, nativeIndexedKeyMatches, atIndex, equal]
 
 end TradeLayerFormal
