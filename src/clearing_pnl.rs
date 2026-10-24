@@ -100,9 +100,7 @@ pub fn project_pnl_unverified(
                 .ok_or(PnlError::ArithmeticOverflow)?;
         } else {
             receiver_atoms = receiver_atoms
-                .checked_add(
-                    u128::try_from(delta_atoms).map_err(|_| PnlError::ArithmeticOverflow)?,
-                )
+                .checked_add(u128::try_from(delta_atoms).map_err(|_| PnlError::ArithmeticOverflow)?)
                 .ok_or(PnlError::ArithmeticOverflow)?;
         }
         deltas.push(PnlAccountDelta {
