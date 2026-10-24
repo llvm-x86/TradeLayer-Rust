@@ -310,6 +310,14 @@ impl SpotExchange {
         self.clearing_activity
     }
 
+    /// A completed clearing event may have zero transfer legs. Persist the
+    /// in-memory research-history fence even when no margin atoms move;
+    /// otherwise TLSP or an old joint checkpoint can orphan its replay ID.
+    /// The caller commits this change only on its staged atomic clone.
+    pub(crate) fn note_clearing_event_unverified(&mut self) {
+        self.clearing_activity = true;
+    }
+
     pub fn processed_through(&self) -> Option<u64> {
         self.processed_through
     }
