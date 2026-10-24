@@ -2,8 +2,10 @@
 """Independent Python byte-order oracle for real Rust AccountId/PropertyId.
 
 Generate a temporary integration test, compile it with pinned Rust 1.90,
-compare native Ord and slice::binary_search_by against Python tuple sorting,
-then remove the generated .rs file. Does not alter production Rust source.
+and compare native Ord, std binary_search_by, and a separately written
+half-open cursor implementation against Python tuple ordering.
+The production OrderedColumns::locate has its own Rust linear-scan unit
+oracle. The generated test is removed and alters no production source.
 """
 from __future__ import annotations
 
@@ -21,8 +23,9 @@ SEED = 0x202613B00
 PROPERTIES = (1, 2, 3, 7, 65535, 2147483647, 4294967295)
 PRINTABLE = tuple(range(33, 127))
 
-# Executed against the ACTUAL public PropertyId and AccountId types and
-# the same binary_search_by closure form used by OrderedColumns::locate.
+# Executed against ACTUAL public PropertyId and AccountId types. The
+# std binary search here is a distinct comparator oracle; OrderedColumns
+# now uses an explicit lower-bound loop tested in its own unit tests.
 RUST_TEST = r'''
 use std::cmp::Ordering;
 use std::fs;
@@ -43,7 +46,7 @@ fn parse_key(line: &str) -> (PropertyId, AccountId) {
 }
 
 #[test]
-fn native_tuple_ord_and_binary_search_match_python_reference() {
+fn native_tuple_order_std_and_half_open_search_match_python_reference() {
     let keyfile = std::env::var("TL_ORDER_KEYS").expect("keys path");
     let queryfile = std::env::var("TL_ORDER_QUERIES").expect("queries path");
     let text = fs::read_to_string(keyfile).expect("keys");
@@ -82,7 +85,21 @@ fn native_tuple_ord_and_binary_search_match_python_reference() {
             Err(index)
         };
         let actual = entries.binary_search_by(|(stored, _)| stored.cmp(&key));
-        assert_eq!(actual, expected, "binary_search_by at query {test_index}");
+        assert_eq!(actual, expected, "std binary_search_by at query {test_index}");
+        // Independent rendition of the explicit production cursor algorithm.
+        // Production's actual OrderedColumns::locate is checked separately
+        // against a complete linear scan in src/ordered_columns.rs tests.
+        let mut left = 0usize;
+        let mut right = entries.len();
+        while left < right {
+            let middle = left + (right - left) / 2;
+            if entries[middle].0.cmp(&key).is_lt() {
+                left = middle + 1;
+            } else {
+                right = middle;
+            }
+        }
+        assert_eq!(left, index, "half-open lower bound at query {test_index}");
         let partition = entries.partition_point(|(stored, _)| stored < &key);
         assert_eq!(partition, index, "partition_point at {test_index}");
         assert!(index <= entries.len());
@@ -175,7 +192,7 @@ def main() -> None:
             TEMP_RUST.write_text(RUST_TEST)
             env = {**os.environ, "TL_ORDER_KEYS": str(keyfile),
                    "TL_ORDER_QUERIES": str(queryfile)}
-            subprocess.run(["cargo", "+1.90.0", "test", "--locked", "--test",
+            subprocess.run(["cargo", "+1.90.0", "test", "--frozen", "--test",
                 "__native_wallet_order_audit_generated"], cwd=ROOT,
                 env=env, check=True)
         finally:

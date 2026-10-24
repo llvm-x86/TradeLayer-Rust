@@ -164,7 +164,7 @@ These results bridge the *mathematical key representation* from Rust's full acco
 
 Lean now closes the *mathematical* lower-bound index bridge for the entire valid 1–90-byte ASCII account domain. nativeAccountCountBefore is a fresh linear scan over native (PropertyId, AccountId bytes) keys, independent of numeric rank and binary-search code. native_account_lower_bound_count_refines proves that counting native keys strictly smaller than a query yields exactly the same number as counting encoded base-257 keys, for arbitrary finite lists of validated account identifiers. Combining that with Stage 12's midpoint-column lower-bound proof, native_midpoint_lower_bound_matches_native_scan proves the exact **insertion index** in the ranked map is the independent native-key lower-bound count. native_midpoint_lookup_and_index_refine proves both index and read-value correspondence for every query, and native_midpoint_lower_bound_is_within_support proves index safety in the mathematical model.
 
-To test the remaining *Rust implementation* trust boundary instead of merely adding more Lean definitions, CI now runs scripts/audit_native_wallet_order.py. It independently produces Python-sorted (u32 property, raw ASCII bytes) vectors, prefix and 90-byte boundary cases, matching/nonmatching queries, and lower-bound indices. The script generates a **temporary** Rust integration test and executes it with the pinned Rust 1.90 toolchain. This test uses the actual public PropertyId, AccountId, derived tuple Ord and std slice binary_search_by comparator form. It checks pairwise Rust comparisons against Python tuple ordering, insertion indices (including Err(index) on absence), independent partition_point results, and parser rejection of invalid account strings. The temp .rs file is removed after execution; the repository's production Rust code is unchanged. The full local preflight script will also run this oracle when the toolchain is available.
+To test the remaining *Rust implementation* trust boundary instead of merely adding more Lean definitions, CI now runs scripts/audit_native_wallet_order.py. It independently produces Python-sorted (u32 property, raw ASCII bytes) vectors, prefix and 90-byte boundary cases, matching/nonmatching queries, and lower-bound indices. The script generates a **temporary** Rust integration test and executes it with the pinned Rust 1.90 toolchain. This test uses the actual public PropertyId and AccountId types and compares native tuple Ord, an independent `std::slice::binary_search_by` probe and a separately implemented half-open cursor with Python's byte ordering. The production `OrderedColumns::locate` cursor has a distinct full linear-scan Rust unit oracle. It checks pairwise Rust comparisons against Python tuple ordering, insertion indices (including Err(index) on absence), independent partition_point results, and parser rejection of invalid account strings. The temp .rs file is removed after execution; the repository's production Rust code is unchanged. The full local preflight script will also run this oracle when the toolchain is available.
 
 **Scope:** The test is deterministic and differential, not a universal Kani/Lean proof of the Rust standard library or compiler. The Lean rank is a ghost Nat value, not an executable u128 key. Native Rust String ordering semantics, Vec allocator behavior, insertion/removal and a complete state transition refinement remain assumptions requiring separate machine-level evidence. GitHub CI is authoritative for test execution in this connected environment, where local Rust/Lean tools are not available.
 
@@ -232,3 +232,31 @@ Further work could formally verify a narrower, self-implemented lower-bound
 routine under a specified slice abstraction or integrate an independently
 validated Rust verification framework. The frozen zero-third-party-crate
 consensus policy remains in force.
+
+## Stage 19: auditable source-level half-open search and pivot-index theorem
+
+The production `OrderedColumns::locate` now uses an explicit half-open
+`[left, right)` search loop with midpoint `left + (right-left)/2`, followed
+by equality testing at the returned lower-bound position. This replaces
+the earlier `std::slice::binary_search_by` call in this one wallet/escrow
+backend. Exact native `Result<usize,usize>` results are compared with an
+independent complete linear scan in Rust for 1–90-byte account prefixes
+and full property-ID boundaries. The Python-generated conformance oracle
+also checks native Ord and both independent search formulations against
+Python-generated lower bounds. It uses frozen Cargo resolution.
+
+Lean `half_open_predicate_search_exact` proves that the half-open loop
+reaches its target for any finite interval under a pivot decision contract,
+including strictly shrinking intervals. `sorted_column_pivot_iff_before_count`
+and `encoded_pivot_below_iff_lower_count` prove that an indexed pivot
+comparison in a strictly sorted mathematical list is equivalent to its
+position preceding the independent full-scan lower bound.
+`native_encoded_half_open_search_exact` composes this with the complete
+native-key rank model. These are kernel-checked mathematical theorems.
+
+The remaining executable trust boundary is **actual** Rust `Vec` indexed
+reads, native `String` / `Ord` behavior and `usize` arithmetic matching
+the mathematical pivot operation, as well as `Vec::insert/remove` shifting,
+allocation and compiler/runtime fidelity. Rust differential tests and
+bounded Kani harnesses provide finite executable evidence, not an
+unconditional Rust source/binary proof or authenticated chain validity.
