@@ -5007,4 +5007,134 @@ theorem native_direct_pivot_half_open_search_exact
   exact native_encoded_half_open_search_exact
     rows key sorted validRows validKey
 
+
+/-!
+## Stage 21: exact native-key search hit/miss results
+
+Stage 20 proved that native list-indexed pivot comparisons commute with the
+full native-key rank encoding. The production Rust locate operation returns
+an exact Result<usize, usize>, not merely a lower-bound index.
+This stage proves the corresponding full result, including equality at the
+returned index and absence, in the abstract finite-list model.
+
+The production Rust Ord, Vec reads, usize and compiler remain external.
+-/
+
+/-- Read a key at the exact list index and return whether it is equal to
+the query, retaining the native key rather than using its ghost rank. -/
+def nativeIndexedKeyMatches
+    (rows : List (NativeAccountKey × Nat))
+    (key : NativeAccountKey) (index : Nat) : Bool :=
+  match nativeColumnAt rows index with
+  | none => false
+  | some row => decide (row.1 = key)
+
+/-- Independent ranked-list equality decision at the same zero-based
+index. Values (including zero) are irrelevant to key presence. -/
+def rankedIndexedKeyMatches
+    (rows : List (Nat × Nat)) (query index : Nat) : Bool :=
+  match columnAt rows index with
+  | none => false
+  | some row => decide (row.1 = query)
+
+/-- Validated native-key equality and the injective Nat encoding agree
+at every list index, including missing/out-of-range positions. -/
+theorem native_indexed_key_matches_encoded
+    (rows : List (NativeAccountKey × Nat))
+    (key : NativeAccountKey) (index : Nat)
+    (validRows : NativeRowsValid rows)
+    (validKey : ValidAccountBytes key.accountBytes) :
+    nativeIndexedKeyMatches rows key index =
+      rankedIndexedKeyMatches
+        (encodeNativeRows rows) (encodeNativeAccount key) index := by
+  induction rows generalizing index with
+  | nil =>
+      cases index <;>
+        simp [nativeIndexedKeyMatches, rankedIndexedKeyMatches,
+          nativeColumnAt, columnAt, encodeNativeRows]
+  | cons pair tail ih =>
+      rcases pair with ⟨stored, atoms⟩
+      have validStored : ValidAccountBytes stored.accountBytes :=
+        validRows (stored, atoms) (by simp)
+      have validTail : NativeRowsValid tail := by
+        intro entry member
+        exact validRows entry (List.mem_cons.mpr (Or.inr member))
+      cases index with
+      | zero =>
+          by_cases same : stored = key
+          · subst key
+            simp [nativeIndexedKeyMatches, rankedIndexedKeyMatches,
+              nativeColumnAt, columnAt, encodeNativeRows]
+          · have rankDifferent :
+                encodeNativeAccount stored ≠ encodeNativeAccount key := by
+              intro equal
+              exact same (encode_native_account_injective_on_valid
+                stored key validStored validKey equal)
+            simp [nativeIndexedKeyMatches, rankedIndexedKeyMatches,
+              nativeColumnAt, columnAt, encodeNativeRows,
+              same, rankDifferent]
+      | succ index =>
+          simpa [nativeIndexedKeyMatches, rankedIndexedKeyMatches,
+            nativeColumnAt, columnAt, encodeNativeRows] using
+              (ih index validTail)
+
+/-- The complete native abstract Result<usize,usize> image: a present
+key returns Ok(index), and a missing key returns Err(insertion_index).
+Both variants use the exact independently scanned native lower bound. -/
+noncomputable def nativeLocateResult
+    (rows : List (NativeAccountKey × Nat))
+    (key : NativeAccountKey) : Except Nat Nat :=
+  let index := nativeAccountCountBefore rows key
+  if nativeIndexedKeyMatches rows key index then
+    .ok index
+  else
+    .error index
+
+/-- The same complete result computed on the independently encoded keys. -/
+def rankedLocateResult
+    (rows : List (Nat × Nat)) (query : Nat) : Except Nat Nat :=
+  let index := columnCountBefore rows query
+  if rankedIndexedKeyMatches rows query index then
+    .ok index
+  else
+    .error index
+
+/-- Native and ranked complete search results are identical, for
+every list of validated keys, every valid query, arbitrary support size
+and arbitrary stored amounts, including raw zero values. No sortedness
+is needed for this representation-level commutation theorem. -/
+theorem native_locate_result_refines_ranked
+    (rows : List (NativeAccountKey × Nat))
+    (key : NativeAccountKey)
+    (validRows : NativeRowsValid rows)
+    (validKey : ValidAccountBytes key.accountBytes) :
+    nativeLocateResult rows key =
+      rankedLocateResult
+        (encodeNativeRows rows) (encodeNativeAccount key) := by
+  have count := native_account_lower_bound_count_refines
+    rows key validRows validKey
+  simp only [nativeLocateResult, rankedLocateResult]
+  rw [count]
+  rw [native_indexed_key_matches_encoded rows key
+    (nativeAccountCountBefore rows key) validRows validKey]
+
+/-- Even a zero-valued raw record counts as a successful key lookup;
+the result checks presence, not whether the amount is positive. -/
+theorem native_locate_reports_exact_indexed_presence
+    (rows : List (NativeAccountKey × Nat))
+    (key : NativeAccountKey) :
+    nativeLocateResult rows key = .ok (nativeAccountCountBefore rows key) ↔
+      ∃ atoms, nativeColumnAt rows
+        (nativeAccountCountBefore rows key) = some (key, atoms) := by
+  classical
+  cases atIndex : nativeColumnAt rows (nativeAccountCountBefore rows key) with
+  | none =>
+      simp [nativeLocateResult, nativeIndexedKeyMatches, atIndex]
+  | some pair =>
+      rcases pair with ⟨stored, atoms⟩
+      by_cases equal : stored = key
+      · subst key
+        simp [nativeLocateResult, nativeIndexedKeyMatches, atIndex]
+      · simp [nativeLocateResult, nativeIndexedKeyMatches, atIndex, equal]
+
 end TradeLayerFormal
