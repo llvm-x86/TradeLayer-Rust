@@ -50,6 +50,8 @@ jobs:
         run: cargo test --frozen --test clearing_mark_to_market
       - name: Stage 25D full clearing state checkpoint and fork recovery
         run: cargo test --frozen --test clearing_snapshot --test clearing_chain
+      - name: Stage 25E1 liquidation risk preflight and no-spend source budgets
+        run: cargo test --frozen --test liquidation_preflight
       - name: Verify Stage 25A isolated margin and funding atomicity
         run: cargo test --frozen --test clearing_sandbox
       - name: Verify Stage 25B single-ledger spot and clearing invariants
@@ -103,6 +105,8 @@ jobs:
         run: node scripts/audit_funding_vectors.cjs --check
       - name: Optional legacy funding runner parses without local checkout
         run: node --check scripts/check_legacy_funding_runtime.cjs
+      - name: Independent Node BigInt liquidation/insurance loss budgets
+        run: node scripts/audit_liquidation_loss_budget.cjs --check
       - name: Independent Node BigInt cross-position PnL projections
         run: node scripts/audit_clearing_pnl.cjs --check
       - name: Independent Node BigInt clearing arithmetic vectors

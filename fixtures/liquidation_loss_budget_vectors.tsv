@@ -1,0 +1,17 @@
+#name	rule	demanded_atoms	free_available_atoms	margin_atoms	observed_insurance_atoms	available_debit_atoms	margin_debit_atoms	insurance_debit_atoms	unresolved_atoms	fully_accounted
+zero	legacy	0	0	0	0	0	0	0	0	1
+paid_by_available	legacy	100	200	40	30	100	0	0	0	1
+posted_only_free_untouched	posted	100	200	40	30	0	40	30	30	1
+covered_by_margin	posted	100	0	100	0	0	100	0	0	1
+falls_to_insurance	posted	100	0	30	70	0	30	70	0	1
+insurance_insufficient	posted	100	0	30	40	0	30	40	30	1
+fully_exhausted_legacy	legacy	1000	200	300	400	200	300	400	100	1
+available_then_margin	legacy	90	60	45	100	60	30	0	0	1
+insurance_overfunded	posted	1	9999	0	9999	0	0	1	0	1
+margin_overfunded	posted	1	9999	9999	9999	0	1	0	0	1
+zero_insurance	posted	100	0	10	0	0	10	0	90	1
+only_hypothetical_insurance	posted	120	0	0	60	0	0	60	60	1
+near_u128_limit	legacy	340282366920938463463374607431768211455	340282366920938463463374607431768211453	100	100	340282366920938463463374607431768211453	2	0	0	1
+u128_max_unfunded	posted	340282366920938463463374607431768211455	0	0	0	0	0	0	340282366920938463463374607431768211455	1
+small_atom_residual	legacy	3	1	1	0	1	1	0	1	1
+small_atom_complete	posted	3	1	2	1	0	2	1	0	1
