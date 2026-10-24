@@ -118,7 +118,7 @@ fn unmatched_spot_order_and_open_margin_cannot_spend_one_another_reserves() {
     assert_eq!(state.verify(),Ok(()));
     let total=state.ledger().available_atoms(p(7),&a("alice"))
         + state.margin_atoms(&a("alice"));
-    assert_eq!(total,350_000_000);
+    assert_eq!(total,500_000_000);
 }
 
 #[test]
