@@ -209,6 +209,37 @@ fn replay_and_monotonic_mark_protection_survive_round_trip() {
 }
 
 #[test]
+fn ordinary_token_transaction_replay_id_is_present_in_both_outer_and_ledger_history() {
+    let mut state = seeded_state();
+    state
+        .apply_ordinary_operation_unverified(
+            tx(10),
+            Operation::Transfer {
+                id: p(7), from: a("alice"), to: a("bob"), amount_atoms: 10,
+            },
+        )
+        .unwrap();
+    assert!(state.ledger().is_processed(tx(10)));
+    assert_eq!(state.processed_count(), 1);
+    let bytes = state.snapshot_bytes().unwrap();
+    let restored = restore(&bytes).unwrap();
+    assert_eq!(restored, state);
+    assert!(restored.ledger().is_processed(tx(10)));
+    assert_eq!(restored.processed_count(), 1);
+    assert_eq!(restored.snapshot_bytes().unwrap(), bytes);
+    // The caller's original external ID is still consumed.
+    assert_eq!(
+        restored.clone().apply_ordinary_operation_unverified(
+            tx(10),
+            Operation::Transfer {
+                id: p(7), from: a("alice"), to: a("bob"), amount_atoms: 1,
+            }
+        ),
+        Err(ClearingError::Replay(tx(10)))
+    );
+}
+
+#[test]
 fn zero_balance_clearing_event_history_cannot_reenter_legacy_snapshot() {
     let mut state = seeded_state();
     state
