@@ -343,6 +343,44 @@ impl SpotExchange {
         Ok(())
     }
 
+    /// Stage 25E2B: ONLY a real insurance escrow may fund a registered
+    /// clearing-margin escrow in a full synthetic closeout. This restricted
+    /// transfer never accepts normal users, other reserves, or spot escrows.
+    /// The owning ClearingSandbox must derive and validate BOTH identities,
+    /// the collateral property, and the complete loss plan before calling.
+    pub(crate) fn apply_insured_closeout_leg_unverified(
+        &mut self,
+        txid: TxId,
+        id: PropertyId,
+        from_insurer: AccountId,
+        to_margin: AccountId,
+        amount_atoms: u128,
+    ) -> Result<(), SpotError> {
+        if !from_insurer.as_str().starts_with("~ins:")
+            || !to_margin.as_str().starts_with("~clrm:")
+            || amount_atoms == 0
+        {
+            return Err(SpotError::ReservedAccount);
+        }
+        if self.seen.contains(&txid) || self.ledger.is_processed(txid) {
+            return Err(SpotError::Replay(txid));
+        }
+        let mut staged = self.clone();
+        staged.ledger.apply(
+            txid,
+            Operation::Transfer {
+                id,
+                from: from_insurer,
+                to: to_margin,
+                amount_atoms,
+            },
+        )?;
+        staged.verify_reserves()?;
+        staged.clearing_activity = true;
+        *self = staged;
+        Ok(())
+    }
+
     pub(crate) fn has_clearing_activity_unverified(&self) -> bool {
         self.clearing_activity
     }

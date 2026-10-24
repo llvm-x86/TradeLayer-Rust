@@ -42,6 +42,8 @@ jobs:
         run: rustfmt --check --edition 2021 src/joint_snapshot_impl.rs
       - name: Check included combined clearing snapshot formatting
         run: rustfmt --check --edition 2021 src/clearing_snapshot_impl.rs
+      - name: Check included research distressed closeout formatting
+        run: rustfmt --check --edition 2021 src/clearing_distress_impl.rs
       - name: Lint
         run: cargo clippy --all-targets --frozen -- -D warnings
       - name: Run tests
@@ -52,6 +54,8 @@ jobs:
         run: cargo test --frozen --test clearing_snapshot --test clearing_chain
       - name: Stage 25E2 real insurer reserve and v1/v2 checkpoint recovery
         run: cargo test --frozen --test insurance_ledger_v2
+      - name: Stage 25E2B atomic full-book insured closeout and TLCC rollback
+        run: cargo test --frozen --test insured_distressed_closeout
       - name: Stage 25E1 liquidation risk preflight and no-spend source budgets
         run: cargo test --frozen --test liquidation_preflight
       - name: Verify Stage 25A isolated margin and funding atomicity

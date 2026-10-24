@@ -60,6 +60,11 @@ pub enum ClearingError {
     StaleMark,
     PendingSpotOrders,
     PnlRoundingImbalance(i128),
+    NoDistress,
+    InsufficientInsurance {
+        required_atoms: u128,
+        available_atoms: u128,
+    },
     InsufficientMargin {
         account: AccountId,
         required_atoms: u128,
@@ -1155,3 +1160,6 @@ impl ClearingSandbox {
 
 // Stage 25D codec shares private escrow/position ownership with this type.
 include!("clearing_snapshot_impl.rs");
+
+// Stage25E2B: private full-book insured closeout under one atomic ledger.
+include!("clearing_distress_impl.rs");
