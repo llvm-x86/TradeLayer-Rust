@@ -108,7 +108,29 @@ if not Path(".cargo/config.toml").exists() or not Path("security/cargo-dependenc
     raise SystemExit("Missing frozen supply-chain policy files")
 print("Verified formal/Stage24A-C/security merged module and gate inventory")
 PY
-git add src/lib.rs .github/workflows/ci.yml
+# Main's frozen Cargo security policy bans extra manifest sections. The
+# formal branch's [lints.rust] existed solely to declare Kani's cfg name.
+# Restore the approved main manifest and scope the cfg lint suppression
+# narrowly to the five Kani-only proof modules.
+git checkout "$main" -- Cargo.toml
+python3 - <<'PY'
+from pathlib import Path
+proof_modules = (
+    "atomic_batch", "canonical_columns", "checked_amounts",
+    "journal_move", "ordered_columns",
+)
+for module in proof_modules:
+    path = Path(f"src/{module}.rs")
+    text = path.read_text()
+    marker = "#[cfg(kani)]"
+    if text.count(marker) != 1 or "#[allow(unexpected_cfgs)]" in text:
+        raise SystemExit(f"Unexpected Kani configuration in {path}")
+    text = text.replace(marker, "#[allow(unexpected_cfgs)]\n" + marker)
+    path.write_text(text)
+print("Manifest remains approved; Kani-only modules suppress their own cfg lint")
+PY
+git add src/lib.rs .github/workflows/ci.yml Cargo.toml
+git add src/atomic_batch.rs src/canonical_columns.rs src/checked_amounts.rs src/journal_move.rs src/ordered_columns.rs
 [[ -z "$(git diff --name-only --diff-filter=U)" ]] || { echo 'Unresolved conflict' >&2; exit 1; }
 git diff --cached --check
 python3 scripts/check_rust_supply_chain.py
