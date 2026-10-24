@@ -123,9 +123,12 @@ for module in proof_modules:
     path = Path(f"src/{module}.rs")
     text = path.read_text()
     marker = "#[cfg(kani)]"
-    if text.count(marker) != 1 or "#[allow(unexpected_cfgs)]" in text:
+    if text.count(marker) != 1 or "#![allow(unexpected_cfgs)]" in text:
         raise SystemExit(f"Unexpected Kani configuration in {path}")
-    text = text.replace(marker, "#[allow(unexpected_cfgs)]\n" + marker)
+    if not text.startswith("//!") or "\n\n" not in text:
+        raise SystemExit(f"Unexpected Rust module header in {path}")
+    before, after = text.split("\n\n", 1)
+    text = before + "\n\n#![allow(unexpected_cfgs)]\n\n" + after
     path.write_text(text)
 print("Manifest remains approved; Kani-only modules suppress their own cfg lint")
 PY
