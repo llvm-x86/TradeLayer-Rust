@@ -132,6 +132,23 @@ def make_vectors():
         bytes(range(33, 127))[:90],
     ]
     records = {(p, s) for p in PROPERTIES for s in edge if valid_name(s)}
+
+    # Exhaust the one-byte printable ASCII domain on two extreme properties.
+    # Cross-check every nested prefix length for both 'A' and '~' on the
+    # same properties. This is finite coverage of real String::Ord, not a
+    # universal proof of arbitrarily long native account strings.
+    exhaustive = {
+        (p, bytes([byte]))
+        for p in (1, 4294967295)
+        for byte in PRINTABLE
+    }
+    exhaustive.update(
+        (p, symbol * width)
+        for p in (1, 4294967295)
+        for symbol in (b"A", b"~")
+        for width in range(1, 91)
+    )
+    records.update(exhaustive)
     for _ in range(800):
         count = rng.choice((1, 2, 3, 4, 5, 8, 16, 31, 32, 64, 89, 90))
         name = bytes(rng.randrange(33, 127) for _ in range(count))
@@ -158,6 +175,9 @@ def make_vectors():
             queries.append((p, new))
     queries.extend((p, name) for p in PROPERTIES
         for name in (b"!", b"~" * 90, b"A" * 90))
+    # Every exhausted native byte/prefix fixture is checked as a query,
+    # rather than relying on the randomized hit sample alone.
+    queries.extend(sorted(exhaustive))
     cases = []
     hits = misses = 0
     for query in queries:
