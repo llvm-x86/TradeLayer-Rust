@@ -9,8 +9,7 @@
 use crate::chain::{BlockHeader, Tip, MAX_REORG_HISTORY};
 use crate::clearing_sandbox::{
     ClearingError, ClearingSandbox, ClearingSnapshotError, CollateralPolicy, InsurancePolicy,
-    MarkTerms,
-    MatchedContractTrade,
+    MarkTerms, MatchedContractTrade,
 };
 use crate::codec::{verify_crc, with_crc, Cursor, MAX_CHECKPOINT_BYTES};
 use crate::ledger::{AccountId, Operation, PropertyId, TxId};
@@ -251,7 +250,11 @@ impl ClearingChainState {
                 UnverifiedClearingEvent::MarginDeposit { txid, owner, atoms } => {
                     staged.deposit_margin_unverified(*txid, owner.clone(), *atoms)?;
                 }
-                UnverifiedClearingEvent::InsuranceDeposit { txid, sponsor, atoms } => {
+                UnverifiedClearingEvent::InsuranceDeposit {
+                    txid,
+                    sponsor,
+                    atoms,
+                } => {
                     staged.deposit_insurance_unverified(*txid, sponsor.clone(), *atoms)?;
                 }
                 UnverifiedClearingEvent::MarginWithdraw { txid, owner, atoms } => {
