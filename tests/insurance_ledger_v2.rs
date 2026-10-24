@@ -9,12 +9,10 @@ use tradelayer_core::clearing_chain::{
 };
 use tradelayer_core::clearing_math::PnlRounding;
 use tradelayer_core::clearing_sandbox::{
-    ClearingError, ClearingSandbox, CollateralPolicy, InsurancePolicy,
-    MarkPolicy, MarkTerms, MatchedContractTrade,
+    ClearingError, ClearingSandbox, CollateralPolicy, InsurancePolicy, MarkPolicy, MarkTerms,
+    MatchedContractTrade,
 };
-use tradelayer_core::ledger::{
-    AccountId, Ledger, Operation, PropertyId, PropertyKind, TxId,
-};
+use tradelayer_core::ledger::{AccountId, Ledger, Operation, PropertyId, PropertyKind, TxId};
 use tradelayer_core::network_profile::TradeLayerMainnet;
 use tradelayer_core::spot::{SpotError, SpotExchange, SpotIntent, UnverifiedSpotPlacement};
 
@@ -31,7 +29,9 @@ fn tx(n: u64) -> TxId {
     TxId::from_bytes(bytes)
 }
 fn insurer() -> InsurancePolicy {
-    InsurancePolicy { sponsor: a("alice") }
+    InsurancePolicy {
+        sponsor: a("alice"),
+    }
 }
 fn collateral() -> CollateralPolicy {
     CollateralPolicy {
@@ -62,54 +62,75 @@ fn baseline() -> ClearingSandbox {
     let mut ledger = Ledger::new();
     ledger
         .apply_batch([
-            (tx(1), Operation::CreateProperty {
-                id: p(7),
-                issuer: a("alice"),
-                kind: PropertyKind::Fixed,
-                initial_atoms: 1_000_000_000,
-            }),
-            (tx(2), Operation::CreateProperty {
-                id: p(8),
-                issuer: a("bob"),
-                kind: PropertyKind::Fixed,
-                initial_atoms: 1_000_000_000,
-            }),
-            (tx(3), Operation::Transfer {
-                id: p(7),
-                from: a("alice"),
-                to: a("bob"),
-                amount_atoms: 300_000_000,
-            }),
+            (
+                tx(1),
+                Operation::CreateProperty {
+                    id: p(7),
+                    issuer: a("alice"),
+                    kind: PropertyKind::Fixed,
+                    initial_atoms: 1_000_000_000,
+                },
+            ),
+            (
+                tx(2),
+                Operation::CreateProperty {
+                    id: p(8),
+                    issuer: a("bob"),
+                    kind: PropertyKind::Fixed,
+                    initial_atoms: 1_000_000_000,
+                },
+            ),
+            (
+                tx(3),
+                Operation::Transfer {
+                    id: p(7),
+                    from: a("alice"),
+                    to: a("bob"),
+                    amount_atoms: 300_000_000,
+                },
+            ),
         ])
         .unwrap();
     let spot = SpotExchange::from_ledger_unverified(ledger, permitted()).unwrap();
-    ClearingSandbox::from_spot_unverified(
-        TradeLayerMainnet::Litecoin, 19, p(7), spot,
-    )
-    .unwrap()
-    .with_collateral_policy_unverified(collateral())
-    .unwrap()
-    .with_mark_policy_unverified(mark())
-    .unwrap()
+    ClearingSandbox::from_spot_unverified(TradeLayerMainnet::Litecoin, 19, p(7), spot)
+        .unwrap()
+        .with_collateral_policy_unverified(collateral())
+        .unwrap()
+        .with_mark_policy_unverified(mark())
+        .unwrap()
 }
 fn insured() -> ClearingSandbox {
-    baseline().with_insurance_policy_unverified(insurer()).unwrap()
+    baseline()
+        .with_insurance_policy_unverified(insurer())
+        .unwrap()
 }
 fn restored(
     bytes: &[u8],
     sponsor: Option<&InsurancePolicy>,
 ) -> Result<ClearingSandbox, tradelayer_core::clearing_sandbox::ClearingSnapshotError> {
     ClearingSandbox::from_snapshot_bytes_with_insurance(
-        bytes, TradeLayerMainnet::Litecoin, 19, p(7),
-        &permitted(), Some(collateral()), Some(terms()), sponsor,
+        bytes,
+        TradeLayerMainnet::Litecoin,
+        19,
+        p(7),
+        &permitted(),
+        Some(collateral()),
+        Some(terms()),
+        sponsor,
     )
 }
 fn chain_anchor() -> Tip {
-    Tip { height: 100, id: BlockId([1; 32]) }
+    Tip {
+        height: 100,
+        id: BlockId([1; 32]),
+    }
 }
-fn block(height: u64, id: u8, parent: u8, events: Vec<UnverifiedClearingEvent>)
-    -> UnverifiedClearingBlock
-{
+fn block(
+    height: u64,
+    id: u8,
+    parent: u8,
+    events: Vec<UnverifiedClearingEvent>,
+) -> UnverifiedClearingBlock {
     UnverifiedClearingBlock {
         network: TradeLayerMainnet::Litecoin,
         header: BlockHeader {
@@ -120,12 +141,21 @@ fn block(height: u64, id: u8, parent: u8, events: Vec<UnverifiedClearingEvent>)
         events,
     }
 }
-fn restore_chain(bytes: &[u8], sponsor: Option<&InsurancePolicy>)
-    -> Result<ClearingChainState, tradelayer_core::clearing_chain::ClearingChainCheckpointError>
-{
+fn restore_chain(
+    bytes: &[u8],
+    sponsor: Option<&InsurancePolicy>,
+) -> Result<ClearingChainState, tradelayer_core::clearing_chain::ClearingChainCheckpointError> {
     ClearingChainState::from_checkpoint_bytes_with_insurance(
-        bytes, TradeLayerMainnet::Litecoin, chain_anchor(), 19, p(7),
-        &permitted(), Some(collateral()), Some(terms()), sponsor, 3,
+        bytes,
+        TradeLayerMainnet::Litecoin,
+        chain_anchor(),
+        19,
+        p(7),
+        &permitted(),
+        Some(collateral()),
+        Some(terms()),
+        sponsor,
+        3,
     )
 }
 fn repair_crc(bytes: &mut [u8]) {
@@ -163,11 +193,18 @@ fn sponsor_donates_existing_atoms_into_unique_insurance_reserve() {
     let starting = s.ledger().available_atoms(p(7), &a("alice"));
     let baseline = s.ledger().property(p(7)).unwrap().total_supply_atoms;
     assert_eq!(s.insurance_reserve_atoms(), 0);
-    s.deposit_insurance_unverified(tx(10), a("alice"), 100_000_000).unwrap();
+    s.deposit_insurance_unverified(tx(10), a("alice"), 100_000_000)
+        .unwrap();
     assert_eq!(s.insurance_reserve_atoms(), 100_000_000);
     assert_eq!(s.ledger().available_atoms(p(7), &escrow), 100_000_000);
-    assert_eq!(s.ledger().available_atoms(p(7), &a("alice")), starting - 100_000_000);
-    assert_eq!(s.ledger().property(p(7)).unwrap().total_supply_atoms, baseline);
+    assert_eq!(
+        s.ledger().available_atoms(p(7), &a("alice")),
+        starting - 100_000_000
+    );
+    assert_eq!(
+        s.ledger().property(p(7)).unwrap().total_supply_atoms,
+        baseline
+    );
     assert_eq!(s.ledger().verify_conservation(), Ok(()));
     assert_eq!(s.processed_count(), 1);
     assert_eq!(s.verify(), Ok(()));
@@ -186,9 +223,12 @@ fn unrelated_actor_replay_and_overdraft_are_atomic() {
         s.deposit_insurance_unverified(tx(10), a("alice"), 0),
         Err(ClearingError::ZeroAmount)
     );
-    assert!(s.deposit_insurance_unverified(tx(10), a("alice"), u128::MAX).is_err());
+    assert!(s
+        .deposit_insurance_unverified(tx(10), a("alice"), u128::MAX)
+        .is_err());
     assert_eq!(s, initial);
-    s.deposit_insurance_unverified(tx(10), a("alice"), 100).unwrap();
+    s.deposit_insurance_unverified(tx(10), a("alice"), 100)
+        .unwrap();
     let funded = s.clone();
     assert_eq!(
         s.deposit_insurance_unverified(tx(10), a("alice"), 1),
@@ -200,7 +240,8 @@ fn unrelated_actor_replay_and_overdraft_are_atomic() {
 #[test]
 fn no_spot_order_or_ordinary_transfer_can_spend_insurance() {
     let mut s = insured();
-    s.deposit_insurance_unverified(tx(10), a("alice"), 50_000_000).unwrap();
+    s.deposit_insurance_unverified(tx(10), a("alice"), 50_000_000)
+        .unwrap();
     let escrow = s.insurance_escrow_for_audit().unwrap();
     let before = s.clone();
     assert_eq!(
@@ -233,9 +274,9 @@ fn explicit_insurance_policy_is_frozen_before_first_deposit() {
         Err(ClearingError::InsurancePolicyFrozen)
     );
     assert_eq!(
-        baseline().with_insurance_policy_unverified(
-            InsurancePolicy { sponsor: a("~ins:forged") }
-        ),
+        baseline().with_insurance_policy_unverified(InsurancePolicy {
+            sponsor: a("~ins:forged")
+        }),
         Err(ClearingError::InvalidInsuranceSponsor)
     );
     assert_eq!(
@@ -251,27 +292,45 @@ fn explicit_insurance_policy_is_frozen_before_first_deposit() {
 #[test]
 fn insurer_identity_is_separated_by_network_and_contract() {
     let a = insured().insurance_escrow_for_audit().unwrap();
-    let other_network = ClearingSandbox::from_ledger_unverified(
-        TradeLayerMainnet::Dogecoin, 19, p(7), {
+    let other_network =
+        ClearingSandbox::from_ledger_unverified(TradeLayerMainnet::Dogecoin, 19, p(7), {
             let mut ledger = Ledger::new();
-            ledger.apply(tx(1), Operation::CreateProperty {
-                id: p(7), issuer: a_account("alice"), kind: PropertyKind::Fixed,
-                initial_atoms: 100,
-            }).unwrap();
             ledger
-        }
-    ).unwrap().with_insurance_policy_unverified(insurer()).unwrap();
+                .apply(
+                    tx(1),
+                    Operation::CreateProperty {
+                        id: p(7),
+                        issuer: a_account("alice"),
+                        kind: PropertyKind::Fixed,
+                        initial_atoms: 100,
+                    },
+                )
+                .unwrap();
+            ledger
+        })
+        .unwrap()
+        .with_insurance_policy_unverified(insurer())
+        .unwrap();
     let b = other_network.insurance_escrow_for_audit().unwrap();
-    let alternate_contract = ClearingSandbox::from_spot_unverified(
-        TradeLayerMainnet::Litecoin, 20, p(7), {
+    let alternate_contract =
+        ClearingSandbox::from_spot_unverified(TradeLayerMainnet::Litecoin, 20, p(7), {
             let mut ledger = Ledger::new();
-            ledger.apply(tx(1), Operation::CreateProperty {
-                id: p(7), issuer: a_account("alice"), kind: PropertyKind::Fixed,
-                initial_atoms: 100,
-            }).unwrap();
+            ledger
+                .apply(
+                    tx(1),
+                    Operation::CreateProperty {
+                        id: p(7),
+                        issuer: a_account("alice"),
+                        kind: PropertyKind::Fixed,
+                        initial_atoms: 100,
+                    },
+                )
+                .unwrap();
             SpotExchange::from_ledger_unverified(ledger, BTreeSet::new()).unwrap()
-        },
-    ).unwrap().with_insurance_policy_unverified(insurer()).unwrap();
+        })
+        .unwrap()
+        .with_insurance_policy_unverified(insurer())
+        .unwrap();
     let c = alternate_contract.insurance_escrow_for_audit().unwrap();
     assert_ne!(a, b);
     assert_ne!(a, c);
@@ -292,7 +351,8 @@ fn tlcl_v2_is_canonical_and_legacy_v1_remains_byte_stable() {
 
     let mut s = insured();
     assert_eq!(&s.snapshot_bytes().unwrap()[..5], b"TLCL\x02");
-    s.deposit_insurance_unverified(tx(10), a("alice"), 100_000_000).unwrap();
+    s.deposit_insurance_unverified(tx(10), a("alice"), 100_000_000)
+        .unwrap();
     let bytes = s.snapshot_bytes().unwrap();
     let loaded = restored(&bytes, Some(&insurer())).unwrap();
     assert_eq!(loaded, s);
@@ -300,21 +360,35 @@ fn tlcl_v2_is_canonical_and_legacy_v1_remains_byte_stable() {
     assert_eq!(loaded.insurance_reserve_atoms(), 100_000_000);
     assert!(restored(&bytes, None).is_err());
     assert!(ClearingSandbox::from_snapshot_bytes(
-        &bytes, TradeLayerMainnet::Litecoin, 19, p(7),
-        &permitted(), Some(collateral()), Some(terms())
-    ).is_err());
+        &bytes,
+        TradeLayerMainnet::Litecoin,
+        19,
+        p(7),
+        &permitted(),
+        Some(collateral()),
+        Some(terms())
+    )
+    .is_err());
     let changed = InsurancePolicy { sponsor: a("bob") };
     assert!(restored(&bytes, Some(&changed)).is_err());
     assert!(ClearingSandbox::from_snapshot_bytes_with_insurance(
-        &bytes, TradeLayerMainnet::Bitcoin, 19, p(7), &permitted(),
-        Some(collateral()), Some(terms()), Some(&insurer())
-    ).is_err());
+        &bytes,
+        TradeLayerMainnet::Bitcoin,
+        19,
+        p(7),
+        &permitted(),
+        Some(collateral()),
+        Some(terms()),
+        Some(&insurer())
+    )
+    .is_err());
 }
 
 #[test]
 fn recomputed_crc_cannot_change_insurance_sponsor_or_downgrade_v2() {
     let mut s = insured();
-    s.deposit_insurance_unverified(tx(10), a("alice"), 100).unwrap();
+    s.deposit_insurance_unverified(tx(10), a("alice"), 100)
+        .unwrap();
     let bytes = s.snapshot_bytes().unwrap();
     let mut changed = bytes.clone();
     changed[4] = 1;
@@ -337,37 +411,58 @@ fn recomputed_crc_cannot_change_insurance_sponsor_or_downgrade_v2() {
 #[test]
 fn tlcc_v2_recovers_donations_and_rolls_back_alternate_forks() {
     let state = insured();
-    let mut chain = ClearingChainState::new_unverified(
-        TradeLayerMainnet::Litecoin, chain_anchor(), state, 3,
-    ).unwrap();
-    let first = block(101, 2, 1, vec![
-        UnverifiedClearingEvent::InsuranceDeposit {
-            txid: tx(10), sponsor: a("alice"), atoms: 100_000_000,
-        },
-        UnverifiedClearingEvent::MarginDeposit {
-            txid: tx(11), owner: a("alice"), atoms: 50_000_000,
-        },
-        UnverifiedClearingEvent::MarginDeposit {
-            txid: tx(12), owner: a("bob"), atoms: 50_000_000,
-        },
-        UnverifiedClearingEvent::MatchedTrades {
-            txid: tx(13),
-            trades: vec![MatchedContractTrade {
-                long: a("alice"), short: a("bob"), contracts: 1,
-            }],
-        },
-        UnverifiedClearingEvent::Mark {
-            txid: tx(14), new_price_e8: 100 * ONE + 1,
-        }
-    ]);
+    let mut chain =
+        ClearingChainState::new_unverified(TradeLayerMainnet::Litecoin, chain_anchor(), state, 3)
+            .unwrap();
+    let first = block(
+        101,
+        2,
+        1,
+        vec![
+            UnverifiedClearingEvent::InsuranceDeposit {
+                txid: tx(10),
+                sponsor: a("alice"),
+                atoms: 100_000_000,
+            },
+            UnverifiedClearingEvent::MarginDeposit {
+                txid: tx(11),
+                owner: a("alice"),
+                atoms: 50_000_000,
+            },
+            UnverifiedClearingEvent::MarginDeposit {
+                txid: tx(12),
+                owner: a("bob"),
+                atoms: 50_000_000,
+            },
+            UnverifiedClearingEvent::MatchedTrades {
+                txid: tx(13),
+                trades: vec![MatchedContractTrade {
+                    long: a("alice"),
+                    short: a("bob"),
+                    contracts: 1,
+                }],
+            },
+            UnverifiedClearingEvent::Mark {
+                txid: tx(14),
+                new_price_e8: 100 * ONE + 1,
+            },
+        ],
+    );
     chain.apply_unverified_block(&first).unwrap();
     assert_eq!(chain.state().insurance_reserve_atoms(), 100_000_000);
     let after_first = chain.clone();
-    chain.apply_unverified_block(&block(102, 3, 2, vec![
-        UnverifiedClearingEvent::InsuranceDeposit {
-            txid: tx(15), sponsor: a("alice"), atoms: 75_000_000,
-        }
-    ])).unwrap();
+    chain
+        .apply_unverified_block(&block(
+            102,
+            3,
+            2,
+            vec![UnverifiedClearingEvent::InsuranceDeposit {
+                txid: tx(15),
+                sponsor: a("alice"),
+                atoms: 75_000_000,
+            }],
+        ))
+        .unwrap();
     assert_eq!(chain.state().insurance_reserve_atoms(), 175_000_000);
     let bytes = chain.checkpoint_bytes().unwrap();
     assert_eq!(&bytes[..5], b"TLCC\x02");
@@ -376,20 +471,40 @@ fn tlcc_v2_recovers_donations_and_rolls_back_alternate_forks() {
     assert_eq!(restored.checkpoint_bytes().unwrap(), bytes);
     assert!(restore_chain(&bytes, None).is_err());
     assert!(ClearingChainState::from_checkpoint_bytes(
-        &bytes, TradeLayerMainnet::Litecoin, chain_anchor(), 19, p(7),
-        &permitted(), Some(collateral()), Some(terms()), 3
-    ).is_err());
+        &bytes,
+        TradeLayerMainnet::Litecoin,
+        chain_anchor(),
+        19,
+        p(7),
+        &permitted(),
+        Some(collateral()),
+        Some(terms()),
+        3
+    )
+    .is_err());
     let wrong = InsurancePolicy { sponsor: a("bob") };
     assert!(restore_chain(&bytes, Some(&wrong)).is_err());
 
-    restored.rollback_tip(Tip { height: 102, id: BlockId([3; 32]) }).unwrap();
+    restored
+        .rollback_tip(Tip {
+            height: 102,
+            id: BlockId([3; 32]),
+        })
+        .unwrap();
     assert_eq!(restored, after_first);
     assert_eq!(restored.state().insurance_reserve_atoms(), 100_000_000);
-    restored.apply_unverified_block(&block(102, 55, 2, vec![
-        UnverifiedClearingEvent::InsuranceDeposit {
-            txid: tx(15), sponsor: a("alice"), atoms: 25_000_000,
-        }
-    ])).unwrap();
+    restored
+        .apply_unverified_block(&block(
+            102,
+            55,
+            2,
+            vec![UnverifiedClearingEvent::InsuranceDeposit {
+                txid: tx(15),
+                sponsor: a("alice"),
+                atoms: 25_000_000,
+            }],
+        ))
+        .unwrap();
     assert_eq!(restored.state().insurance_reserve_atoms(), 125_000_000);
     assert_eq!(restored.state().ledger().verify_conservation(), Ok(()));
 }
@@ -397,34 +512,61 @@ fn tlcc_v2_recovers_donations_and_rolls_back_alternate_forks() {
 #[test]
 fn immutable_v2_checkpoint_failure_preserves_all_reserve_and_replay_history() {
     let mut chain = ClearingChainState::new_unverified(
-        TradeLayerMainnet::Litecoin, chain_anchor(), insured(), 3,
-    ).unwrap();
+        TradeLayerMainnet::Litecoin,
+        chain_anchor(),
+        insured(),
+        3,
+    )
+    .unwrap();
     let before = chain.clone();
     let dir = std::env::temp_dir().join(format!(
         "tradelayer-insurance-v2-{}-{}",
         std::process::id(),
-        SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
     ));
     fs::create_dir(&dir).unwrap();
     let occupied = dir.join("occupied.tlcc");
     fs::write(&occupied, b"no overwrite").unwrap();
-    let first = block(101, 2, 1, vec![
-        UnverifiedClearingEvent::InsuranceDeposit {
-            txid: tx(10), sponsor: a("alice"), atoms: 100_000_000,
-        }
-    ]);
-    assert!(chain.apply_unverified_block_and_checkpoint(&first, &occupied).is_err());
+    let first = block(
+        101,
+        2,
+        1,
+        vec![UnverifiedClearingEvent::InsuranceDeposit {
+            txid: tx(10),
+            sponsor: a("alice"),
+            atoms: 100_000_000,
+        }],
+    );
+    assert!(chain
+        .apply_unverified_block_and_checkpoint(&first, &occupied)
+        .is_err());
     assert_eq!(chain, before);
     assert_eq!(fs::read(&occupied).unwrap(), b"no overwrite");
     let missing = dir.join("missing").join("cannot.tlcc");
-    assert!(chain.apply_unverified_block_and_checkpoint(&first, &missing).is_err());
+    assert!(chain
+        .apply_unverified_block_and_checkpoint(&first, &missing)
+        .is_err());
     assert_eq!(chain, before);
     let path = dir.join("good.tlcc");
-    chain.apply_unverified_block_and_checkpoint(&first, &path).unwrap();
+    chain
+        .apply_unverified_block_and_checkpoint(&first, &path)
+        .unwrap();
     let from_disk = ClearingChainState::load_checkpoint_with_insurance(
-        &path, TradeLayerMainnet::Litecoin, chain_anchor(), 19, p(7),
-        &permitted(), Some(collateral()), Some(terms()), Some(&insurer()), 3,
-    ).unwrap();
+        &path,
+        TradeLayerMainnet::Litecoin,
+        chain_anchor(),
+        19,
+        p(7),
+        &permitted(),
+        Some(collateral()),
+        Some(terms()),
+        Some(&insurer()),
+        3,
+    )
+    .unwrap();
     assert_eq!(from_disk, chain);
     assert_eq!(from_disk.state().insurance_reserve_atoms(), 100_000_000);
     fs::remove_dir_all(dir).unwrap();
