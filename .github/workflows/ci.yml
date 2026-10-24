@@ -50,6 +50,8 @@ jobs:
         run: cargo test --frozen --test clearing_mark_to_market
       - name: Stage 25D full clearing state checkpoint and fork recovery
         run: cargo test --frozen --test clearing_snapshot --test clearing_chain
+      - name: Stage 25E2 real insurer reserve and v1/v2 checkpoint recovery
+        run: cargo test --frozen --test insurance_ledger_v2
       - name: Stage 25E1 liquidation risk preflight and no-spend source budgets
         run: cargo test --frozen --test liquidation_preflight
       - name: Verify Stage 25A isolated margin and funding atomicity
