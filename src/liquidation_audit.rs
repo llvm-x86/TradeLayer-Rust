@@ -109,8 +109,8 @@ pub fn assess_liquidation_risk_unverified(
         let maintenance = u128::from(contracts.unsigned_abs())
             .checked_mul(maintenance_atoms_per_contract)
             .ok_or(LiquidationAuditError::ArithmeticOverflow)?;
-        let maintenance_signed = i128::try_from(maintenance)
-            .map_err(|_| LiquidationAuditError::ArithmeticOverflow)?;
+        let maintenance_signed =
+            i128::try_from(maintenance).map_err(|_| LiquidationAuditError::ArithmeticOverflow)?;
         let equity = margin_signed
             .checked_add(delta.delta_atoms)
             .ok_or(LiquidationAuditError::ArithmeticOverflow)?;
@@ -162,7 +162,10 @@ pub fn assess_liquidation_risk_unverified(
     candidates.sort_by(|a, b| {
         (b.risk == MarginRisk::Insolvent)
             .cmp(&(a.risk == MarginRisk::Insolvent))
-            .then_with(|| b.maintenance_deficit_atoms.cmp(&a.maintenance_deficit_atoms))
+            .then_with(|| {
+                b.maintenance_deficit_atoms
+                    .cmp(&a.maintenance_deficit_atoms)
+            })
             .then_with(|| a.account.cmp(&b.account))
     });
     let candidates_by_severity = candidates
