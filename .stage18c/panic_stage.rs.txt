@@ -1,0 +1,101 @@
+//! Stage 18c: explicit unwind-injection at the ledger clone/commit boundary.
+//!
+//! These transactions have synthetic actor IDs and unauthenticated TxIds.
+//! The test covers a panic in an external iterator after the real Ledger
+//! has already mutated its staged copy. OOM/process abort, Clone panics,
+//! destructors with external effects and crash durability are separate risks.
+
+use std::panic::{catch_unwind, AssertUnwindSafe};
+use tradelayer_core::ledger::{AccountId, Ledger, Operation, PropertyId, PropertyKind, TxId};
+
+fn account(name: &str) -> AccountId {
+    AccountId::try_from(name).expect("valid ASCII account")
+}
+
+fn tx(number: u64) -> TxId {
+    let mut bytes = [0_u8; 32];
+    bytes[24..].copy_from_slice(&number.to_be_bytes());
+    TxId::from_bytes(bytes)
+}
+
+struct PanicAfterTwoStagedWrites {
+    id: PropertyId,
+    next_index: u8,
+}
+
+impl Iterator for PanicAfterTwoStagedWrites {
+    type Item = (TxId, Operation);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let (id_number, receiver, amount) = match self.next_index {
+            0 => (2, "A", 300),
+            1 => (3, "z", 100),
+            _ => panic!("injected panic after both staged Vec writes"),
+        };
+        self.next_index += 1;
+        Some((
+            tx(id_number),
+            Operation::Transfer {
+                id: self.id,
+                from: account("mIssuer"),
+                to: account(receiver),
+                amount_atoms: amount,
+            },
+        ))
+    }
+}
+
+#[test]
+fn panic_after_two_real_staged_transfers_preserves_live_ledger_and_replay() {
+    let id = PropertyId::try_from(u32::MAX).unwrap();
+    let mut ledger = Ledger::new();
+    ledger
+        .apply(
+            tx(1),
+            Operation::CreateProperty {
+                id,
+                issuer: account("mIssuer"),
+                kind: PropertyKind::Fixed,
+                initial_atoms: 1_000,
+            },
+        )
+        .unwrap();
+
+    let original = ledger.clone();
+    let original_bytes = ledger.snapshot_bytes().unwrap();
+    let original_markers = ledger.processed_count();
+
+    // Batch processing stages a cloned real Ledger. Each valid transfer
+    // mutates that copy's native-key OrderedColumns and replay set. The
+    // injected panic occurs at the next iterator read before publication.
+    let caught = catch_unwind(AssertUnwindSafe(|| {
+        let _ = ledger.apply_batch(PanicAfterTwoStagedWrites { id, next_index: 0 });
+    }));
+    assert!(caught.is_err(), "expected injected iterator panic");
+    assert_eq!(ledger, original, "partial staged data leaked into live ledger");
+    assert_eq!(ledger.snapshot_bytes().unwrap(), original_bytes);
+    assert_eq!(ledger.processed_count(), original_markers);
+    assert!(!ledger.is_processed(tx(2)));
+    assert!(!ledger.is_processed(tx(3)));
+    assert_eq!(ledger.available_atoms(id, &account("A")), 0);
+    assert_eq!(ledger.available_atoms(id, &account("z")), 0);
+    assert_eq!(ledger.available_atoms(id, &account("mIssuer")), 1_000);
+    assert_eq!(ledger.verify_conservation(), Ok(()));
+
+    // A previously staged transaction ID is still admissible, proving the
+    // aborted batch did not consume a public replay marker.
+    ledger
+        .apply(
+            tx(2),
+            Operation::Transfer {
+                id,
+                from: account("mIssuer"),
+                to: account("A"),
+                amount_atoms: 300,
+            },
+        )
+        .unwrap();
+    assert!(ledger.is_processed(tx(2)));
+    assert_eq!(ledger.available_atoms(id, &account("A")), 300);
+    assert_eq!(ledger.verify_conservation(), Ok(()));
+}
