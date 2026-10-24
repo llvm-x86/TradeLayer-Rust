@@ -25,7 +25,10 @@ pub const MAX_CLEARING_BLOCK_EVENTS: usize = 4096;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UnverifiedClearingEvent {
-    Ordinary { txid: TxId, operation: Operation },
+    Ordinary {
+        txid: TxId,
+        operation: Operation,
+    },
     SpotPlace(UnverifiedSpotPlacement),
     MarginDeposit {
         txid: TxId,
@@ -48,7 +51,10 @@ pub enum UnverifiedClearingEvent {
     },
     /// Must appear last and may only use the block's declared height.
     /// No spontaneous funding/mark schedules are inferred.
-    Mark { txid: TxId, new_price_e8: u64 },
+    Mark {
+        txid: TxId,
+        new_price_e8: u64,
+    },
     /// Unsupported economic settlement MUST remain default deny.
     UnsupportedSettlement,
 }
@@ -161,7 +167,9 @@ impl ClearingChainState {
         state.verify()?;
         // Verify this versioned format can preserve all state before putting
         // the source into a reversible history. CRC never authenticates it.
-        state.snapshot_bytes().map_err(ClearingChainCheckpointError::State)?;
+        state
+            .snapshot_bytes()
+            .map_err(ClearingChainCheckpointError::State)?;
         Ok(Self {
             network,
             contract: state.contract(),
@@ -207,7 +215,10 @@ impl ClearingChainState {
             return Err(ClearingChainError::ParentMismatch);
         }
         if self.tip.id == block.header.id
-            || self.history.iter().any(|prior| prior.tip.id == block.header.id)
+            || self
+                .history
+                .iter()
+                .any(|prior| prior.tip.id == block.header.id)
         {
             return Err(ClearingChainError::DuplicateBlockId);
         }
@@ -432,10 +443,7 @@ impl ClearingChainState {
     /// The path is exclusively created once. Never overwrite an existing
     /// checkpoint. File sync alone does not guarantee parent-directory sync
     /// after sudden power loss; independently manage the release storage TCB.
-    pub fn write_new_checkpoint(
-        &self,
-        path: &Path,
-    ) -> Result<(), ClearingChainCheckpointError> {
+    pub fn write_new_checkpoint(&self, path: &Path) -> Result<(), ClearingChainCheckpointError> {
         let bytes = self.checkpoint_bytes()?;
         let mut file = OpenOptions::new().write(true).create_new(true).open(path)?;
         if let Err(error) = file.write_all(&bytes).and_then(|()| file.sync_all()) {
@@ -458,8 +466,8 @@ impl ClearingChainState {
         history_limit: usize,
     ) -> Result<Self, ClearingChainCheckpointError> {
         let file = File::open(path)?;
-        let length = usize::try_from(file.metadata()?.len())
-            .map_err(|_| cc_bad("checkpoint file size"))?;
+        let length =
+            usize::try_from(file.metadata()?.len()).map_err(|_| cc_bad("checkpoint file size"))?;
         if length > MAX_CHECKPOINT_BYTES {
             return Err(cc_bad("checkpoint excessive size"));
         }
@@ -493,7 +501,10 @@ fn state_height_compatible(state: &ClearingSandbox, tip: Tip, anchor: Tip) -> bo
     } else {
         spot_height == Some(tip.height)
     };
-    spot_matches && state.mark_policy().is_none_or(|policy| policy.height <= tip.height)
+    spot_matches
+        && state
+            .mark_policy()
+            .is_none_or(|policy| policy.height <= tip.height)
 }
 
 fn cc_put_tip(out: &mut Vec<u8>, tip: Tip) {
@@ -533,7 +544,9 @@ fn cc_read_state(
     if length == 0 || length > MAX_CHECKPOINT_BYTES {
         return Err(cc_bad("embedded clearing state excessive size"));
     }
-    let bytes = r.take(length).map_err(|_| cc_bad("embedded clearing state truncated"))?;
+    let bytes = r
+        .take(length)
+        .map_err(|_| cc_bad("embedded clearing state truncated"))?;
     ClearingSandbox::from_snapshot_bytes(
         bytes,
         network,
