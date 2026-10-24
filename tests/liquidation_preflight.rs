@@ -2,24 +2,24 @@
 //! All economic inputs are synthetic and every spend remains default-deny.
 use std::collections::BTreeMap;
 use tradelayer_core::clearing_math::PnlRounding;
-use tradelayer_core::clearing_pnl::{
-    project_pnl_unverified, PnlAccountDelta, PnlProjection,
-};
+use tradelayer_core::clearing_pnl::{project_pnl_unverified, PnlAccountDelta, PnlProjection};
 use tradelayer_core::clearing_sandbox::{
     ClearingError, ClearingSandbox, CollateralPolicy, MarkPolicy, MatchedContractTrade,
 };
-use tradelayer_core::ledger::{
-    AccountId, Ledger, Operation, PropertyId, PropertyKind, TxId,
-};
+use tradelayer_core::ledger::{AccountId, Ledger, Operation, PropertyId, PropertyKind, TxId};
 use tradelayer_core::liquidation_audit::{
-    assess_liquidation_risk_unverified, preview_loss_budget_unverified,
-    HypotheticalLossRule, LiquidationAuditError, MarginRisk, MAX_RISK_POSITIONS,
+    assess_liquidation_risk_unverified, preview_loss_budget_unverified, HypotheticalLossRule,
+    LiquidationAuditError, MarginRisk, MAX_RISK_POSITIONS,
 };
 use tradelayer_core::network_profile::TradeLayerMainnet;
 
 const ONE: u64 = 100_000_000;
-fn p() -> PropertyId { PropertyId::try_from(7).unwrap() }
-fn a(s: &str) -> AccountId { AccountId::try_from(s).unwrap() }
+fn p() -> PropertyId {
+    PropertyId::try_from(7).unwrap()
+}
+fn a(s: &str) -> AccountId {
+    AccountId::try_from(s).unwrap()
+}
 fn tx(n: u64) -> TxId {
     let mut bytes = [0u8; 32];
     bytes[24..].copy_from_slice(&n.to_be_bytes());
@@ -28,19 +28,35 @@ fn tx(n: u64) -> TxId {
 fn funded() -> Ledger {
     let mut l = Ledger::new();
     l.apply_batch([
-        (tx(1), Operation::CreateProperty {
-            id: p(), issuer: a("alice"), kind: PropertyKind::Fixed,
-            initial_atoms: 1_000_000_000,
-        }),
-        (tx(2), Operation::Transfer {
-            id: p(), from: a("alice"), to: a("bob"),
-            amount_atoms: 300_000_000,
-        }),
-        (tx(3), Operation::Transfer {
-            id: p(), from: a("alice"), to: a("carol"),
-            amount_atoms: 300_000_000,
-        }),
-    ]).unwrap();
+        (
+            tx(1),
+            Operation::CreateProperty {
+                id: p(),
+                issuer: a("alice"),
+                kind: PropertyKind::Fixed,
+                initial_atoms: 1_000_000_000,
+            },
+        ),
+        (
+            tx(2),
+            Operation::Transfer {
+                id: p(),
+                from: a("alice"),
+                to: a("bob"),
+                amount_atoms: 300_000_000,
+            },
+        ),
+        (
+            tx(3),
+            Operation::Transfer {
+                id: p(),
+                from: a("alice"),
+                to: a("carol"),
+                amount_atoms: 300_000_000,
+            },
+        ),
+    ])
+    .unwrap();
     l
 }
 fn mark(notional: u64) -> MarkPolicy {
@@ -53,21 +69,29 @@ fn mark(notional: u64) -> MarkPolicy {
     }
 }
 fn state_with_floor(margin: u128, maintenance: u128, notional: u64) -> ClearingSandbox {
-    let mut s = ClearingSandbox::from_ledger_unverified(
-        TradeLayerMainnet::Litecoin, 19, p(), funded(),
-    ).unwrap()
-    .with_collateral_policy_unverified(CollateralPolicy {
-        initial_atoms_per_contract: maintenance,
-        maintenance_atoms_per_contract: maintenance,
-    }).unwrap()
-    .with_mark_policy_unverified(mark(notional)).unwrap();
-    s.deposit_margin_unverified(tx(10), a("alice"), margin).unwrap();
-    s.deposit_margin_unverified(tx(11), a("bob"), margin).unwrap();
-    s.apply_matched_trades_unverified(tx(12), &[
-        MatchedContractTrade {
-            long: a("alice"), short: a("bob"), contracts: 1
-        },
-    ]).unwrap();
+    let mut s =
+        ClearingSandbox::from_ledger_unverified(TradeLayerMainnet::Litecoin, 19, p(), funded())
+            .unwrap()
+            .with_collateral_policy_unverified(CollateralPolicy {
+                initial_atoms_per_contract: maintenance,
+                maintenance_atoms_per_contract: maintenance,
+            })
+            .unwrap()
+            .with_mark_policy_unverified(mark(notional))
+            .unwrap();
+    s.deposit_margin_unverified(tx(10), a("alice"), margin)
+        .unwrap();
+    s.deposit_margin_unverified(tx(11), a("bob"), margin)
+        .unwrap();
+    s.apply_matched_trades_unverified(
+        tx(12),
+        &[MatchedContractTrade {
+            long: a("alice"),
+            short: a("bob"),
+            contracts: 1,
+        }],
+    )
+    .unwrap();
     s
 }
 
@@ -76,7 +100,9 @@ fn loss_budget_matches_independent_bigint_source_derived_vectors() {
     const VECTORS: &str = include_str!("../fixtures/liquidation_loss_budget_vectors.tsv");
     let mut count = 0;
     for row in VECTORS.lines() {
-        if row.starts_with('#') || row.is_empty() { continue; }
+        if row.starts_with('#') || row.is_empty() {
+            continue;
+        }
         let cols: Vec<_> = row.split('\t').collect();
         assert_eq!(cols.len(), 11, "bad vector: {row}");
         let rule = match cols[1] {
@@ -85,13 +111,36 @@ fn loss_budget_matches_independent_bigint_source_derived_vectors() {
             _ => panic!("bad policy"),
         };
         let plan = preview_loss_budget_unverified(
-            cols[2].parse().unwrap(), cols[3].parse().unwrap(),
-            cols[4].parse().unwrap(), cols[5].parse().unwrap(), rule,
+            cols[2].parse().unwrap(),
+            cols[3].parse().unwrap(),
+            cols[4].parse().unwrap(),
+            cols[5].parse().unwrap(),
+            rule,
         );
-        assert_eq!(plan.available_debit_atoms, cols[6].parse().unwrap(), "{}", cols[0]);
-        assert_eq!(plan.margin_debit_atoms, cols[7].parse().unwrap(), "{}", cols[0]);
-        assert_eq!(plan.hypothetical_insurance_debit_atoms, cols[8].parse().unwrap(), "{}", cols[0]);
-        assert_eq!(plan.unresolved_atoms, cols[9].parse().unwrap(), "{}", cols[0]);
+        assert_eq!(
+            plan.available_debit_atoms,
+            cols[6].parse().unwrap(),
+            "{}",
+            cols[0]
+        );
+        assert_eq!(
+            plan.margin_debit_atoms,
+            cols[7].parse().unwrap(),
+            "{}",
+            cols[0]
+        );
+        assert_eq!(
+            plan.hypothetical_insurance_debit_atoms,
+            cols[8].parse().unwrap(),
+            "{}",
+            cols[0]
+        );
+        assert_eq!(
+            plan.unresolved_atoms,
+            cols[9].parse().unwrap(),
+            "{}",
+            cols[0]
+        );
         assert_eq!(plan.fully_accounted(), cols[10] == "1", "{}", cols[0]);
         assert!(plan.fully_accounted());
         count += 1;
@@ -118,7 +167,9 @@ fn insolvency_from_mark_beyond_real_margin_is_visible_without_any_seizure() {
     assert_eq!(risk.rounded_pnl_residual_atoms, 0);
     assert_eq!(s, before);
     let mut rejected = s.clone();
-    assert!(rejected.settle_mark_to_market_unverified(tx(13), 101, 101 * ONE).is_err());
+    assert!(rejected
+        .settle_mark_to_market_unverified(tx(13), 101, 101 * ONE)
+        .is_err());
     assert_eq!(rejected, before);
     assert_eq!(s.ledger().verify_conservation(), Ok(()));
 }
@@ -126,7 +177,9 @@ fn insolvency_from_mark_beyond_real_margin_is_visible_without_any_seizure() {
 #[test]
 fn below_maintenance_but_not_bankrupt_is_distinguished() {
     let s = state_with_floor(60_000_000, 50_000_000, ONE);
-    let preview = s.preview_liquidation_unverified(101, 100 * ONE + ONE / 5).unwrap();
+    let preview = s
+        .preview_liquidation_unverified(101, 100 * ONE + ONE / 5)
+        .unwrap();
     let bob = &preview.accounts[1];
     assert_eq!(bob.risk, MarginRisk::BelowMaintenance);
     assert_eq!(bob.post_mark_equity_atoms, 40_000_000);
@@ -135,9 +188,9 @@ fn below_maintenance_but_not_bankrupt_is_distinguished() {
     assert_eq!(preview.total_uncovered_mark_loss_atoms, 0);
     assert_eq!(preview.candidates_by_severity, vec![a("bob")]);
     let mut state = s.clone();
-    assert!(state.settle_mark_to_market_unverified(
-        tx(13), 101, 100 * ONE + ONE / 5,
-    ).is_err());
+    assert!(state
+        .settle_mark_to_market_unverified(tx(13), 101, 100 * ONE + ONE / 5,)
+        .is_err());
     assert_eq!(state, s);
 }
 
@@ -158,27 +211,46 @@ fn solvent_mark_has_no_liquidation_candidates_and_mutates_nothing() {
 
 #[test]
 fn quantized_mark_roundoff_is_reported_but_never_authorized() {
-    let mut s = ClearingSandbox::from_ledger_unverified(
-        TradeLayerMainnet::Litecoin, 19, p(), funded(),
-    ).unwrap()
-    .with_collateral_policy_unverified(CollateralPolicy {
-        initial_atoms_per_contract: 1,
-        maintenance_atoms_per_contract: 1,
-    }).unwrap()
-    .with_mark_policy_unverified(mark(ONE / 2)).unwrap();
+    let mut s =
+        ClearingSandbox::from_ledger_unverified(TradeLayerMainnet::Litecoin, 19, p(), funded())
+            .unwrap()
+            .with_collateral_policy_unverified(CollateralPolicy {
+                initial_atoms_per_contract: 1,
+                maintenance_atoms_per_contract: 1,
+            })
+            .unwrap()
+            .with_mark_policy_unverified(mark(ONE / 2))
+            .unwrap();
     for (id, name) in [(10, "alice"), (11, "bob"), (12, "carol")] {
-        s.deposit_margin_unverified(tx(id), a(name), 100_000_000).unwrap();
+        s.deposit_margin_unverified(tx(id), a(name), 100_000_000)
+            .unwrap();
     }
-    s.apply_matched_trades_unverified(tx(13), &[
-        MatchedContractTrade { long: a("alice"), short: a("bob"), contracts: 1 },
-        MatchedContractTrade { long: a("carol"), short: a("bob"), contracts: 1 },
-    ]).unwrap();
+    s.apply_matched_trades_unverified(
+        tx(13),
+        &[
+            MatchedContractTrade {
+                long: a("alice"),
+                short: a("bob"),
+                contracts: 1,
+            },
+            MatchedContractTrade {
+                long: a("carol"),
+                short: a("bob"),
+                contracts: 1,
+            },
+        ],
+    )
+    .unwrap();
     let before = s.clone();
-    let report = s.preview_liquidation_unverified(101, 100 * ONE + 1).unwrap();
+    let report = s
+        .preview_liquidation_unverified(101, 100 * ONE + 1)
+        .unwrap();
     assert_eq!(report.rounded_pnl_residual_atoms, 1);
     assert_eq!(report.total_uncovered_mark_loss_atoms, 0);
     assert_eq!(report.accounts.len(), 3);
-    assert!(s.settle_mark_to_market_unverified(tx(14), 101, 100 * ONE + 1).is_err());
+    assert!(s
+        .settle_mark_to_market_unverified(tx(14), 101, 100 * ONE + 1)
+        .is_err());
     assert_eq!(s, before);
 }
 
@@ -187,7 +259,10 @@ fn severity_priority_is_deterministic_and_never_a_market_order() {
     let mut positions = BTreeMap::new();
     let mut margins = BTreeMap::new();
     for (owner, contracts, atoms) in [
-        ("alice", -2, 40u128), ("bob", -1, 60), ("carol", 1, 100), ("dave", 2, 100),
+        ("alice", -2, 40u128),
+        ("bob", -1, 60),
+        ("carol", 1, 100),
+        ("dave", 2, 100),
     ] {
         positions.insert(a(owner), contracts);
         margins.insert(a(owner), atoms);
@@ -199,17 +274,28 @@ fn severity_priority_is_deterministic_and_never_a_market_order() {
         inverse: false,
         rounding: PnlRounding::ExactRational,
         deltas: vec![
-            PnlAccountDelta { account: a("alice"), delta_atoms: -200 },
-            PnlAccountDelta { account: a("bob"), delta_atoms: -100 },
-            PnlAccountDelta { account: a("carol"), delta_atoms: 100 },
-            PnlAccountDelta { account: a("dave"), delta_atoms: 200 },
+            PnlAccountDelta {
+                account: a("alice"),
+                delta_atoms: -200,
+            },
+            PnlAccountDelta {
+                account: a("bob"),
+                delta_atoms: -100,
+            },
+            PnlAccountDelta {
+                account: a("carol"),
+                delta_atoms: 100,
+            },
+            PnlAccountDelta {
+                account: a("dave"),
+                delta_atoms: 200,
+            },
         ],
         payer_atoms: 300,
         receiver_atoms: 300,
         net_atoms: 0,
     };
-    let report = assess_liquidation_risk_unverified(&positions, &margins, &projection, 10)
-        .unwrap();
+    let report = assess_liquidation_risk_unverified(&positions, &margins, &projection, 10).unwrap();
     assert_eq!(report.candidates_by_severity, vec![a("alice"), a("bob")]);
     assert_eq!(report.total_uncovered_mark_loss_atoms, 200);
     assert_eq!(report.accounts[0].risk, MarginRisk::Insolvent);
@@ -220,17 +306,18 @@ fn severity_priority_is_deterministic_and_never_a_market_order() {
 
 #[test]
 fn risk_assessment_denies_missing_policy_or_mark_and_wrong_account_maps() {
-    let s = ClearingSandbox::from_ledger_unverified(
-        TradeLayerMainnet::Litecoin, 19, p(), funded(),
-    ).unwrap();
+    let s = ClearingSandbox::from_ledger_unverified(TradeLayerMainnet::Litecoin, 19, p(), funded())
+        .unwrap();
     assert_eq!(
         s.preview_liquidation_unverified(101, 101 * ONE),
         Err(ClearingError::LiquidationPolicyMissing)
     );
-    let s = s.with_collateral_policy_unverified(CollateralPolicy {
-        initial_atoms_per_contract: 1,
-        maintenance_atoms_per_contract: 1,
-    }).unwrap();
+    let s = s
+        .with_collateral_policy_unverified(CollateralPolicy {
+            initial_atoms_per_contract: 1,
+            maintenance_atoms_per_contract: 1,
+        })
+        .unwrap();
     assert_eq!(
         s.preview_liquidation_unverified(101, 101 * ONE),
         Err(ClearingError::MarkPolicyMissing)
@@ -239,8 +326,14 @@ fn risk_assessment_denies_missing_policy_or_mark_and_wrong_account_maps() {
     let mut positions = BTreeMap::from([(a("alice"), 1i64), (a("bob"), -1)]);
     let mut margins = BTreeMap::from([(a("alice"), 1u128), (a("bob"), 1)]);
     let mut mark = project_pnl_unverified(
-        &positions, 100 * ONE, 101 * ONE, ONE, false, PnlRounding::ExactRational,
-    ).unwrap();
+        &positions,
+        100 * ONE,
+        101 * ONE,
+        ONE,
+        false,
+        PnlRounding::ExactRational,
+    )
+    .unwrap();
     margins.remove(&a("bob"));
     assert_eq!(
         assess_liquidation_risk_unverified(&positions, &margins, &mark, 1),
@@ -270,8 +363,14 @@ fn huge_maintenance_and_unbalanced_open_interest_fail_closed() {
     let positions = BTreeMap::from([(a("alice"), 1i64), (a("bob"), -1)]);
     let margins = BTreeMap::from([(a("alice"), 1u128), (a("bob"), 1)]);
     let mark = project_pnl_unverified(
-        &positions, 100 * ONE, 101 * ONE, ONE, false, PnlRounding::ExactRational,
-    ).unwrap();
+        &positions,
+        100 * ONE,
+        101 * ONE,
+        ONE,
+        false,
+        PnlRounding::ExactRational,
+    )
+    .unwrap();
     assert_eq!(
         assess_liquidation_risk_unverified(&positions, &margins, &mark, u128::MAX),
         Err(LiquidationAuditError::ArithmeticOverflow)
@@ -281,8 +380,14 @@ fn huge_maintenance_and_unbalanced_open_interest_fail_closed() {
     let mut margins = margins.clone();
     margins.insert(a("carol"), 1);
     let mark = project_pnl_unverified(
-        &positions, 100 * ONE, 100 * ONE, ONE, false, PnlRounding::ExactRational,
-    ).unwrap();
+        &positions,
+        100 * ONE,
+        100 * ONE,
+        ONE,
+        false,
+        PnlRounding::ExactRational,
+    )
+    .unwrap();
     assert_eq!(
         assess_liquidation_risk_unverified(&positions, &margins, &mark, 1),
         Err(LiquidationAuditError::UnbalancedOpenInterest)
@@ -295,8 +400,14 @@ fn huge_maintenance_and_unbalanced_open_interest_fail_closed() {
         posted.insert(account, 1);
     }
     let mark = project_pnl_unverified(
-        &BTreeMap::new(), ONE, ONE, ONE, false, PnlRounding::ExactRational,
-    ).unwrap();
+        &BTreeMap::new(),
+        ONE,
+        ONE,
+        ONE,
+        false,
+        PnlRounding::ExactRational,
+    )
+    .unwrap();
     assert_eq!(
         assess_liquidation_risk_unverified(&too_many, &posted, &mark, 1),
         Err(LiquidationAuditError::TooManyPositions)
@@ -307,12 +418,10 @@ fn huge_maintenance_and_unbalanced_open_interest_fail_closed() {
 fn multiple_offline_loss_pool_budgets_cannot_reuse_hypothetical_insurance() {
     // This is a warning/example, not a spend simulator: two independent
     // previews can each claim the SAME insurer's 100 atoms.
-    let one = preview_loss_budget_unverified(
-        100, 0, 0, 100, HypotheticalLossRule::PostedMarginOnly,
-    );
-    let two = preview_loss_budget_unverified(
-        100, 0, 0, 100, HypotheticalLossRule::PostedMarginOnly,
-    );
+    let one =
+        preview_loss_budget_unverified(100, 0, 0, 100, HypotheticalLossRule::PostedMarginOnly);
+    let two =
+        preview_loss_budget_unverified(100, 0, 0, 100, HypotheticalLossRule::PostedMarginOnly);
     assert_eq!(one.hypothetical_insurance_debit_atoms, 100);
     assert_eq!(two.hypothetical_insurance_debit_atoms, 100);
     assert_eq!(one.unresolved_atoms + two.unresolved_atoms, 0);
