@@ -4421,4 +4421,105 @@ theorem contracted_ordered_vec_trace_refines_function
     (encodeNativeWrites writes) (encodeNativeRows rows) amounts represents
 
 
+
+/-!
+## Stage 18b: discharge native-state representation invariants in Lean
+
+The Stage 18 execution theorem initially enumerated sortedness and valid
+identifiers as additional postcondition assumptions. These lemmas relate
+the list operation's key provenance and the injective order encoding, so
+both invariants can instead be derived from the search/mutation contracts.
+They remain conditional on Rust realizing those primitive contracts.
+-/
+
+/-- Positional insertion, replacement and deletion never introduces a
+native key outside the input support or the validated written key. -/
+theorem native_indexed_put_preserves_valid
+    (index : Nat) (rows : List (NativeAccountKey × Nat))
+    (key : NativeAccountKey) (amount : Nat)
+    (valid : NativeRowsValid rows)
+    (keyValid : ValidAccountBytes key.accountBytes) :
+    NativeRowsValid (nativeIndexedColumnPut index rows key amount) := by
+  induction index generalizing rows with
+  | zero =>
+      cases rows with
+      | nil =>
+          by_cases zero : amount = 0
+          · simp [NativeRowsValid, nativeIndexedColumnPut, zero]
+          · simpa [NativeRowsValid, nativeIndexedColumnPut, zero]
+              using keyValid
+      | cons pair tail =>
+          rcases pair with ⟨stored, old⟩
+          have headValid : ValidAccountBytes stored.accountBytes :=
+            valid (stored, old) (by simp)
+          have tailValid : NativeRowsValid tail := by
+            intro entry member
+            exact valid entry (List.mem_cons.mpr (Or.inr member))
+          by_cases same : stored = key
+          · subst key
+            by_cases zero : amount = 0
+            · simpa [NativeRowsValid, nativeIndexedColumnPut, zero]
+                using tailValid
+            · simp [NativeRowsValid, nativeIndexedColumnPut, zero,
+                headValid, tailValid]
+          · by_cases zero : amount = 0
+            · simpa [nativeIndexedColumnPut, same, zero] using valid
+            · simp [NativeRowsValid, nativeIndexedColumnPut,
+                same, zero, keyValid, headValid, tailValid]
+  | succ index ih =>
+      cases rows with
+      | nil =>
+          simp [NativeRowsValid, nativeIndexedColumnPut]
+      | cons pair tail =>
+          rcases pair with ⟨stored, old⟩
+          have headValid : ValidAccountBytes stored.accountBytes :=
+            valid (stored, old) (by simp)
+          have tailValid : NativeRowsValid tail := by
+            intro entry member
+            exact valid entry (List.mem_cons.mpr (Or.inr member))
+          have nextValid := ih tail tailValid
+          intro entry member
+          have memberCases :
+              entry = (stored, old) ∨
+              entry ∈ nativeIndexedColumnPut index tail key amount := by
+            simpa [nativeIndexedColumnPut] using member
+          rcases memberCases with equal | fromTail
+          · subst entry
+            exact headValid
+          · exact nextValid entry fromTail
+
+/-- Reverse of the Stage 13 forward ordering embedding, on valid rows.
+Thus strictly sorted encoded keys imply native typed-key sortedness. -/
+theorem encoded_sorted_implies_native_sorted
+    (rows : List (NativeAccountKey × Nat))
+    (valid : NativeRowsValid rows)
+    (encodedSorted : SortedVecKeys (encodeNativeRows rows)) :
+    NativeAccountSorted rows := by
+  induction rows with
+  | nil =>
+      trivial
+  | cons pair tail ih =>
+      rcases pair with ⟨key, old⟩
+      have headValid : ValidAccountBytes key.accountBytes :=
+        valid (key, old) (by simp)
+      have tailValid : NativeRowsValid tail := by
+        intro entry member
+        exact valid entry (List.mem_cons.mpr (Or.inr member))
+      have split :
+          (∀ entry ∈ encodeNativeRows tail,
+            encodeNativeAccount key < entry.1) ∧
+          SortedVecKeys (encodeNativeRows tail) := by
+        simpa only [encodeNativeRows, List.map_cons, SortedVecKeys]
+          using encodedSorted
+      constructor
+      · intro entry member
+        have encodedMember :
+            (encodeNativeAccount entry.1, entry.2) ∈ encodeNativeRows tail := by
+          exact List.mem_map.mpr ⟨entry, member, rfl⟩
+        have rankLess := split.1 _ encodedMember
+        exact (native_account_less_iff_rank
+          key entry.1 headValid (tailValid entry member)).2 rankLess
+      · exact ih tailValid split.2
+
+
 end TradeLayerFormal
