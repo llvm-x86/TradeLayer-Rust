@@ -53,7 +53,9 @@ pub enum ClearingError {
     Replay(TxId),
     PositionOverflow,
     ArithmeticOverflow,
-    InjectedFailure { before_leg: usize },
+    InjectedFailure {
+        before_leg: usize,
+    },
     Ledger(LedgerError),
     Spot(SpotError),
     Funding(FundingAuditError),
@@ -519,8 +521,8 @@ impl ClearingSandbox {
                     let after = before
                         .checked_add(delta)
                         .ok_or(ClearingError::PositionOverflow)?;
-                    let flipped = before != 0 && after != 0
-                        && before.is_negative() != after.is_negative();
+                    let flipped =
+                        before != 0 && after != 0 && before.is_negative() != after.is_negative();
                     staged.check_collateral(
                         owner,
                         after,
