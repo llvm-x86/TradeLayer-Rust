@@ -462,7 +462,6 @@ impl ClearingSandbox {
             .and_then(|_| self.derived_insurance_escrow().ok())
     }
 
-
     /// Observe the per-owner signed PnL, including any independent-rounding
     /// residual, WITHOUT writing balances. Imbalanced projections may be
     /// diagnosed here but are never accepted by settle_mark_to_market.
@@ -589,8 +588,7 @@ impl ClearingSandbox {
         domain.extend_from_slice(sponsor_bytes);
         let mut address = String::from(INSURANCE_ESCROW_PREFIX);
         for byte in double_sha256(&domain) {
-            write!(&mut address, "{byte:02x}")
-                .map_err(|_| ClearingError::ArithmeticOverflow)?;
+            write!(&mut address, "{byte:02x}").map_err(|_| ClearingError::ArithmeticOverflow)?;
         }
         AccountId::try_from(address.as_str()).map_err(ClearingError::Ledger)
     }
