@@ -304,6 +304,23 @@ fn foreign_reserved_balances_and_channels_cannot_join_a_margin_sandbox() {
         ClearingSandbox::from_ledger_unverified(TradeLayerMainnet::Litecoin, 19, p(), foreign),
         Err(ClearingError::EscrowCollision)
     );
+    let mut booked = prefunded();
+    booked.apply(
+        tx(4),
+        Operation::ChannelCommit {
+            id: p(),
+            owner: a("alice"),
+            channel: a("channel"),
+            side: tradelayer_core::ledger::ChannelSide::A,
+            amount_atoms: 10,
+        },
+    ).unwrap();
+    assert_eq!(
+        ClearingSandbox::from_ledger_unverified(
+            TradeLayerMainnet::Litecoin, 19, p(), booked,
+        ),
+        Err(ClearingError::UnsupportedExistingLiabilities)
+    );
     let mut book = sandbox();
     assert_eq!(
         book.deposit_margin_unverified(tx(4), a("~spot:forged"), 1),
@@ -381,13 +398,39 @@ fn oversized_and_self_matched_trades_reject_before_changing_any_state() {
 #[test]
 fn bounded_owner_count_rejects_another_registration_without_side_effects() {
     assert_eq!(MAX_CLEARING_OWNERS, 128);
-    let mut book = sandbox();
+    let mut seed = prefunded();
+    let funded = (0..=MAX_CLEARING_OWNERS)
+        .map(|i| {
+            (
+                tx(1_000 + i as u64),
+                Operation::Transfer {
+                    id: p(),
+                    from: a("alice"),
+                    to: a(&format!("owner{i:03}")),
+                    amount_atoms: 1,
+                },
+            )
+        })
+        .collect::<Vec<_>>();
+    seed.apply_batch(funded).unwrap();
+    let mut book = ClearingSandbox::from_ledger_unverified(
+        TradeLayerMainnet::Litecoin,
+        19,
+        p(),
+        seed,
+    )
+    .unwrap();
+    for i in 0..MAX_CLEARING_OWNERS {
+        book.deposit_margin_unverified(tx(2_000 + i as u64), a(&format!("owner{i:03}")), 1)
+            .unwrap();
+    }
     let before = book.clone();
     assert_eq!(
-        book.deposit_margin_unverified(tx(4), a("alice"), 0),
-        Err(ClearingError::ZeroAmount)
+        book.deposit_margin_unverified(tx(5_000), a("owner128"), 1),
+        Err(ClearingError::TooManyOwners)
     );
     assert_eq!(book, before);
+    assert_eq!(book.verify(), Ok(()));
 }
 
 #[test]
