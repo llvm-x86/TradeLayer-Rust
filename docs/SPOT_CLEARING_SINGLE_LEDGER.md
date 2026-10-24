@@ -59,6 +59,34 @@ joined clearing object has **no persistence API** pending a new versioned
 combined checkpoint and reorg proof. Opening an existing TLSP with
 unrecognized reserves is also rejected.
 
+## Opt-in initial and maintenance collateral floors
+
+The joined sandbox now also supports a **caller-chosen immutable research
+policy** through `with_collateral_policy_unverified(CollateralPolicy)`. It
+accepts nonzero `initial_atoms_per_contract` and
+`maintenance_atoms_per_contract`, requiring initial >= maintenance.
+The configuration cannot be changed after clearing has begun.
+
+After each synthetic matched trade, a participant increasing absolute
+exposure or flipping direction must have locked margin >=
+`initial_atoms_per_contract * abs(new_contracts)`. Other active positions
+must stay above the maintenance floor. Checked `u128` multiplication
+rejects overflow. Each funding transfer rechecks the maintenance floor
+before committing any balance/position/replay-marker changes.
+
+**Important:** these are fixed synthetic per-contract thresholds, NOT
+reviewed TradeLayer initial-maintenance economics. They do not incorporate
+historical contract notional, oracle mark, inverse payoff, leverage,
+unrealized PnL, liquidation slippage or insurance. A production risk engine
+must specify these formulas and enforce a versioned protocol rule, instead
+of treating arbitrary caller-selected thresholds as trusted parameters.
+Without an explicit policy, legacy Stage 25A sandbox remains unchanged.
+
+Tests verify opening exposure limits, late-failing funding, immutable
+policy configuration, spot reserve exclusion and retry after replenishing
+collateral. A failed maintenance check conservatively declines the
+proposed payment; it is *not* a liquidation algorithm.
+
 ## Tests and known limitations
 
 `tests/spot_clearing_one_ledger.rs` performs mixed token issuance,
@@ -67,7 +95,7 @@ open spot orders and replay collisions. It checks both properties' supplies,
 concurrent spot and margin reserves, no reserved-account impersonation and
 late-failure rollback. Stage 25A's fault-injection tests remain intact.
 
-**No clearing policy parity is claimed.** This stage does not add maintenance
+**No clearing policy parity is claimed.** This stage does not provide production maintenance
 margin, mark-to-market debits, multi-contract clearing, liquidations, insurance,
 fees, bankruptcy, channel derivatives or any signed-chain authority.
 The simulated matched trade can be submitted by a caller without a real
@@ -81,6 +109,7 @@ into its state.
 python3 scripts/check_rust_supply_chain.py
 cargo test --frozen --test spot_clearing_one_ledger
 cargo test --frozen --test clearing_sandbox
+cargo test --frozen --test clearing_collateral_policy
 cargo test --frozen
 cargo fmt --all -- --check
 cargo clippy --all-targets --frozen -- -D warnings
