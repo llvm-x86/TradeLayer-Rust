@@ -524,6 +524,44 @@ fn invalid_mark_policy_frozen_after_clearing_activity() {
 }
 
 #[test]
+fn one_ledger_forbids_backdated_marks_and_spot_orders() {
+    let mut state = base()
+        .with_mark_policy_unverified(default_policy())
+        .unwrap();
+    state.process_spot_block_unverified(110).unwrap();
+    let before = state.clone();
+    assert_eq!(
+        state.settle_mark_to_market_unverified(tx(10), 109, 101 * ONE),
+        Err(ClearingError::StaleMark)
+    );
+    assert_eq!(state, before);
+    // A mark at the already completed spot height is permitted as an
+    // end-of-block settlement, with no source-authority inference.
+    state.settle_mark_to_market_unverified(tx(10), 110, 101 * ONE).unwrap();
+    let after_mark = state.clone();
+    assert_eq!(
+        state.enqueue_spot_order_unverified(spot_order(11, "alice", 7, 8)),
+        Err(ClearingError::StaleMark)
+    );
+    assert_eq!(
+        state.process_spot_block_unverified(110),
+        Err(ClearingError::StaleMark)
+    );
+    assert_eq!(state, after_mark);
+    assert!(state.spot().snapshot_bytes().is_err());
+}
+
+#[test]
+fn mark_policy_cannot_retroactively_precede_spot_finalization() {
+    let mut state = base();
+    state.process_spot_block_unverified(120).unwrap();
+    assert_eq!(
+        state.with_mark_policy_unverified(default_policy()),
+        Err(ClearingError::StaleMark)
+    );
+}
+
+#[test]
 fn deterministic_mark_stress_preserves_both_property_supplies_and_oi() {
     let mut state = opened();
     let p7_supply = state.ledger().property(p(7)).unwrap().total_supply_atoms;
