@@ -48,10 +48,13 @@ The configured initial mark cannot predate an already finalized spot height,
 or be installed while spot input events remain queued. Once configured,
 spot events/blocks must have a height **strictly greater** than the current
 mark, while a new end-of-block mark must be at least the latest finalized
-spot block and strictly later than the preceding mark. A mark can therefore
-settle the spot activity at the same height but cannot be backdated behind
-it. These checks are *local research ordering constraints*, not verified L1
-order or a replacement for the authenticated Stage 23 replay boundary.
+spot block and strictly later than the preceding mark. The mark also
+rejects any **queued spot order due at or before that mark height** until
+the spot book has actually processed the corresponding height. A mark can
+therefore settle spot activity at the same height but cannot be backdated
+behind it or bypass a ready queue. These checks are *local research
+ordering constraints*, not verified L1 order or a replacement for the
+authenticated Stage 23 replay boundary.
 
 The selected policy uses the pure Stage 24A PnL formulas:
 
