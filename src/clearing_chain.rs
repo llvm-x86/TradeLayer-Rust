@@ -8,8 +8,8 @@
 
 use crate::chain::{BlockHeader, Tip, MAX_REORG_HISTORY};
 use crate::clearing_sandbox::{
-    ClearingError, ClearingSandbox, ClearingSnapshotError, CollateralPolicy, MarkTerms,
-    MatchedContractTrade,
+    ClearingError, ClearingSandbox, ClearingSnapshotError, CollateralPolicy, InsurancePolicy,
+    MarkTerms, MatchedContractTrade,
 };
 use crate::codec::{verify_crc, with_crc, Cursor, MAX_CHECKPOINT_BYTES};
 use crate::ledger::{AccountId, Operation, PropertyId, TxId};
@@ -20,7 +20,8 @@ use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::Path;
 
-const CHAIN_MAGIC: &[u8; 5] = b"TLCC\x01";
+const CHAIN_MAGIC_V1: &[u8; 5] = b"TLCC\x01";
+const CHAIN_MAGIC_V2: &[u8; 5] = b"TLCC\x02";
 pub const MAX_CLEARING_BLOCK_EVENTS: usize = 4096;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -33,6 +34,13 @@ pub enum UnverifiedClearingEvent {
     MarginDeposit {
         txid: TxId,
         owner: AccountId,
+        atoms: u128,
+    },
+    /// Only a policy-designated research sponsor may DONATE real atoms into
+    /// a segregated insurer escrow. No insurer debit event is supported.
+    InsuranceDeposit {
+        txid: TxId,
+        sponsor: AccountId,
         atoms: u128,
     },
     MarginWithdraw {
@@ -242,6 +250,13 @@ impl ClearingChainState {
                 UnverifiedClearingEvent::MarginDeposit { txid, owner, atoms } => {
                     staged.deposit_margin_unverified(*txid, owner.clone(), *atoms)?;
                 }
+                UnverifiedClearingEvent::InsuranceDeposit {
+                    txid,
+                    sponsor,
+                    atoms,
+                } => {
+                    staged.deposit_insurance_unverified(*txid, sponsor.clone(), *atoms)?;
+                }
                 UnverifiedClearingEvent::MarginWithdraw { txid, owner, atoms } => {
                     staged.withdraw_margin_unverified(*txid, owner.clone(), *atoms)?;
                 }
@@ -313,7 +328,11 @@ impl ClearingChainState {
     }
 
     pub fn checkpoint_bytes(&self) -> Result<Vec<u8>, ClearingChainCheckpointError> {
-        let mut out = CHAIN_MAGIC.to_vec();
+        let mut out = if self.state.insurance_policy().is_some() {
+            CHAIN_MAGIC_V2.to_vec()
+        } else {
+            CHAIN_MAGIC_V1.to_vec()
+        };
         out.push(self.network.tag());
         out.extend_from_slice(&self.network.genesis().0);
         out.extend_from_slice(&self.network.chain_id().0);
@@ -345,6 +364,35 @@ impl ClearingChainState {
         expected_mark_terms: Option<MarkTerms>,
         expected_history_limit: usize,
     ) -> Result<Self, ClearingChainCheckpointError> {
+        Self::from_checkpoint_bytes_with_insurance(
+            bytes,
+            expected_network,
+            expected_anchor,
+            expected_contract,
+            expected_collateral,
+            expected_permitted,
+            expected_collateral_policy,
+            expected_mark_terms,
+            None,
+            expected_history_limit,
+        )
+    }
+
+    /// Same trust inputs as TLCC v1, with a separately supplied sponsor for
+    /// TLCC v2. A CRC is never allowed to select an insurance sponsor.
+    #[allow(clippy::too_many_arguments)]
+    pub fn from_checkpoint_bytes_with_insurance(
+        bytes: &[u8],
+        expected_network: TradeLayerMainnet,
+        expected_anchor: Tip,
+        expected_contract: u32,
+        expected_collateral: PropertyId,
+        expected_permitted: &BTreeSet<PropertyId>,
+        expected_collateral_policy: Option<CollateralPolicy>,
+        expected_mark_terms: Option<MarkTerms>,
+        expected_insurance_policy: Option<&InsurancePolicy>,
+        expected_history_limit: usize,
+    ) -> Result<Self, ClearingChainCheckpointError> {
         if !(1..=MAX_REORG_HISTORY).contains(&expected_history_limit) {
             return Err(cc_bad("invalid expected history limit"));
         }
@@ -353,8 +401,14 @@ impl ClearingChainState {
             .map_err(|_| cc_bad("genesis anchor mismatch"))?;
         let payload = verify_crc(bytes).map_err(|_| cc_bad("checkpoint CRC or size"))?;
         let mut r = Cursor::new(payload);
-        if r.fixed::<5>().map_err(|_| cc_bad("checkpoint magic"))? != *CHAIN_MAGIC {
-            return Err(cc_bad("checkpoint version"));
+        let version = r.fixed::<5>().map_err(|_| cc_bad("checkpoint magic"))?;
+        let with_insurance = match version {
+            version if version == *CHAIN_MAGIC_V1 => false,
+            version if version == *CHAIN_MAGIC_V2 => true,
+            _ => return Err(cc_bad("checkpoint version")),
+        };
+        if with_insurance != expected_insurance_policy.is_some() {
+            return Err(cc_bad("insurance checkpoint policy/version mismatch"));
         }
         let tag = r.u8().map_err(|_| cc_bad("network tag"))?;
         let genesis = r.fixed::<32>().map_err(|_| cc_bad("network genesis"))?;
@@ -398,6 +452,7 @@ impl ClearingChainState {
                 expected_permitted,
                 expected_collateral_policy,
                 expected_mark_terms,
+                expected_insurance_policy,
             )?;
             if !state_height_compatible(&prior, prev_tip, anchor) {
                 return Err(cc_bad("prior spot/mark height mismatch"));
@@ -415,6 +470,7 @@ impl ClearingChainState {
             expected_permitted,
             expected_collateral_policy,
             expected_mark_terms,
+            expected_insurance_policy,
         )?;
         r.end().map_err(|_| cc_bad("trailing checkpoint bytes"))?;
         if tip.height < anchor.height
@@ -470,6 +526,33 @@ impl ClearingChainState {
         mark_terms: Option<MarkTerms>,
         history_limit: usize,
     ) -> Result<Self, ClearingChainCheckpointError> {
+        Self::load_checkpoint_with_insurance(
+            path,
+            network,
+            anchor,
+            contract,
+            collateral,
+            permitted,
+            collateral_policy,
+            mark_terms,
+            None,
+            history_limit,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn load_checkpoint_with_insurance(
+        path: &Path,
+        network: TradeLayerMainnet,
+        anchor: Tip,
+        contract: u32,
+        collateral: PropertyId,
+        permitted: &BTreeSet<PropertyId>,
+        collateral_policy: Option<CollateralPolicy>,
+        mark_terms: Option<MarkTerms>,
+        insurance_policy: Option<&InsurancePolicy>,
+        history_limit: usize,
+    ) -> Result<Self, ClearingChainCheckpointError> {
         let file = File::open(path)?;
         let length =
             usize::try_from(file.metadata()?.len()).map_err(|_| cc_bad("checkpoint file size"))?;
@@ -482,7 +565,7 @@ impl ClearingChainState {
         if bytes.len() > MAX_CHECKPOINT_BYTES {
             return Err(cc_bad("checkpoint read excessive size"));
         }
-        Self::from_checkpoint_bytes(
+        Self::from_checkpoint_bytes_with_insurance(
             &bytes,
             network,
             anchor,
@@ -491,6 +574,7 @@ impl ClearingChainState {
             permitted,
             collateral_policy,
             mark_terms,
+            insurance_policy,
             history_limit,
         )
     }
@@ -544,6 +628,7 @@ fn cc_read_state(
     permitted: &BTreeSet<PropertyId>,
     collateral_policy: Option<CollateralPolicy>,
     mark_terms: Option<MarkTerms>,
+    insurance_policy: Option<&InsurancePolicy>,
 ) -> Result<ClearingSandbox, ClearingChainCheckpointError> {
     let length = r.u32().map_err(|_| cc_bad("embedded state length"))? as usize;
     if length == 0 || length > MAX_CHECKPOINT_BYTES {
@@ -552,7 +637,7 @@ fn cc_read_state(
     let bytes = r
         .take(length)
         .map_err(|_| cc_bad("embedded clearing state truncated"))?;
-    ClearingSandbox::from_snapshot_bytes(
+    ClearingSandbox::from_snapshot_bytes_with_insurance(
         bytes,
         network,
         contract,
@@ -560,6 +645,7 @@ fn cc_read_state(
         permitted,
         collateral_policy,
         mark_terms,
+        insurance_policy,
     )
     .map_err(ClearingChainCheckpointError::State)
 }

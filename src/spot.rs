@@ -306,6 +306,43 @@ impl SpotExchange {
         Ok(())
     }
 
+    /// Stage 25E2: sponsor -> insurance escrow ONLY. This is a dedicated
+    /// crate-private one-way transfer, not a generic reserved account API.
+    /// The sole clearing owner derives/validates the exact ~ins: address,
+    /// property and sponsor before calling; no insurer payout is implemented.
+    pub(crate) fn deposit_insurance_reserve_unverified(
+        &mut self,
+        txid: TxId,
+        property: PropertyId,
+        sponsor: AccountId,
+        insurance_escrow: AccountId,
+        amount_atoms: u128,
+    ) -> Result<(), SpotError> {
+        if sponsor.as_str().starts_with('~')
+            || !insurance_escrow.as_str().starts_with("~ins:")
+            || amount_atoms == 0
+        {
+            return Err(SpotError::ReservedAccount);
+        }
+        if self.seen.contains(&txid) || self.ledger.is_processed(txid) {
+            return Err(SpotError::Replay(txid));
+        }
+        let mut candidate = self.clone();
+        candidate.ledger.apply(
+            txid,
+            Operation::Transfer {
+                id: property,
+                from: sponsor,
+                to: insurance_escrow,
+                amount_atoms,
+            },
+        )?;
+        candidate.verify_reserves()?;
+        candidate.clearing_activity = true;
+        *self = candidate;
+        Ok(())
+    }
+
     pub(crate) fn has_clearing_activity_unverified(&self) -> bool {
         self.clearing_activity
     }

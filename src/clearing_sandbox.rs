@@ -28,6 +28,7 @@ pub const MAX_CLEARING_OWNERS: usize = 128;
 pub const MAX_CLEARING_INPUTS: usize = 4096;
 pub const MAX_CLEARING_TRADES_PER_INPUT: usize = 1024;
 const ESCROW_PREFIX: &str = "~clrm:";
+const INSURANCE_ESCROW_PREFIX: &str = "~ins:";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ClearingError {
@@ -49,6 +50,10 @@ pub enum ClearingError {
     InvalidCollateralPolicy,
     CollateralPolicyFrozen,
     LiquidationPolicyMissing,
+    InvalidInsuranceSponsor,
+    InsurancePolicyMissing,
+    InsurancePolicyFrozen,
+    UnauthorizedInsuranceSponsor,
     InvalidMarkPolicy,
     MarkPolicyMissing,
     MarkPolicyFrozen,
@@ -130,6 +135,23 @@ pub struct CollateralPolicy {
     pub maintenance_atoms_per_contract: u128,
 }
 
+/// One immutable research sponsor for a contract's *actual* insurance escrow.
+/// The sponsor address is explicitly caller-supplied, not signature-verified.
+/// The insurer cannot withdraw or authorize liquidations in Stage 25E2.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InsurancePolicy {
+    pub sponsor: AccountId,
+}
+
+impl InsurancePolicy {
+    fn validate(&self) -> Result<(), ClearingError> {
+        if self.sponsor.as_str().starts_with('~') {
+            return Err(ClearingError::InvalidInsuranceSponsor);
+        }
+        Ok(())
+    }
+}
+
 impl CollateralPolicy {
     fn validate(self) -> Result<Self, ClearingError> {
         if self.initial_atoms_per_contract == 0
@@ -195,6 +217,7 @@ pub struct ClearingSandbox {
     positions: BTreeMap<AccountId, i64>,
     collateral_policy: Option<CollateralPolicy>,
     mark_policy: Option<MarkPolicy>,
+    insurance_policy: Option<InsurancePolicy>,
     seen: BTreeSet<TxId>,
 }
 
@@ -266,6 +289,7 @@ impl ClearingSandbox {
             positions: BTreeMap::new(),
             collateral_policy: None,
             mark_policy: None,
+            insurance_policy: None,
             seen: BTreeSet::new(),
         };
         candidate.verify()?;
@@ -348,7 +372,11 @@ impl ClearingSandbox {
         mut self,
         policy: CollateralPolicy,
     ) -> Result<Self, ClearingError> {
-        if self.collateral_policy.is_some() || !self.seen.is_empty() || !self.positions.is_empty() {
+        if self.collateral_policy.is_some()
+            || !self.seen.is_empty()
+            || !self.positions.is_empty()
+            || self.spot.has_clearing_activity_unverified()
+        {
             return Err(ClearingError::CollateralPolicyFrozen);
         }
         self.collateral_policy = Some(policy.validate()?);
@@ -393,6 +421,45 @@ impl ClearingSandbox {
 
     pub const fn mark_policy(&self) -> Option<MarkPolicy> {
         self.mark_policy
+    }
+
+    /// Opt in to a sole-ledger insurance escrow BEFORE clearing activity.
+    /// The policy itself is persisted by TLCL v2; older TLSP/TLJP/TLCC v1
+    /// cannot drop it even if no insurance funds have yet been donated.
+    pub fn with_insurance_policy_unverified(
+        mut self,
+        policy: InsurancePolicy,
+    ) -> Result<Self, ClearingError> {
+        if self.insurance_policy.is_some()
+            || !self.seen.is_empty()
+            || !self.positions.is_empty()
+            || self.spot.has_clearing_activity_unverified()
+        {
+            return Err(ClearingError::InsurancePolicyFrozen);
+        }
+        policy.validate()?;
+        self.insurance_policy = Some(policy);
+        self.spot.note_clearing_event_unverified();
+        self.verify()?;
+        Ok(self)
+    }
+
+    pub fn insurance_policy(&self) -> Option<&InsurancePolicy> {
+        self.insurance_policy.as_ref()
+    }
+
+    /// The insurer holds REAL available property atoms in the existing
+    /// SpotExchange-owned Ledger. This is never a duplicated account map.
+    pub fn insurance_reserve_atoms(&self) -> u128 {
+        self.insurance_escrow_for_audit().map_or(0, |escrow| {
+            self.spot.ledger().available_atoms(self.collateral, &escrow)
+        })
+    }
+
+    pub fn insurance_escrow_for_audit(&self) -> Option<AccountId> {
+        self.insurance_policy
+            .as_ref()
+            .and_then(|_| self.derived_insurance_escrow().ok())
     }
 
     /// Observe the per-owner signed PnL, including any independent-rounding
@@ -501,6 +568,31 @@ impl ClearingSandbox {
         Ok(AccountId::try_from(address.as_str())?)
     }
 
+    /// Network/contract/collateral and sponsor-separated *account identity*.
+    /// Does not independently attest that the sponsor is authorized.
+    fn derived_insurance_escrow(&self) -> Result<AccountId, ClearingError> {
+        let policy = self
+            .insurance_policy
+            .as_ref()
+            .ok_or(ClearingError::InsurancePolicyMissing)?;
+        policy.validate()?;
+        let mut domain = Vec::with_capacity(160);
+        domain.extend_from_slice(b"TradeLayer/insurance-reserve/stage25e2");
+        domain.extend_from_slice(&self.network.genesis().0);
+        domain.extend_from_slice(&self.contract.to_be_bytes());
+        domain.extend_from_slice(&self.collateral.get().to_be_bytes());
+        let sponsor_bytes = policy.sponsor.as_str().as_bytes();
+        let sponsor_len =
+            u16::try_from(sponsor_bytes.len()).map_err(|_| ClearingError::ArithmeticOverflow)?;
+        domain.extend_from_slice(&sponsor_len.to_be_bytes());
+        domain.extend_from_slice(sponsor_bytes);
+        let mut address = String::from(INSURANCE_ESCROW_PREFIX);
+        for byte in double_sha256(&domain) {
+            write!(&mut address, "{byte:02x}").map_err(|_| ClearingError::ArithmeticOverflow)?;
+        }
+        AccountId::try_from(address.as_str()).map_err(ClearingError::Ledger)
+    }
+
     fn internal_txid(
         &self,
         outer: TxId,
@@ -552,6 +644,39 @@ impl ClearingSandbox {
         staged.verify()?;
         *self = staged;
         Ok(result)
+    }
+
+    /// Sponsor-funded deposit only. There is deliberately no withdrawal,
+    /// loss payout, insurance claim or liquidation action in this stage.
+    /// Every atom moves from the sponsor to the one derived ~ins: escrow.
+    pub fn deposit_insurance_unverified(
+        &mut self,
+        external: TxId,
+        sponsor: AccountId,
+        amount_atoms: u128,
+    ) -> Result<(), ClearingError> {
+        Self::validate_owner(&sponsor)?;
+        if amount_atoms == 0 {
+            return Err(ClearingError::ZeroAmount);
+        }
+        self.transaction(external, move |staged| {
+            let policy = staged
+                .insurance_policy
+                .as_ref()
+                .ok_or(ClearingError::InsurancePolicyMissing)?;
+            if sponsor != policy.sponsor {
+                return Err(ClearingError::UnauthorizedInsuranceSponsor);
+            }
+            let escrow = staged.derived_insurance_escrow()?;
+            staged.spot.deposit_insurance_reserve_unverified(
+                staged.internal_txid(external, b"insurance-deposit", 0)?,
+                staged.collateral,
+                sponsor,
+                escrow,
+                amount_atoms,
+            )?;
+            Ok(())
+        })
     }
 
     pub fn deposit_margin_unverified(
@@ -953,6 +1078,12 @@ impl ClearingSandbox {
         if let Some(mark) = self.mark_policy {
             mark.validate()?;
         }
+        if let Some(insurance) = &self.insurance_policy {
+            insurance.validate()?;
+            if !self.spot.has_clearing_activity_unverified() {
+                return Err(ClearingError::EscrowCollision);
+            }
+        }
         if self.spot.ledger().property(self.collateral).is_none() {
             return Err(ClearingError::UnknownCollateral);
         }
@@ -988,13 +1119,20 @@ impl ClearingSandbox {
                 return Err(ClearingError::EscrowCollision);
             }
         }
+        let insurance_address = match &self.insurance_policy {
+            Some(_) => Some(self.derived_insurance_escrow()?),
+            None => None,
+        };
         for (property, account, _) in self.spot.ledger().balances_with_account_prefix("~") {
             // All spot-order reserves are separately matched against their
             // actual orderbook by SpotExchange::verify_reserves.
             if account.as_str().starts_with("~spot:") {
                 continue;
             }
-            if property != self.collateral || !escrow_addresses.contains(&account) {
+            if property != self.collateral
+                || (!escrow_addresses.contains(&account)
+                    && insurance_address.as_ref() != Some(&account))
+            {
                 return Err(ClearingError::EscrowCollision);
             }
         }
