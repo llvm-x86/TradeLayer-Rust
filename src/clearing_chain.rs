@@ -63,6 +63,13 @@ pub enum UnverifiedClearingEvent {
         txid: TxId,
         new_price_e8: u64,
     },
+    /// A separately versioned OFFLINE research branch: cash-settle and
+    /// close every synthetic position at the asserted final mark. This is
+    /// NOT an authenticated AMM fill, legacy economic rule or payout right.
+    DistressedCloseout {
+        txid: TxId,
+        new_price_e8: u64,
+    },
     /// Unsupported economic settlement MUST remain default deny.
     UnsupportedSettlement,
 }
@@ -236,6 +243,7 @@ impl ClearingChainState {
 
         let mut staged = self.state.clone();
         let mut final_mark = None;
+        let mut final_distressed = None;
         for (i, event) in block.events.iter().enumerate() {
             match event {
                 UnverifiedClearingEvent::Ordinary { txid, operation } => {
@@ -271,10 +279,22 @@ impl ClearingChainState {
                     staged.settle_funding_unverified(*txid, *notional_atoms, *rate_bps_e4)?;
                 }
                 UnverifiedClearingEvent::Mark { txid, new_price_e8 } => {
-                    if final_mark.is_some() || i + 1 != block.events.len() {
+                    if final_mark.is_some()
+                        || final_distressed.is_some()
+                        || i + 1 != block.events.len()
+                    {
                         return Err(ClearingChainError::MarkMustEndBlock);
                     }
                     final_mark = Some((*txid, *new_price_e8));
+                }
+                UnverifiedClearingEvent::DistressedCloseout { txid, new_price_e8 } => {
+                    if final_mark.is_some()
+                        || final_distressed.is_some()
+                        || i + 1 != block.events.len()
+                    {
+                        return Err(ClearingChainError::MarkMustEndBlock);
+                    }
+                    final_distressed = Some((*txid, *new_price_e8));
                 }
                 UnverifiedClearingEvent::UnsupportedSettlement => {
                     return Err(ClearingChainError::UnsupportedEconomicSettlement);
@@ -284,6 +304,8 @@ impl ClearingChainState {
         staged.process_spot_block_unverified(block.header.height)?;
         if let Some((txid, price)) = final_mark {
             staged.settle_mark_to_market_unverified(txid, block.header.height, price)?;
+        } else if let Some((txid, price)) = final_distressed {
+            staged.settle_distressed_closeout_unverified(txid, block.header.height, price)?;
         }
         staged.verify()?;
         self.history.push_back(PriorClearing {
