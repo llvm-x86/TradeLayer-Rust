@@ -310,6 +310,14 @@ impl SpotExchange {
         self.clearing_activity
     }
 
+    /// A completed clearing event may have zero transfer legs. Persist the
+    /// in-memory research-history fence even when no margin atoms move;
+    /// otherwise TLSP or an old joint checkpoint can orphan its replay ID.
+    /// The caller commits this change only on its staged atomic clone.
+    pub(crate) fn note_clearing_event_unverified(&mut self) {
+        self.clearing_activity = true;
+    }
+
     pub fn processed_through(&self) -> Option<u64> {
         self.processed_through
     }
@@ -327,6 +335,13 @@ impl SpotExchange {
     }
     pub fn pending_count(&self) -> usize {
         self.queued.len()
+    }
+
+    /// Research-only ordering check for the combined clearing mark lane.
+    /// Marking an epoch before all due spot queue entries are applied would
+    /// manufacture an end-of-block result with a different economic order.
+    pub(crate) fn has_queued_spot_at_or_before_unverified(&self, height: u64) -> bool {
+        self.queued.iter().any(|entry| entry.height <= height)
     }
     pub fn open_count(&self) -> usize {
         self.books.values().map(Vec::len).sum()
