@@ -305,20 +305,20 @@ fn foreign_reserved_balances_and_channels_cannot_join_a_margin_sandbox() {
         Err(ClearingError::EscrowCollision)
     );
     let mut booked = prefunded();
-    booked.apply(
-        tx(4),
-        Operation::ChannelCommit {
-            id: p(),
-            owner: a("alice"),
-            channel: a("channel"),
-            side: tradelayer_core::ledger::ChannelSide::A,
-            amount_atoms: 10,
-        },
-    ).unwrap();
+    booked
+        .apply(
+            tx(4),
+            Operation::ChannelCommit {
+                id: p(),
+                owner: a("alice"),
+                channel: a("channel"),
+                side: tradelayer_core::ledger::ChannelSide::A,
+                amount_atoms: 10,
+            },
+        )
+        .unwrap();
     assert_eq!(
-        ClearingSandbox::from_ledger_unverified(
-            TradeLayerMainnet::Litecoin, 19, p(), booked,
-        ),
+        ClearingSandbox::from_ledger_unverified(TradeLayerMainnet::Litecoin, 19, p(), booked,),
         Err(ClearingError::UnsupportedExistingLiabilities)
     );
     let mut book = sandbox();
@@ -413,13 +413,9 @@ fn bounded_owner_count_rejects_another_registration_without_side_effects() {
         })
         .collect::<Vec<_>>();
     seed.apply_batch(funded).unwrap();
-    let mut book = ClearingSandbox::from_ledger_unverified(
-        TradeLayerMainnet::Litecoin,
-        19,
-        p(),
-        seed,
-    )
-    .unwrap();
+    let mut book =
+        ClearingSandbox::from_ledger_unverified(TradeLayerMainnet::Litecoin, 19, p(), seed)
+            .unwrap();
     for i in 0..MAX_CLEARING_OWNERS {
         book.deposit_margin_unverified(tx(2_000 + i as u64), a(&format!("owner{i:03}")), 1)
             .unwrap();
