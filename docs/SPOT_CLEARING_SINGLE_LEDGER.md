@@ -51,13 +51,17 @@ transfer that actually touches `~clrm:` and no `~spot:` or unknown
 reserved namespace. Only clearing metadata chooses the `~clrm:` account
 using its pinned genesis/contract/collateral/owner derivation.
 
-The old TLSP spot snapshot has no position or margin-owner metadata.
-**It is now forbidden to encode any ledger with non-spot `~` reserve
-balances as TLSP.** This preserves existing TLSP/TLJP/TLJC format semantics
-instead of producing an apparently valid but orphaned checkpoint. The
-joined clearing object has **no persistence API** pending a new versioned
-combined checkpoint and reorg proof. Opening an existing TLSP with
-unrecognized reserves is also rejected.
+The old TLSP spot snapshot has no position, margin-owner or clearing
+event replay metadata. Every internal clearing transfer permanently sets a
+`clearing_activity` fence on its owning SpotExchange, even if all margin is
+later withdrawn and the escrow balances become zero. **TLSP serialization,
+JointProtocolState migration and creation of another clearing sandbox from
+that spot state all reject this history-bearing instance.** The old
+TLJP/TLJC formats remain unchanged and are barred from importing the
+unrepresented event history. No TLSP/TLJP writer may orphan collateral or
+lose past clearing replay IDs. The joined clearing object has **no
+persistence API** pending a new versioned combined checkpoint and reorg
+proof. Opening an existing TLSP with unrecognized reserves is also rejected.
 
 ## Opt-in initial and maintenance collateral floors
 
@@ -110,6 +114,7 @@ python3 scripts/check_rust_supply_chain.py
 cargo test --frozen --test spot_clearing_one_ledger
 cargo test --frozen --test clearing_sandbox
 cargo test --frozen --test clearing_collateral_policy
+cargo test --frozen --test clearing_checkpoint_fence
 cargo test --frozen
 cargo fmt --all -- --check
 cargo clippy --all-targets --frozen -- -D warnings
