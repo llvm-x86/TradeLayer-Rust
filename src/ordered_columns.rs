@@ -460,4 +460,37 @@ mod kani_proofs {
         assert_eq!(columns.get(&3).copied(), Some(u128::from(credit)));
         assert_eq!(columns.len(), 2);
     }
+    #[kani::proof]
+    #[kani::unwind(16)]
+    fn actual_vec_symbolic_query_locate_matches_two_anchor_scan() {
+        // Cover all 256 u8 query keys against a fixed, strictly sorted
+        // two-record Vec. The independent expected index is the count of
+        // anchor keys strictly less than the queried key.
+        let query: u8 = kani::any();
+        let mut columns = OrderedColumns::<u8>::default();
+        assert_eq!(columns.insert(2, 11), None);
+        assert_eq!(columns.insert(4, 33), None);
+
+        let expected_index = usize::from(2 < query) + usize::from(4 < query);
+        let expected = if query == 2 {
+            Ok(0)
+        } else if query == 4 {
+            Ok(1)
+        } else {
+            Err(expected_index)
+        };
+
+        assert_eq!(columns.lower_bound(&query), expected_index);
+        assert_eq!(columns.locate(&query), expected);
+        assert_eq!(
+            columns.get(&query).copied(),
+            if query == 2 {
+                Some(11)
+            } else if query == 4 {
+                Some(33)
+            } else {
+                None
+            }
+        );
+    }
 }
