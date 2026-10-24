@@ -183,6 +183,8 @@ pub struct SpotExchange {
     fills: Vec<SpotFill>,
     next_sequence: u64,
     processed_through: Option<u64>,
+    /// Irreversible in this version: TLSP cannot encode clearing history.
+    clearing_activity: bool,
 }
 
 impl SpotExchange {
@@ -211,6 +213,7 @@ impl SpotExchange {
             fills: Vec::new(),
             next_sequence: 0,
             processed_through: None,
+            clearing_activity: false,
         })
     }
 
@@ -298,8 +301,13 @@ impl SpotExchange {
             },
         )?;
         candidate.verify_reserves()?;
+        candidate.clearing_activity = true;
         *self = candidate;
         Ok(())
+    }
+
+    pub(crate) fn has_clearing_activity_unverified(&self) -> bool {
+        self.clearing_activity
     }
 
     pub fn processed_through(&self) -> Option<u64> {
@@ -309,7 +317,8 @@ impl SpotExchange {
     /// Initial state from the caller's prefunded offline ledger, before
     /// any spot event has been queued, matched, or canceled.
     pub fn is_pristine_unverified(&self) -> bool {
-        self.processed_through.is_none()
+        !self.clearing_activity
+            && self.processed_through.is_none()
             && self.seen.is_empty()
             && self.queued.is_empty()
             && self.books.is_empty()
@@ -664,6 +673,9 @@ impl SpotExchange {
     /// escrow metadata. Refuse imported clearing margin balances lacking
     /// signed positions, ownership, loss policy and a combined checkpoint.
     pub(crate) fn reject_foreign_reserves_for_joint_unverified(&self) -> Result<(), SpotError> {
+        if self.clearing_activity {
+            return Err(SpotError::ReservedAccount);
+        }
         if self
             .ledger
             .balances_with_account_prefix("~")
