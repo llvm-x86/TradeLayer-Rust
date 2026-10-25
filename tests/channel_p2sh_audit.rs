@@ -357,6 +357,18 @@ fn malformed_transaction_bytes_wrong_network_or_sighash_reject() {
         keys()
     )
     .is_ok());
+    // Native or nested SegWit cannot impersonate a legacy P2SH
+    // scriptSig path even if the same funding outpoint is referenced.
+    let mut segwit = spend[..4].to_vec();
+    segwit.extend_from_slice(&[0, 1]); // marker/flag
+    segwit.extend_from_slice(&spend[4..spend.len() - 4]);
+    segwit.extend_from_slice(&[1, 1, 42, 0]); // nonempty witness on vin0, empty on vin1
+    segwit.extend_from_slice(&spend[spend.len() - 4..]);
+    assert!(inspect_transaction(&segwit).unwrap().has_witness);
+    assert_eq!(
+        check(&fund, &segwit, keys()),
+        Err(P2shAuditError::UnsupportedSegwitSpend)
+    );
     let mut malformed = spend.clone();
     malformed.push(0);
     assert_eq!(
