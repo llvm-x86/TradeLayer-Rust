@@ -78,6 +78,10 @@ jobs:
         run: python3 scripts/audit_p2sh_hash160.py
       - name: Stage 25K legacy P2SH two-of-two script and outpoint, no ECDSA
         run: cargo test --frozen --test channel_p2sh_audit
+      - name: Stage 25L independent legacy P2SH SIGHASH_ALL and OpenSSL ECDSA
+        run: python3 scripts/audit_p2sh_legacy_ecdsa_openssl.py --check
+      - name: Stage 25L Rust read-only P2SH signed-fixture parity and permanent denial
+        run: cargo test --frozen --test channel_p2sh_signed_evidence
       - name: Stage 25F source-only exact rational bankruptcy threshold
         run: cargo test --frozen --test bankruptcy_source_audit
       - name: Verify Stage 25A isolated margin and funding atomicity
