@@ -158,6 +158,10 @@ jobs:
         run: cargo test --frozen --test stage8d_parent_utxo_snapshot
       - name: Stage 8D4 independent Python candidate witness SHA256d encoding oracle
         run: python3 scripts/audit_stage8d4_candidate_fingerprint.py
+      - name: Stage 8D5 raw funding TXID and claimed prevout byte-equality denials
+        run: cargo test --frozen --test stage8d_raw_funding_evidence
+      - name: Stage 8D5 independent Python raw funding TXID and 3-vout reference
+        run: python3 scripts/audit_stage8d5_raw_funding.py
       - name: Legacy txIndex.js exact pinned source Node VM with fake RPC/DB and three-argument decoder
         run: node scripts/audit_legacy_txindex_source.cjs
       - name: Legacy txIndex.js Rust source marker offsets, vout-loss and permanent denial
