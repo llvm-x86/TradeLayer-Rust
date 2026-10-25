@@ -275,7 +275,7 @@ jobs:
           grep -Fxq 'full_block_consensus=UNVERIFIED' /tmp/txindex-segwit-perf.log
       - name: Stage 8C release 4000-TX one-fetch zero-copy versus owned-Vec benchmark
         run: |
-          target/release/tradelayer-block-ingest-bench 4000 4 50 3 > /tmp/txindex-bulk-perf.log
+          target/release/tradelayer-block-ingest-bench 4000 4 50 4 > /tmp/txindex-bulk-perf.log
           cat /tmp/txindex-bulk-perf.log
           grep -Fxq 'ordered_equivalence=PASS' /tmp/txindex-bulk-perf.log
           grep -Fxq 'new_raw_tx_byte_copies=0' /tmp/txindex-bulk-perf.log
@@ -284,7 +284,7 @@ jobs:
           grep -Fxq 'full_block_consensus=UNVERIFIED' /tmp/txindex-bulk-perf.log
       - name: Stage 8D fused benchmark at 1000 TX single worker, 0 percent SegWit
         run: |
-          target/release/tradelayer-block-ingest-bench 1000 1 0 2 > /tmp/txindex-8d-small.log
+          target/release/tradelayer-block-ingest-bench 1000 1 0 4 > /tmp/txindex-8d-small.log
           cat /tmp/txindex-8d-small.log
           grep -Fxq 'ordered_equivalence=PASS' /tmp/txindex-8d-small.log
           grep -q '^full_owned_block_pipeline_median_ms=' /tmp/txindex-8d-small.log
@@ -292,7 +292,7 @@ jobs:
           grep -Fxq 'full_block_consensus=UNVERIFIED' /tmp/txindex-8d-small.log
       - name: Stage 8D fused benchmark at 10000 TX eight workers, 95 percent SegWit
         run: |
-          target/release/tradelayer-block-ingest-bench 10000 8 95 2 > /tmp/txindex-8d-large.log
+          target/release/tradelayer-block-ingest-bench 10000 8 95 4 > /tmp/txindex-8d-large.log
           cat /tmp/txindex-8d-large.log
           grep -Fxq 'ordered_equivalence=PASS' /tmp/txindex-8d-large.log
           grep -q '^full_pipeline_speed_ratio=' /tmp/txindex-8d-large.log
@@ -301,6 +301,7 @@ jobs:
           grep -q '^one_team_vs_windowed_ratio=' /tmp/txindex-8d-large.log
           grep -q '^one_team_fast_reduce_prepared_only_median_ms=' /tmp/txindex-8d-large.log
           grep -q '^fast_reduce_vs_one_team_ratio=' /tmp/txindex-8d-large.log
+          grep -Fxq 'one_team_variant_order=COUNTERBALANCED' /tmp/txindex-8d-large.log
           grep -q '^duplicate_hashmap_vs_btree_ratio=' /tmp/txindex-8d-large.log
           grep -q '^merkle_inplace_vs_allocating_ratio=' /tmp/txindex-8d-large.log
           grep -Fxq 'one_team_extra_result_slots=10000' /tmp/txindex-8d-large.log
