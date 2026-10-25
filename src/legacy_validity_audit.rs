@@ -167,10 +167,7 @@ pub enum SourceValidityError {
 /// Historical Validity.isActivated is an unconditional stub, and MUST NOT
 /// be replaced with a real height or proof check in source characterization.
 /// This is not an authorization method.
-pub const fn source_validity_is_activated_stub(
-    _height: u64,
-    _transaction_type: u8,
-) -> bool {
+pub const fn source_validity_is_activated_stub(_height: u64, _transaction_type: u8) -> bool {
     true
 }
 
@@ -191,11 +188,15 @@ pub fn source_validate_type0_array_unverified(
         .filter(|value| !value.is_nan())
         .collect();
     if result.type0_sanitized_numbers.is_empty() {
-        result.failures.push(SourceValidityFailure::InvalidActivationTypes);
+        result
+            .failures
+            .push(SourceValidityFailure::InvalidActivationTypes);
         return result.finish(false);
     }
     if sender != claimed_protocol_admin {
-        result.failures.push(SourceValidityFailure::WrongProtocolAdmin);
+        result
+            .failures
+            .push(SourceValidityFailure::WrongProtocolAdmin);
         return result.finish(false);
     }
     if result
@@ -203,14 +204,18 @@ pub fn source_validate_type0_array_unverified(
         .iter()
         .any(|number| *number > 35.0 || *number < 0.0)
     {
-        result.failures.push(SourceValidityFailure::ActivationTypeOutOfBounds);
+        result
+            .failures
+            .push(SourceValidityFailure::ActivationTypeOutOfBounds);
     }
     if result
         .type0_sanitized_numbers
         .iter()
         .any(|number| number.is_finite() && number.fract() != 0.0)
     {
-        result.caveats.push(SourceValidityCaveat::Type0FractionalAcceptedThenIntTruncated);
+        result
+            .caveats
+            .push(SourceValidityCaveat::Type0FractionalAcceptedThenIntTruncated);
     }
     result.finish(false)
 }
@@ -243,11 +248,10 @@ pub struct ClaimedType7<'a> {
 
 /// Source names can be EMPTY strings (typeof "" === "string") while
 /// backup must be truthy, string and source address-validated.
-pub fn source_validate_type7_unverified(
-    claim: ClaimedType7<'_>,
-) -> UnverifiedValidityObservation {
+pub fn source_validate_type7_unverified(claim: ClaimedType7<'_>) -> UnverifiedValidityObservation {
     let mut o = UnverifiedValidityObservation::new(SourceValidityKind::Type7CreateWhitelist);
-    o.caveats.push(SourceValidityCaveat::ActivatedAtBlockStubAlwaysTrue);
+    o.caveats
+        .push(SourceValidityCaveat::ActivatedAtBlockStubAlwaysTrue);
     if !claim.tx_type_7_active {
         o.failures.push(SourceValidityFailure::TypeInactive(7));
     }
@@ -283,33 +287,38 @@ pub struct ClaimedType8<'a> {
     pub claimed_get_list_attestations_row: Option<ClaimedType8LookupRow<'a>>,
 }
 
-pub fn source_validate_type8_unverified(
-    claim: ClaimedType8<'_>,
-) -> UnverifiedValidityObservation {
+pub fn source_validate_type8_unverified(claim: ClaimedType8<'_>) -> UnverifiedValidityObservation {
     let mut o = UnverifiedValidityObservation::new(SourceValidityKind::Type8UpdateWhitelistAdmin);
-    o.caveats.push(SourceValidityCaveat::ActivatedAtBlockStubAlwaysTrue);
-    o.caveats.push(SourceValidityCaveat::Type8ReadsAttestationsCollection);
-    o.caveats.push(SourceValidityCaveat::Type8CamelCaseAddressFlagIgnored);
+    o.caveats
+        .push(SourceValidityCaveat::ActivatedAtBlockStubAlwaysTrue);
+    o.caveats
+        .push(SourceValidityCaveat::Type8ReadsAttestationsCollection);
+    o.caveats
+        .push(SourceValidityCaveat::Type8CamelCaseAddressFlagIgnored);
     if !claim.tx_type_8_active {
         o.failures.push(SourceValidityFailure::TypeInactive(8));
     }
     if claim.new_address.is_none() {
-        o.failures.push(SourceValidityFailure::InvalidNewAddressType);
+        o.failures
+            .push(SourceValidityFailure::InvalidNewAddressType);
     }
-    let targets = u8::from(claim.whitelist_flag)
-        + u8::from(claim.oracle_flag)
-        + u8::from(claim.token_flag);
+    let targets =
+        u8::from(claim.whitelist_flag) + u8::from(claim.oracle_flag) + u8::from(claim.token_flag);
     if targets != 1 {
-        o.failures.push(SourceValidityFailure::ExactlyOneAdminTarget);
+        o.failures
+            .push(SourceValidityFailure::ExactlyOneAdminTarget);
     }
     if claim.whitelist_flag {
         match claim.claimed_get_list_attestations_row {
-            None => o.failures.push(SourceValidityFailure::Type8WhitelistLookupMissing),
+            None => o
+                .failures
+                .push(SourceValidityFailure::Type8WhitelistLookupMissing),
             Some(row) => {
                 if row.attestations_admin_address != Some(claim.sender)
                     && row.attestations_backup_address != Some(claim.sender)
                 {
-                    o.failures.push(SourceValidityFailure::Type8SenderNotAdminOrBackup);
+                    o.failures
+                        .push(SourceValidityFailure::Type8SenderNotAdminOrBackup);
                 }
             }
         }
@@ -318,7 +327,8 @@ pub fn source_validate_type8_unverified(
         o.failures.push(SourceValidityFailure::InvalidNewAddress);
     }
     if claim.oracle_flag || claim.token_flag {
-        o.caveats.push(SourceValidityCaveat::OracleOrTokenAdminTargetUnmodeled);
+        o.caveats
+            .push(SourceValidityCaveat::OracleOrTokenAdminTargetUnmodeled);
     }
     o.finish(claim.oracle_flag || claim.token_flag)
 }
@@ -366,21 +376,24 @@ fn ban_country_code(raw: &str) -> bool {
 /// This models only string-valued targets and metadata. JavaScript numeric
 /// coercion, object metadata, xpub or derived-signer rules are not asserted.
 /// A source-matching positive row is only a caller's claim.
-pub fn source_validate_type9_unverified(
-    claim: ClaimedType9<'_>,
-) -> UnverifiedValidityObservation {
+pub fn source_validate_type9_unverified(claim: ClaimedType9<'_>) -> UnverifiedValidityObservation {
     let mut o = UnverifiedValidityObservation::new(SourceValidityKind::Type9Attestation);
-    o.caveats.push(SourceValidityCaveat::ActivatedAtBlockStubAlwaysTrue);
-    o.caveats.push(SourceValidityCaveat::ClearlistAndActorAreCallerClaimed);
+    o.caveats
+        .push(SourceValidityCaveat::ActivatedAtBlockStubAlwaysTrue);
+    o.caveats
+        .push(SourceValidityCaveat::ClearlistAndActorAreCallerClaimed);
     if !claim.tx_type_9_active {
         o.failures.push(SourceValidityFailure::TypeInactive(9));
     }
     let mut target = claim.target_address;
     if let Some(resolution) = claim.requested_ref_resolution {
-        o.caveats.push(SourceValidityCaveat::ReferenceOutputIsCallerClaimed);
+        o.caveats
+            .push(SourceValidityCaveat::ReferenceOutputIsCallerClaimed);
         match resolution {
             Some(resolved) if !resolved.is_empty() => target = resolved,
-            _ => o.failures.push(SourceValidityFailure::RequestedReferenceUnresolved),
+            _ => o
+                .failures
+                .push(SourceValidityFailure::RequestedReferenceUnresolved),
         }
     }
     if target.is_empty() {
@@ -394,34 +407,43 @@ pub fn source_validate_type9_unverified(
             Some(info) => {
                 let admin = info.admin_address.filter(|s| !s.is_empty()).or(info.admin);
                 if admin != Some(claim.sender) {
-                    o.failures.push(SourceValidityFailure::Type9SenderNotPrimaryAdmin);
+                    o.failures
+                        .push(SourceValidityFailure::Type9SenderNotPrimaryAdmin);
                 }
             }
         }
     } else {
-        o.caveats.push(SourceValidityCaveat::CountryAndBanlistStateUnverified);
+        o.caveats
+            .push(SourceValidityCaveat::CountryAndBanlistStateUnverified);
         if target.trim().eq_ignore_ascii_case("BANLIST") {
             if claim.claimed_protocol_admin != Some(claim.sender) {
-                o.failures.push(SourceValidityFailure::BanlistProtocolAdminRequired);
+                o.failures
+                    .push(SourceValidityFailure::BanlistProtocolAdminRequired);
             }
             o.banlist_country_codes = source_country_list(claim.metadata);
             if o.banlist_country_codes.is_empty()
-                || o.banlist_country_codes.iter().any(|code| !ban_country_code(code))
+                || o.banlist_country_codes
+                    .iter()
+                    .any(|code| !ban_country_code(code))
             {
-                o.failures.push(SourceValidityFailure::BanlistCountryCodesInvalid);
+                o.failures
+                    .push(SourceValidityFailure::BanlistCountryCodesInvalid);
             }
         } else {
             if claim.sender != target {
-                o.failures.push(SourceValidityFailure::CountrySelfCertRequiresSenderTarget);
+                o.failures
+                    .push(SourceValidityFailure::CountrySelfCertRequiresSenderTarget);
             }
             if !ascii_country_code(claim.metadata.trim()) {
-                o.failures.push(SourceValidityFailure::CountrySelfCertCodeInvalid);
+                o.failures
+                    .push(SourceValidityFailure::CountrySelfCertCodeInvalid);
             }
         }
     }
     // The source independently runs this check even in the list-zero paths.
     if claim.revoke && !claim.claimed_direct_entry_active {
-        o.failures.push(SourceValidityFailure::RevokeWithoutActiveDirectAttestation);
+        o.failures
+            .push(SourceValidityFailure::RevokeWithoutActiveDirectAttestation);
     }
     o.finish(false)
 }
