@@ -31,6 +31,7 @@ use crate::read_only::{
     TransactionObservation, MAX_RAW_TRANSACTION,
 };
 use std::collections::BTreeMap;
+use std::ops::Range;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::OnceLock;
 use std::thread;
@@ -423,6 +424,123 @@ pub(crate) fn inspect_prepared_block_one_team(
             transactions[index].raw.len(),
             observation,
         )?;
+    }
+    debug_assert_eq!(report.raw_bytes_inspected, bytes);
+    Ok(report)
+}
+
+/// EXPERIMENTAL block-wide static scheduling by estimated SHA256d work.
+/// Unlike the dynamic one-team path, workers claim disjoint, source-contiguous
+/// ranges once and return thread-local observations without per-TX OnceLock or
+/// an atomic work index. A SegWit transaction hashes both full and stripped
+/// bytes; ordinary transactions hash their full bytes once. This is only a
+/// CPU cost estimate, and a single large TX can still create load imbalance.
+///
+/// The coordinator joins ALL workers before reducing rows in block order.
+/// Even if a worker encounters malformed bytes, its preceding observations
+/// are retained so that earlier duplicate-TXID errors win deterministically.
+/// Temporary results stay bounded by MAX_BLOCK_TRANSACTIONS / input bytes.
+/// This grants NO UTXO, signature, chain or TradeLayer consensus authority.
+pub(crate) fn inspect_prepared_block_weighted_shards(
+    transactions: &[PreparedRawTransaction<'_>],
+    config: ParallelIndexConfig,
+) -> Result<UnverifiedOrderedBlockIndex, ParallelIndexError> {
+    let config = config.validate()?;
+    validate_count(transactions.len())?;
+    let mut bytes = 0usize;
+    for (index, row) in transactions.iter().enumerate() {
+        validate_row(index, row.raw)?;
+        bytes = bytes
+            .checked_add(row.raw.len())
+            .filter(|sum| *sum <= MAX_BLOCK_INPUT_BYTES)
+            .ok_or(ParallelIndexError::ExceededBlockByteLimit)?;
+    }
+    let worker_count = config.workers.min(transactions.len());
+    if worker_count == 1 {
+        return inspect_prepared_block_parallel(transactions, config);
+    }
+
+    // SHA256d hashes full bytes; witness TXIDs also hash stripped bytes.
+    // The input byte cap bounds this estimate to at most twice the cap.
+    let work = |row: &PreparedRawTransaction<'_>| {
+        let stripped = row.layout.stripped_bytes();
+        row.raw.len() + if stripped < row.raw.len() { stripped } else { 0 }
+    };
+    let mut remaining_work: usize = transactions.iter().map(work).sum();
+    let mut ranges = Vec::<Range<usize>>::with_capacity(worker_count);
+    let mut start = 0;
+    for shard in 0..worker_count {
+        let remaining_workers = worker_count - shard;
+        let end = if remaining_workers == 1 {
+            transactions.len()
+        } else {
+            let target = remaining_work.div_ceil(remaining_workers);
+            // Reserve at least one source TX for each later worker.
+            let latest = transactions.len() - (remaining_workers - 1);
+            let mut end = start;
+            let mut assigned = 0usize;
+            while end < latest && (end == start || assigned < target) {
+                assigned += work(&transactions[end]);
+                end += 1;
+            }
+            remaining_work -= assigned;
+            end
+        };
+        ranges.push(start..end);
+        start = end;
+    }
+    debug_assert_eq!(start, transactions.len());
+
+    let completed = thread::scope(|scope| {
+        let handles = ranges
+            .iter()
+            .map(|range| {
+                scope.spawn(move || {
+                    let mut local = Vec::with_capacity(range.len());
+                    for index in range.clone() {
+                        let row = &transactions[index];
+                        let result = inspect_prepared_transaction(row.raw, row.layout)
+                            .map_err(|source| ParallelIndexError::RawScan { index, source });
+                        let failed = result.is_err();
+                        local.push(result);
+                        if failed {
+                            break;
+                        }
+                    }
+                    local
+                })
+            })
+            .collect::<Vec<_>>();
+        let mut rows = Vec::with_capacity(worker_count);
+        let mut panicked = false;
+        for handle in handles {
+            match handle.join() {
+                Ok(local) => rows.push(local),
+                Err(_) => {
+                    panicked = true;
+                    rows.push(Vec::new());
+                }
+            }
+        }
+        if panicked {
+            Err(ParallelIndexError::WorkerPanicked)
+        } else {
+            Ok(rows)
+        }
+    })?;
+
+    let mut report = blank_index(transactions.len());
+    let mut seen = BTreeMap::new();
+    for (range, rows) in ranges.into_iter().zip(completed) {
+        for (index, result) in range.zip(rows) {
+            append_observation(
+                &mut report,
+                &mut seen,
+                index,
+                transactions[index].raw.len(),
+                result?,
+            )?;
+        }
     }
     debug_assert_eq!(report.raw_bytes_inspected, bytes);
     Ok(report)
