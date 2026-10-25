@@ -13,6 +13,7 @@ mod canonical_columns; // Canonical nonzero map mutations for wallet and channel
 pub mod chain; // Trust-boundary and reversible block progression, prototype only.
 mod checked_amounts; // Bit-precise checked debit/credit arithmetic; Kani proof harnesses.
 pub mod clearing_cadence; // Stage 24C read-only JS clearing callback and funding schedule observations.
+pub mod clearing_chain; // Stage 25D unverified combined spot-clearing rollback and TLCC checkpoints.
 pub mod clearing_math; // Stage 24A diagnostic loss, funding and PnL equations; no ledger writes.
 pub mod clearing_pnl; // Stage 25C read-only per-address PnL and residual projection.
 pub mod clearing_sandbox; // Stage 25A isolated single-ledger derivative margin and funding research.
@@ -24,6 +25,7 @@ pub mod joint; // Stage 22 independent registry + sole spot-owned ledger in one 
 pub mod joint_chain; // Stage 22 mixed unverified block replay and TLJC checkpoints.
 mod journal_move; // Fail-closed single-use settlement journal movement; Kani harness.
 pub mod ledger; // In-memory atomic accounting primitives; not chain consensus.
+pub mod liquidation_audit; // Stage 25E1 read-only maintenance, bankruptcy and insurance-deficit preflight.
 pub mod network_bound; // Stage 21 profile-bound replay and versioned checkpoint envelopes; unverified.
 pub mod network_profile; // Independent Bitcoin/Litecoin/Dogecoin mainnet identities and proof capabilities.
 mod ordered_columns; // Sorted Vec backend for wallet and channel accounting columns.

@@ -84,8 +84,11 @@ fn spot_read_pair(reader: &mut Cursor<'_>) -> Result<SpotPair, SpotSnapshotError
 impl SpotExchange {
     /// Re-run independently checkable invariants for each serialized state
     /// before encoding or publishing a recovered checkpoint.
-    fn validate_spot_snapshot(&self) -> Result<(), SpotSnapshotError> {
-        if self.clearing_activity {
+    fn validate_spot_snapshot_mode(
+        &self,
+        allow_combined_clearing: bool,
+    ) -> Result<(), SpotSnapshotError> {
+        if self.clearing_activity && !allow_combined_clearing {
             return Err(spot_invalid(
                 "clearing event history requires a combined checkpoint",
             ));
@@ -93,14 +96,19 @@ impl SpotExchange {
         // An isolated TLSP snapshot cannot restore clearing positions or
         // escrow ownership metadata. Refuse all non-spot reserved balances
         // rather than accepting a stranded spendable collateral account.
-        if self
-            .ledger
-            .balances_with_account_prefix("~")
-            .iter()
-            .any(|(_, account, _)| !account.as_str().starts_with(ESCROW_PREFIX))
+        if !allow_combined_clearing
+            && self
+                .ledger
+                .balances_with_account_prefix("~")
+                .iter()
+                .any(|(_, account, _)| !account.as_str().starts_with(ESCROW_PREFIX))
         {
             return Err(spot_invalid("non-spot escrow needs combined checkpoint"));
         }
+        // An inner TLSP payload may be carried by the new combined clearing
+        // format, but a public TLSP writer/reader NEVER accepts it directly.
+        // Only the outer clearing decoder can validate and own the associated
+        // margin and replay metadata.
         if self
             .permitted
             .iter()
@@ -216,7 +224,22 @@ impl SpotExchange {
     /// order book information, replay IDs and the complete associated ledger.
     /// It is an offline research artifact, not an authenticated state root.
     pub fn snapshot_bytes(&self) -> Result<Vec<u8>, SpotSnapshotError> {
-        self.validate_spot_snapshot()?;
+        self.snapshot_bytes_mode(false)
+    }
+
+    /// Only the versioned clearing checkpoint may call this; older TLSP,
+    /// TLSC, TLJP and TLJC remain fail-closed after any clearing activity.
+    pub(crate) fn combined_spot_snapshot_bytes_unverified(
+        &self,
+    ) -> Result<Vec<u8>, SpotSnapshotError> {
+        self.snapshot_bytes_mode(true)
+    }
+
+    fn snapshot_bytes_mode(
+        &self,
+        allow_combined_clearing: bool,
+    ) -> Result<Vec<u8>, SpotSnapshotError> {
+        self.validate_spot_snapshot_mode(allow_combined_clearing)?;
         let mut out = SPOT_MAGIC.to_vec();
         spot_u32(&mut out, self.permitted.len())?;
         for p in &self.permitted {
@@ -288,6 +311,25 @@ impl SpotExchange {
     pub fn from_snapshot_bytes(
         bytes: &[u8],
         expected_permitted: &BTreeSet<PropertyId>,
+    ) -> Result<Self, SpotSnapshotError> {
+        Self::from_snapshot_bytes_mode(bytes, expected_permitted, false, false)
+    }
+
+    /// Deliberately inaccessible outside this crate: restoring an inner TLSP
+    /// with margin balances requires the complete surrounding clearing state.
+    pub(crate) fn from_combined_spot_snapshot_bytes_unverified(
+        bytes: &[u8],
+        expected_permitted: &BTreeSet<PropertyId>,
+        clearing_activity: bool,
+    ) -> Result<Self, SpotSnapshotError> {
+        Self::from_snapshot_bytes_mode(bytes, expected_permitted, true, clearing_activity)
+    }
+
+    fn from_snapshot_bytes_mode(
+        bytes: &[u8],
+        expected_permitted: &BTreeSet<PropertyId>,
+        allow_combined_clearing: bool,
+        clearing_activity: bool,
     ) -> Result<Self, SpotSnapshotError> {
         let payload = verify_crc(bytes).map_err(|_| spot_invalid("spot CRC or size"))?;
         let mut reader = Cursor::new(payload);
@@ -417,10 +459,14 @@ impl SpotExchange {
             fills,
             next_sequence,
             processed_through,
-            clearing_activity: false,
+            clearing_activity,
         };
-        result.validate_spot_snapshot()?;
-        if result.snapshot_bytes()?.as_slice() != bytes {
+        result.validate_spot_snapshot_mode(allow_combined_clearing)?;
+        if result
+            .snapshot_bytes_mode(allow_combined_clearing)?
+            .as_slice()
+            != bytes
+        {
             return Err(spot_invalid("noncanonical spot encoding"));
         }
         Ok(result)

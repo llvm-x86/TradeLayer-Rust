@@ -306,6 +306,81 @@ impl SpotExchange {
         Ok(())
     }
 
+    /// Stage 25E2: sponsor -> insurance escrow ONLY. This is a dedicated
+    /// crate-private one-way transfer, not a generic reserved account API.
+    /// The sole clearing owner derives/validates the exact ~ins: address,
+    /// property and sponsor before calling; no insurer payout is implemented.
+    pub(crate) fn deposit_insurance_reserve_unverified(
+        &mut self,
+        txid: TxId,
+        property: PropertyId,
+        sponsor: AccountId,
+        insurance_escrow: AccountId,
+        amount_atoms: u128,
+    ) -> Result<(), SpotError> {
+        if sponsor.as_str().starts_with('~')
+            || !insurance_escrow.as_str().starts_with("~ins:")
+            || amount_atoms == 0
+        {
+            return Err(SpotError::ReservedAccount);
+        }
+        if self.seen.contains(&txid) || self.ledger.is_processed(txid) {
+            return Err(SpotError::Replay(txid));
+        }
+        let mut candidate = self.clone();
+        candidate.ledger.apply(
+            txid,
+            Operation::Transfer {
+                id: property,
+                from: sponsor,
+                to: insurance_escrow,
+                amount_atoms,
+            },
+        )?;
+        candidate.verify_reserves()?;
+        candidate.clearing_activity = true;
+        *self = candidate;
+        Ok(())
+    }
+
+    /// Stage 25E2B: ONLY a real insurance escrow may fund a registered
+    /// clearing-margin escrow in a full synthetic closeout. This restricted
+    /// transfer never accepts normal users, other reserves, or spot escrows.
+    /// The owning ClearingSandbox must derive and validate BOTH identities,
+    /// the collateral property, and the complete loss plan before calling.
+    pub(crate) fn apply_insured_closeout_leg_unverified(
+        &mut self,
+        txid: TxId,
+        id: PropertyId,
+        from_insurer: AccountId,
+        to_margin: AccountId,
+        amount_atoms: u128,
+    ) -> Result<(), SpotError> {
+        if !from_insurer.as_str().starts_with("~ins:")
+            || !to_margin.as_str().starts_with("~clrm:")
+            || amount_atoms == 0
+        {
+            return Err(SpotError::ReservedAccount);
+        }
+        if self.seen.contains(&txid) || self.ledger.is_processed(txid) {
+            return Err(SpotError::Replay(txid));
+        }
+        let mut staged = self.clone();
+        staged.ledger.apply(
+            txid,
+            Operation::Transfer {
+                id,
+                from: from_insurer,
+                to: to_margin,
+                amount_atoms,
+            },
+        )?;
+        staged.verify_reserves()?;
+        staged.clearing_activity = true;
+        *self = staged;
+        Ok(())
+    }
+
     pub(crate) fn has_clearing_activity_unverified(&self) -> bool {
         self.clearing_activity
     }
