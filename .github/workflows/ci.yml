@@ -116,6 +116,10 @@ jobs:
         run: node scripts/audit_legacy_clearlist_source.cjs
       - name: Legacy clearlist.js source storage and root parity with default-deny tests
         run: cargo test --frozen --test legacy_clearlist_audit
+      - name: Legacy channels.js independent Node direct A/B, crowded-owner and withdrawal-key source oracle
+        run: node scripts/audit_legacy_channels_source.cjs
+      - name: Legacy channels.js Rust direct commit and permanent settlement denial tests
+        run: cargo test --frozen --test legacy_channel_audit
       - name: Stage 25F source-only exact rational bankruptcy threshold
         run: cargo test --frozen --test bankruptcy_source_audit
       - name: Verify Stage 25A isolated margin and funding atomicity
