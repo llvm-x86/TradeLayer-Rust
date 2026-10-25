@@ -1,0 +1,36 @@
+name: Stage 8D Bitcoin Core RPC comparison (offline)
+on:
+  push:
+    branches: [main, bench/stage8d-bitcoin-core-rpc-ingest]
+    paths:
+      - 'scripts/bench_bitcoin_core_rpc_ingest.py'
+      - 'tests/test_bench_bitcoin_core_rpc_ingest.py'
+      - 'fixtures/raw_block_ingest_synthetic.hex'
+      - '.github/workflows/stage8d-bitcoin-rpc-bench.yml'
+  pull_request:
+    paths:
+      - 'scripts/bench_bitcoin_core_rpc_ingest.py'
+      - 'tests/test_bench_bitcoin_core_rpc_ingest.py'
+      - 'fixtures/raw_block_ingest_synthetic.hex'
+      - '.github/workflows/stage8d-bitcoin-rpc-bench.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  offline-python:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    strategy:
+      matrix:
+        python-version: ['3.11', '3.12', '3.13']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Ensure parser and benchmark CLI compile
+        run: python -m py_compile scripts/bench_bitcoin_core_rpc_ingest.py tests/test_bench_bitcoin_core_rpc_ingest.py
+      - name: Test frozen raw Bitcoin block and fake local Core RPC
+        run: python -m unittest discover -s tests -p 'test_bench_bitcoin_core_rpc_ingest.py' -v
+      - name: Re-run independent Stage 8C Python byte oracle
+        run: python scripts/audit_raw_block_ingest_vectors.py
