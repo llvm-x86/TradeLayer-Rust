@@ -146,7 +146,10 @@ pub enum SourceRevocation {
     /// When first query finds no active matching-list row, source fallback
     /// selects an address-keyed row even if its list_id differs. It can
     /// overwrite other list membership and must never be authorized here.
-    CrossListFallback { requested: u32, overwritten: u32 },
+    CrossListFallback {
+        requested: u32,
+        overwritten: u32,
+    },
     ReplayedFallback,
 }
 
@@ -194,11 +197,17 @@ fn source_nonempty(value: &str) -> Result<(), ClearlistSourceError> {
 }
 
 fn digest_hex(bytes: &[u8]) -> String {
-    sha256(bytes).iter().map(|byte| format!("{byte:02x}")).collect()
+    sha256(bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 fn valid_hex_digest(raw: &str) -> bool {
-    raw.len() == 64 && raw.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    raw.len() == 64
+        && raw
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
 /// Source SHA256(xpub UTF8), then SHA256(leftHexASCII || rightHexASCII).
@@ -219,7 +228,10 @@ pub fn source_build_xpub_merkle_tree(
             layers: vec![],
         });
     }
-    let mut leaves: Vec<String> = xpubs.iter().map(|xpub| digest_hex(xpub.as_bytes())).collect();
+    let mut leaves: Vec<String> = xpubs
+        .iter()
+        .map(|xpub| digest_hex(xpub.as_bytes()))
+        .collect();
     if leaves.len() % 2 != 0 {
         leaves.push(leaves.last().expect("nonempty").clone());
     }
@@ -290,10 +302,13 @@ pub fn source_verify_xpub_merkle_proof(
         if !valid_hex_digest(&item.sibling_hex) {
             return Err(ClearlistSourceError::InvalidMerkleProof);
         }
-        current = digest_hex(match item.position {
-            SourceMerkleSide::Left => format!("{}{}", item.sibling_hex, current),
-            SourceMerkleSide::Right => format!("{}{}", current, item.sibling_hex),
-        }.as_bytes());
+        current = digest_hex(
+            match item.position {
+                SourceMerkleSide::Left => format!("{}{}", item.sibling_hex, current),
+                SourceMerkleSide::Right => format!("{}{}", current, item.sibling_hex),
+            }
+            .as_bytes(),
+        );
     }
     Ok(current == expected_root)
 }
@@ -323,7 +338,10 @@ impl Default for UnverifiedLegacyClearlistStore {
             string_cache: BTreeMap::new(),
             attestations_by_ne_db_id: BTreeMap::new(),
             xpubs_by_merkle_root: BTreeMap::new(),
-            source_cached_banlist: DEFAULT_BANNED_COUNTRIES.iter().map(|s| (*s).to_owned()).collect(),
+            source_cached_banlist: DEFAULT_BANNED_COUNTRIES
+                .iter()
+                .map(|s| (*s).to_owned())
+                .collect(),
             source_stored_banlist: None,
         }
     }
@@ -349,9 +367,16 @@ impl UnverifiedLegacyClearlistStore {
     pub fn source_next_list_id(&mut self) -> Result<u32, ClearlistSourceError> {
         self.source_load_clearlists();
         let max_numeric = self.numeric_cache.keys().copied().max().unwrap_or(0);
-        let max_string = self.string_cache.keys()
-            .filter_map(|s| s.parse::<u32>().ok()).max().unwrap_or(0);
-        max_numeric.max(max_string).checked_add(1).ok_or(ClearlistSourceError::ListIdExhausted)
+        let max_string = self
+            .string_cache
+            .keys()
+            .filter_map(|s| s.parse::<u32>().ok())
+            .max()
+            .unwrap_or(0);
+        max_numeric
+            .max(max_string)
+            .checked_add(1)
+            .ok_or(ClearlistSourceError::ListIdExhausted)
     }
 
     /// Source createClearlist accepts an optionally explicit ID, with falsy
@@ -379,14 +404,22 @@ impl UnverifiedLegacyClearlistStore {
             return Err(ClearlistSourceError::InvalidListId);
         }
         if !self.numeric_db_lists.contains_key(&id)
-            && self.numeric_db_lists.len() >= MAX_SOURCE_LISTS {
+            && self.numeric_db_lists.len() >= MAX_SOURCE_LISTS
+        {
             return Err(ClearlistSourceError::TooManyLists);
         }
-        self.numeric_db_lists.insert(id, UnverifiedSourceClearlist {
-            id, admin: admin.to_owned(), backup: backup.to_owned(),
-            admin_address: None, backup_address: None,
-            name: name.to_owned(), description: description.to_owned(),
-        });
+        self.numeric_db_lists.insert(
+            id,
+            UnverifiedSourceClearlist {
+                id,
+                admin: admin.to_owned(),
+                backup: backup.to_owned(),
+                admin_address: None,
+                backup_address: None,
+                name: name.to_owned(),
+                description: description.to_owned(),
+            },
+        );
         Ok(id)
     }
 
@@ -399,7 +432,9 @@ impl UnverifiedLegacyClearlistStore {
         update_backup: bool,
     ) -> Result<(), ClearlistSourceError> {
         source_nonempty(new_address)?;
-        let cache = self.numeric_cache.get_mut(&list_id)
+        let cache = self
+            .numeric_cache
+            .get_mut(&list_id)
             .ok_or(ClearlistSourceError::ListNotLoaded)?;
         if update_backup {
             cache.backup_address = Some(new_address.to_owned());
@@ -409,13 +444,17 @@ impl UnverifiedLegacyClearlistStore {
             cache.admin = new_address.to_owned();
         }
         // Cross-typed NeDB update creates a NEW shadow row.
-        self.string_db_shadow_lists.insert(list_id.to_string(), cache.clone());
+        self.string_db_shadow_lists
+            .insert(list_id.to_string(), cache.clone());
         Ok(())
     }
 
     /// getClearlistById first calls loadClearlists(), resetting NUMERIC
     /// cached ID to old numeric persisted list, not the string-shadow row.
-    pub fn source_get_clearlist_by_id(&mut self, list_id: u32) -> Option<&UnverifiedSourceClearlist> {
+    pub fn source_get_clearlist_by_id(
+        &mut self,
+        list_id: u32,
+    ) -> Option<&UnverifiedSourceClearlist> {
         self.source_load_clearlists();
         self.numeric_cache.get(&list_id)
     }
@@ -428,7 +467,10 @@ impl UnverifiedLegacyClearlistStore {
         self.string_db_shadow_lists.get(&list_id.to_string())
     }
 
-    pub fn observed_numeric_persisted_list(&self, list_id: u32) -> Option<&UnverifiedSourceClearlist> {
+    pub fn observed_numeric_persisted_list(
+        &self,
+        list_id: u32,
+    ) -> Option<&UnverifiedSourceClearlist> {
         self.numeric_db_lists.get(&list_id)
     }
 
@@ -436,7 +478,10 @@ impl UnverifiedLegacyClearlistStore {
     /// but create/updates write clearlists; attestation IDs are STRINGS.
     /// Without an independent legacy row injected at a numeric key, this
     /// always returns None, matching the described source branch.
-    pub fn source_get_list_type8_lookup(&self, _list_id: u32) -> Option<&UnverifiedSourceClearlist> {
+    pub fn source_get_list_type8_lookup(
+        &self,
+        _list_id: u32,
+    ) -> Option<&UnverifiedSourceClearlist> {
         None
     }
 
@@ -447,7 +492,9 @@ impl UnverifiedLegacyClearlistStore {
         list_id: u32,
         sender: &str,
     ) -> Result<bool, ClearlistSourceError> {
-        let list = self.numeric_cache.get(&list_id)
+        let list = self
+            .numeric_cache
+            .get(&list_id)
             .ok_or(ClearlistSourceError::ListNotLoaded)?;
         Ok(list.primary_admin() == sender)
     }
@@ -466,25 +513,36 @@ impl UnverifiedLegacyClearlistStore {
             source_text(x)?;
         }
         if self.attestations_by_ne_db_id.len() >= MAX_SOURCE_ATTESTATIONS
-            && !self.attestations_by_ne_db_id.contains_key(address) {
+            && !self.attestations_by_ne_db_id.contains_key(address)
+        {
             return Err(ClearlistSourceError::TooManyAttestations);
         }
         // addAttestation detects the exact xpub: prefix (case sensitive).
-        let xpub = explicit_xpub.filter(|s| !s.is_empty())
+        let xpub = explicit_xpub
+            .filter(|s| !s.is_empty())
             .or_else(|| metadata.strip_prefix("xpub:").filter(|s| !s.is_empty()));
         let row = UnverifiedSourceAttestation {
-            list_id, address: address.to_owned(),
+            list_id,
+            address: address.to_owned(),
             metadata: Some(metadata.to_owned()),
-            xpub: xpub.map(str::to_owned), root: None,
-            status: SourceAttestationStatus::Active, timestamp: height,
-            revoke_reason: None, revoked_by_list_id: None,
+            xpub: xpub.map(str::to_owned),
+            root: None,
+            status: SourceAttestationStatus::Active,
+            timestamp: height,
+            revoke_reason: None,
+            revoked_by_list_id: None,
         };
-        let outcome = match self.attestations_by_ne_db_id.insert(address.to_owned(), row) {
+        let outcome = match self
+            .attestations_by_ne_db_id
+            .insert(address.to_owned(), row)
+        {
             None => SourceAttestationWrite::Added,
-            Some(previous) if previous.list_id == list_id =>
-                SourceAttestationWrite::ReplacedSameList,
+            Some(previous) if previous.list_id == list_id => {
+                SourceAttestationWrite::ReplacedSameList
+            }
             Some(previous) => SourceAttestationWrite::OverwroteOtherList {
-                previous: previous.list_id, incoming: list_id,
+                previous: previous.list_id,
+                incoming: list_id,
             },
         };
         Ok(outcome)
@@ -502,18 +560,21 @@ impl UnverifiedLegacyClearlistStore {
     ) -> Result<SourceRevocation, ClearlistSourceError> {
         source_nonempty(address)?;
         source_text(reason)?;
-        let row = self.attestations_by_ne_db_id.get_mut(address)
+        let row = self
+            .attestations_by_ne_db_id
+            .get_mut(address)
             .ok_or(ClearlistSourceError::NoAttestationToRevoke)?;
-        let result = if row.list_id == requested_list
-            && row.status == SourceAttestationStatus::Active {
-            SourceRevocation::RevokedMatchingList
-        } else if row.list_id != requested_list {
-            SourceRevocation::CrossListFallback {
-                requested: requested_list, overwritten: row.list_id,
-            }
-        } else {
-            SourceRevocation::ReplayedFallback
-        };
+        let result =
+            if row.list_id == requested_list && row.status == SourceAttestationStatus::Active {
+                SourceRevocation::RevokedMatchingList
+            } else if row.list_id != requested_list {
+                SourceRevocation::CrossListFallback {
+                    requested: requested_list,
+                    overwritten: row.list_id,
+                }
+            } else {
+                SourceRevocation::ReplayedFallback
+            };
         row.status = SourceAttestationStatus::Revoked;
         row.timestamp = height;
         row.revoked_by_list_id = Some(requested_list);
@@ -523,14 +584,17 @@ impl UnverifiedLegacyClearlistStore {
 
     pub fn source_is_address_directly_attested(&self, list_id: u32, address: &str) -> bool {
         self.attestations_by_ne_db_id.values().any(|row| {
-            row.address == address && row.list_id == list_id
+            row.address == address
+                && row.list_id == list_id
                 && row.status == SourceAttestationStatus::Active
         })
     }
 
     pub fn source_get_attestations(&self, list_id: u32) -> Vec<&UnverifiedSourceAttestation> {
-        self.attestations_by_ne_db_id.values()
-            .filter(|row| row.list_id == list_id).collect()
+        self.attestations_by_ne_db_id
+            .values()
+            .filter(|row| row.list_id == list_id)
+            .collect()
     }
 
     /// The JS getAttestationHistory() reads current DB rows and sorts by
@@ -541,12 +605,15 @@ impl UnverifiedLegacyClearlistStore {
         list_id: u32,
         address: &str,
     ) -> Vec<&UnverifiedSourceAttestation> {
-        self.source_get_attestations(list_id).into_iter()
-            .filter(|row| row.address == address).collect()
+        self.source_get_attestations(list_id)
+            .into_iter()
+            .filter(|row| row.address == address)
+            .collect()
     }
 
     pub fn observed_attestation_by_source_key(
-        &self, key: &str,
+        &self,
+        key: &str,
     ) -> Option<&UnverifiedSourceAttestation> {
         self.attestations_by_ne_db_id.get(key)
     }
@@ -555,18 +622,29 @@ impl UnverifiedLegacyClearlistStore {
     /// metadata and uppercases it, even if the string is not ISO2.
     /// Returned height uses timestamp || null (zero => None).
     pub fn source_country_code_by_address(&self, address: &str) -> Option<SourceCountryCode> {
-        self.attestations_by_ne_db_id.values()
-            .find(|row| row.address == address
-                && row.list_id == 0 && row.status == SourceAttestationStatus::Active
-                && row.metadata.as_ref().is_some_and(|s| !s.trim().is_empty()))
+        self.attestations_by_ne_db_id
+            .values()
+            .find(|row| {
+                row.address == address
+                    && row.list_id == 0
+                    && row.status == SourceAttestationStatus::Active
+                    && row.metadata.as_ref().is_some_and(|s| !s.trim().is_empty())
+            })
             .map(|row| SourceCountryCode {
-                code: row.metadata.as_deref().unwrap_or_default().trim().to_ascii_uppercase(),
+                code: row
+                    .metadata
+                    .as_deref()
+                    .unwrap_or_default()
+                    .trim()
+                    .to_ascii_uppercase(),
                 reported_height: (row.timestamp != 0).then_some(row.timestamp),
             })
     }
 
     pub fn source_set_banlist(
-        &mut self, codes: &[&str], height: u64,
+        &mut self,
+        codes: &[&str],
+        height: u64,
     ) -> Result<(), ClearlistSourceError> {
         if codes.len() > MAX_SOURCE_ATTESTATIONS {
             return Err(ClearlistSourceError::TooManyAttestations);
@@ -584,7 +662,9 @@ impl UnverifiedLegacyClearlistStore {
         &self.source_cached_banlist
     }
     pub fn source_stored_banlist(&self) -> Option<&[String]> {
-        self.source_stored_banlist.as_ref().map(|(v, _)| v.as_slice())
+        self.source_stored_banlist
+            .as_ref()
+            .map(|(v, _)| v.as_slice())
     }
     /// The actual JS getBanlist() calls findAsync() and then reads the
     /// ARRAY's .data field. It is undefined on normal arrays, regardless of
@@ -594,7 +674,11 @@ impl UnverifiedLegacyClearlistStore {
     }
 
     pub fn source_store_merkle_root(
-        &mut self, list_id: u32, root: &str, admin: &str, height: u64,
+        &mut self,
+        list_id: u32,
+        root: &str,
+        admin: &str,
+        height: u64,
     ) -> Result<(), ClearlistSourceError> {
         source_nonempty(admin)?;
         if !valid_hex_digest(root) {
@@ -602,18 +686,27 @@ impl UnverifiedLegacyClearlistStore {
         }
         let key = format!("merkle:{list_id}:{root}");
         if !self.attestations_by_ne_db_id.contains_key(&key)
-            && self.attestations_by_ne_db_id.len() >= MAX_SOURCE_ATTESTATIONS {
+            && self.attestations_by_ne_db_id.len() >= MAX_SOURCE_ATTESTATIONS
+        {
             return Err(ClearlistSourceError::TooManyAttestations);
         }
-        self.attestations_by_ne_db_id.insert(key,
+        self.attestations_by_ne_db_id.insert(
+            key,
             UnverifiedSourceAttestation {
-                list_id, address: admin.to_owned(), metadata: None,
-                xpub: None, root: Some(root.to_owned()),
-                status: SourceAttestationStatus::Active, timestamp: height,
-                revoke_reason: None, revoked_by_list_id: None,
+                list_id,
+                address: admin.to_owned(),
+                metadata: None,
+                xpub: None,
+                root: Some(root.to_owned()),
+                status: SourceAttestationStatus::Active,
+                timestamp: height,
+                revoke_reason: None,
+                revoked_by_list_id: None,
             },
         );
-        self.xpubs_by_merkle_root.entry(root.to_owned()).or_default();
+        self.xpubs_by_merkle_root
+            .entry(root.to_owned())
+            .or_default();
         Ok(())
     }
 
@@ -632,7 +725,9 @@ impl UnverifiedLegacyClearlistStore {
         if !source_verify_xpub_merkle_proof(xpub, proof, root)? {
             return Ok(false);
         }
-        let set = self.xpubs_by_merkle_root.get_mut(root)
+        let set = self
+            .xpubs_by_merkle_root
+            .get_mut(root)
             .ok_or(ClearlistSourceError::MerkleEvidenceMissing)?;
         if set.len() >= MAX_SOURCE_XPUBS && !set.contains(xpub) {
             return Err(ClearlistSourceError::TooManyXpubs);
@@ -649,16 +744,22 @@ impl UnverifiedLegacyClearlistStore {
     /// derivative and script/address-family audit. If source has active
     /// xpub/root rows, absence from the direct DB is NOT a negative verdict.
     pub fn source_direct_or_derived_unverified(
-        &self, list_id: u32, address: &str,
+        &self,
+        list_id: u32,
+        address: &str,
     ) -> Result<bool, ClearlistSourceError> {
         if self.source_is_address_directly_attested(list_id, address) {
             return Ok(true);
         }
         let has_derived_candidates = self.attestations_by_ne_db_id.values().any(|row| {
-            row.list_id == list_id && row.status == SourceAttestationStatus::Active
+            row.list_id == list_id
+                && row.status == SourceAttestationStatus::Active
                 && (row.xpub.is_some()
-                    || row.root.as_deref().is_some_and(|root|
-                        self.xpubs_by_merkle_root.get(root).is_some_and(|xpubs| !xpubs.is_empty())))
+                    || row.root.as_deref().is_some_and(|root| {
+                        self.xpubs_by_merkle_root
+                            .get(root)
+                            .is_some_and(|xpubs| !xpubs.is_empty())
+                    }))
         });
         if has_derived_candidates {
             Err(ClearlistSourceError::DerivationUnavailable)
@@ -667,16 +768,13 @@ impl UnverifiedLegacyClearlistStore {
         }
     }
 
-    pub const fn require_verified_clearlist_mutation(&self)
-        -> Result<(), ClearlistSourceError> {
+    pub const fn require_verified_clearlist_mutation(&self) -> Result<(), ClearlistSourceError> {
         Err(ClearlistSourceError::HistoricalClearlistAuthorityUnavailable)
     }
-    pub const fn require_consensus_accepted_type8(&self)
-        -> Result<(), ClearlistSourceError> {
+    pub const fn require_consensus_accepted_type8(&self) -> Result<(), ClearlistSourceError> {
         Err(ClearlistSourceError::AcceptedSourceTransitionUnverified)
     }
-    pub const fn require_signed_channel_revision(&self)
-        -> Result<(), ClearlistSourceError> {
+    pub const fn require_signed_channel_revision(&self) -> Result<(), ClearlistSourceError> {
         Err(ClearlistSourceError::CanonicalChannelRevisionUnspecified)
     }
 }
