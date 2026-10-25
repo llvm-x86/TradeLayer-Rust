@@ -40,7 +40,10 @@ fn main() {
     assert!((1..=20).contains(&repeats));
     assert!(variant == "tree" || variant == "hash");
     let len = fs::metadata(path).expect("local raw block hex file").len();
-    assert!(len <= MAX_HEX_FILE_BYTES, "hex file exceeds research input bound");
+    assert!(
+        len <= MAX_HEX_FILE_BYTES,
+        "hex file exceeds research input bound"
+    );
     let contents = fs::read_to_string(path).expect("UTF-8 hex file");
     let bytes = decode_hex(contents.trim()).expect("canonical raw-block hex");
     let view = UnverifiedRawBlockView::parse(&bytes, None)
@@ -76,7 +79,10 @@ fn main() {
         let duration = start.elapsed();
         assert_eq!(result.ordered_preindex().transaction_count(), count);
         assert_eq!(result.txid_merkle_root_raw(), view.header_merkle_root_raw());
-        assert_eq!(result.ordered_preindex().candidate_positions().len(), carriers);
+        assert_eq!(
+            result.ordered_preindex().candidate_positions().len(),
+            carriers
+        );
         times.push(duration);
         black_box(result);
     }

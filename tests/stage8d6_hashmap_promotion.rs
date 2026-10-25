@@ -56,11 +56,16 @@ fn mixed_block(count: usize, witness_percent: usize) -> Vec<u8> {
     block(&txs)
 }
 fn compare(view: &UnverifiedRawBlockView<'_>, config: ParallelIndexConfig) {
-    let original = view.inspect_parallel_one_team_tree_reference(config).unwrap();
+    let original = view
+        .inspect_parallel_one_team_tree_reference(config)
+        .unwrap();
     let hashed = view.inspect_parallel_one_team(config).unwrap();
     assert_eq!(hashed, original);
     assert_eq!(hashed.txid_merkle_root_raw(), view.header_merkle_root_raw());
-    assert_eq!(hashed.ordered_preindex().ordered(), original.ordered_preindex().ordered());
+    assert_eq!(
+        hashed.ordered_preindex().ordered(),
+        original.ordered_preindex().ordered()
+    );
     assert_eq!(
         hashed.require_authenticated_block(),
         Err(RawBlockTrustError::ActiveChainAndFullConsensusUnverified)

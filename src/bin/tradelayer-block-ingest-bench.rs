@@ -93,7 +93,9 @@ fn main() {
     assert_eq!(old, *new.ordered_preindex());
     let one_team = view.inspect_parallel_one_team(config).unwrap();
     assert_eq!(one_team, new);
-    let one_team_tree = view.inspect_parallel_one_team_tree_reference(config).unwrap();
+    let one_team_tree = view
+        .inspect_parallel_one_team_tree_reference(config)
+        .unwrap();
     assert_eq!(one_team_tree, new);
     let mut owned_times = Vec::new();
     let mut full_owned_times = Vec::new();
