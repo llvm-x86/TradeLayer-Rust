@@ -36,8 +36,8 @@ pub mod ledger; // In-memory atomic accounting primitives; not chain consensus.
 pub mod legacy_activation_audit; // Pinned activation.js read-only source semantics; genesis and authority denied.
 pub mod legacy_channel_audit; // Pinned channels.js direct A/B commit projections, never signed-state authority.
 pub mod legacy_clearlist_audit; // Pinned clearlist.js read-only NeDB/root source behavior; authorization denied.
-pub mod legacy_types_audit; // Exact pinned types.js 36-route source dispatch; never trusted admission.
 pub mod legacy_txdecoder_audit; // Pinned txDecoder.js typed body observations, never consensus.
+pub mod legacy_types_audit; // Exact pinned types.js 36-route source dispatch; never trusted admission.
 pub mod legacy_validity_audit; // Pinned validity.js source Type0/7/8/9 predicates, never admission authority.
 pub mod liquidation_audit; // Stage 25E1 read-only maintenance, bankruptcy and insurance-deficit preflight.
 pub mod liquidation_input_gate; // Stage 25G read-only current-block provenance and mandatory authorization gap.
