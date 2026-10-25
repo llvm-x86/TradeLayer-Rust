@@ -124,6 +124,7 @@ pub(crate) struct TransactionLayout {
     total_bytes: usize,
     stripped_bytes: usize,
     input_start: usize,
+    first_outpoint_start: usize,
     outputs_end: usize,
     has_witness: bool,
     input_count: u32,
@@ -156,7 +157,7 @@ pub(crate) fn source_prevouts_from_layout(
         return Err(ScanError::TrailingBytes);
     }
     let mut cursor = Cursor::new(raw);
-    cursor.offset = layout.input_start;
+    cursor.offset = layout.first_outpoint_start;
     let mut out = Vec::with_capacity(layout.input_count as usize);
     for _ in 0..layout.input_count {
         let txid_raw = cursor.read(32)?.try_into().expect("read 32-byte parent");
@@ -184,6 +185,7 @@ pub(crate) fn prepare_transaction_prefix(raw: &[u8]) -> Result<TransactionLayout
     }
     let input_start = reader.offset;
     let input_count = reader.limited_count()?;
+    let first_outpoint_start = reader.offset;
     for _ in 0..input_count {
         reader.read(36)?;
         reader.variable_bytes()?;
@@ -238,6 +240,7 @@ pub(crate) fn prepare_transaction_prefix(raw: &[u8]) -> Result<TransactionLayout
         total_bytes,
         stripped_bytes,
         input_start,
+        first_outpoint_start,
         outputs_end,
         has_witness,
         input_count: input_count as u32,
