@@ -1,155 +1,116 @@
-# Stage 25F (bounded slice): synthetic bilateral partial reduction
+# Stage 25F: synthetic bilateral partial closeout and pinned JS source audit
 
-**Status:** offline, fake counterparty match ONLY. There is no real liquidation
-authority, no claimed historical TradeLayer consensus parity and no trusted
-chain adapter. The existing whole-book Stage25E2B closeout remains untouched
-and entirely separate.
+**Status: research only, draft, unmerged.** No authenticated liquidation, settlement permission, live liquidity, or testnet/node operations. The preceding Stage 25E2B **whole-book** closeout remains separate and unchanged.
 
-## Provenance and concurrent work
+## Provenance
 
-- Baseline: \`TradeLayer-Rust@be15554453581dd44c2f314d512cb00b4a90a54f\`,
-  containing the merged PR #79 head
-  \`db28db75e22d77700552f49261c94fc114bb7be6\`.
-- Scope contract: [Issue #80](https://github.com/patrickdugan/TradeLayer-Rust/issues/80),
-  unassigned with no separate active Stage25F PR at branch creation.
-- This work does not touch concurrent \`formal/\` and \`ci/stage22-*\`
-  branches, the active Stage23 draft, upstream \`tradelayer.js\`, live
-  blockchain data or any crate/dependency policy.
+- Rust baseline: [TradeLayer-Rust `be155544`](https://github.com/patrickdugan/TradeLayer-Rust/commit/be15554453581dd44c2f314d512cb00b4a90a54f), merged PR #79 source `db28db75e22d77700552f49261c94fc114bb7be6`.
+- Historical reference: [tradelayer.js `dca0888b`](https://github.com/patrickdugan/tradelayer.js/tree/dca0888b827c5bc28fa9189bc9e1d507f5c5670c).
+- Scope: [Issue #80](https://github.com/patrickdugan/TradeLayer-Rust/issues/80). No second Stage 25F implementation branch/PR was active when this branch was opened; formal/Kani and Stage 23 work are untouched.
 
-Pinned historical JavaScript:
-[\`tradelayer.js@dca0888b827c5bc28fa9189bc9e1d507f5c5670c\`](https://github.com/patrickdugan/tradelayer.js/tree/dca0888b827c5bc28fa9189bc9e1d507f5c5670c).
+The November–January JS clearing rewrites matter: we must characterize the **actual reachable code paths**, including mistakes and competing implementations, rather than canonize the source or invent new economics.
 
-| Source | Observation | Policy NOT inferred |
+## Existing historical mechanics: recovered, not missing
+
+| Pinned source | Source-level behavior | Work still required before trusted Rust parity |
 | --- | --- | --- |
-| \`src/clearing.js:1937–1984\` | Claims positive loss coverage lead to a *partial* rather than *total* liquidation label | Who is legally permitted to seize, close, or choose a market counterparty |
-| \`src/clearing.js:2488–2529\` | Deficit/initial-margin heuristic divides residual by initial margin and uses an eight-decimal, potentially fractional liquidation amount | No rounding/ceil/floor policy for a Rust **integer-lot** partial close |
-| \`src/clearing.js:2232–2288\` | Linear and inverse bankruptcy prices are derived from last mark, equity, contracts, and notional | No ratified bankruptcy/ADL boundary or trusted price feed |
-| \`src/clearing.js:2343–2449\` | AMM liquidity is prioritized at safe boundary prices; bids descend, asks ascend, \`blockTime\` breaks ties; inverse flips safe-side inequality | No maker/fill rights, AMM reserve model or synthetic fill selection |
-| \`src/orderbook.js:720–774,1373–1440\` | Sorts by price then block time and uses earlier order price as maker price | No authenticated orderbook, fees, maker rebates or tie-breaking adapter |
-| \`src/clearing.js:2575–2678\` | Uses \`estimateLiquidation\`, AMM sweep, actual matched-order results, and size capped by safe filled amounts | No executable fill proof from a user-supplied \`execution_price_e8\` |
-| \`src/clearing.js:2688–2828\` | Unfilled size enters ADL and collateral-pool seizure/credit pathways | No ratified waterfall, bad-debt handling, insurer or ADL permissions |
+| `src/clearing.js:1081–1214` | Oracle contract mark: oracleData event at the current block. Native contract mark: volumeIndex price for the pair at the current block. A cached prior mark distinguishes updates. | Independently authenticated, height-bound source data and reproducible history |
+| `src/clearing.js:580–633`, `src/volumeIndex.js:522–552`, `src/oracle.js:494–524` | **Separate funding references:** native uses 192-block volume-weighted VWAP; oracle uses 192-block equal-weight TWAP | Do not incorrectly substitute either rolling funding reference for the block mark |
+| `src/clearing.js:643–658,770–829` | Two class definitions of `getIndexPrice` exist; the **later** method takes precedence in JS. | Characterize the actually invoked method, not the earlier overwritten definition |
+| `src/clearing.js:1937–1984,2488–2529` | Maintenance/loss-coverage classifications distinguish partial and full liquidation. A partial quantity is estimated from deficit ÷ initial margin and rounded to eight decimals. | State which historical rounding and risk branch applies to the actual contract at the actual height |
+| `src/clearing.js:2232–2288`, `src/marginMap.js:559–623` | Bankruptcy and liquidation prices are explicitly calculated in **two** source paths; the first uses 30 decimal places, the second four decimal places and a 0.5% adjustment. | Identify the invoked path, not a newly invented bankruptcy boundary |
+| `src/clearing.js:2343–2449` | **AMM is preferred first**, but only at the appropriate safe liquidation boundary. Bid levels descend, ask levels ascend, earlier block time breaks price ties. Linear and inverse inequalities differ. | Authenticate AMM inventory, matched quantity and boundary evidence |
+| `src/orderbook.js:720–774,1373–1449` | Regular orderbook matching sorts bids high/asks low then by earliest block time; maker price generally follows the earlier order, with market-flag handling. | Obtain verified order/nonce and fee context rather than fabricate maker priority |
+| `src/clearing.js:2575–2678` | Liquidation actually attempts AMM sweep, then regular matching and caps the safe filled size. | Do not equate a caller-declared price with executed fills |
+| `src/clearing.js:2688–2828`, `src/marginMap.js:1550–1694` | Remaining size goes through concrete loss-pool, `simpleDeleverage`, counterparty sorting and ADL accounting. | Differential tests of this exact asynchronous path, including insolvency and recoverability |
+| `src/insurance.js:190–265` | Insurance payout caps available funds, records a payout, and rounds to eight decimals; old balances are in a separate database. | Read those rules as source evidence; insurer withdrawals must still come from one actual Rust Ledger |
+| `src/clearing.js:20–27`, `src/orderbook.js:700` | `toSatsInt` scales by 1e8 and uses `ROUND_HALF_UP`. Other source formulas use `decimalPlaces(8)`. | Independently verify every intermediate and signed tie case, not merely final sat conversion |
 
-The November–January JavaScript clearing rewrites make these evidence of
-*code behavior*, not authority for the economic rule now in Rust.
+### Weighted average entry exists; no per-lot cost-basis requirement
 
-## Admitted, explicitly synthetic experiment
+The historical engine stores `marginMap.position.avgPrice`. `marginMap.js:420–466,628–648` updates a weighted average when **increasing** same-direction exposure and preserves the average when **reducing** it. `orderbook.js:2516–2520,2716–2739` explicitly captures that average **before** an update might clear the position.
 
-The single new research type \`SyntheticBilateralReduction\` contains:
+There are two separate PnL quantities:
 
-\`\`\`text
-long: existing ordinary owner with signed position > 0
-short: distinct existing ordinary owner with signed position < 0
-contracts: integer quantity > 0, strictly less than EACH owner's open lot
-execution_price_e8: strictly positive caller-declared price
-\`\`\`
+- `marginMap.realizePnl` (`1028–1072`): **accounting realized PnL**, comparing **average entry** to execution.
+- `marginMap.settlePNL` (`1207–1262`): **incremental settlement PnL**, comparing **previous mark** to execution (falling back to avg entry). Its **linear** branch omits the notional multiplier that the `realizePnl` branch uses. The two calculations cannot simply be substituted for each other.
 
-\`reduce_bilateral_positions_unverified(external_txid, height, &fill)\`
-has **one pair** and at most **one collateral transfer**. There is no
-unilateral partial seizure. There is no change to \`MarkPolicy\` or
-\`CollateralPolicy\`. It neither opens nor flips any position, and does
-not infer any maker from a client-provided address. To be *strictly
-partial*, BOTH original positions must remain nonzero with the same
-sign after reducing equal-and-opposite lots.
+The synthetic Rust Stage25F operation below currently uses **incremental reference-mark arithmetic only**, and the receipt field is named `mark_reference_transfer_atoms` accordingly. It makes **no** historical accounting-realized parity claim. Porting weighted average to persistent Rust position state and TLCL/TLCC requires a separately reviewed versioned state change, not a new per-lot bookkeeping scheme.
 
-The existing immutable \`MarkPolicy\` specifies a last reference mark
-price, notional, linear/inverse mechanics and its explicit
-\`Legacy20DecimalPlaces\` or \`ExactRational\` mode. **No new rounding or
-pricing algorithm is chosen.** For the removed lot quantity \`q\`,
-the existing Stage24A function computes the two signed hypothetical
-realized changes:
+### Commit-whitelist and 2-of-2 channel provenance
 
-\`\`\`text
-long PnL  = Stage24A_PnL(+q, prior_mark, declared_fill, frozen terms)
-short PnL = Stage24A_PnL(-q, prior_mark, declared_fill, frozen terms)
-\`\`\`
+The source contains actual authorization-related checks, not a blank authorization policy:
 
-The required sum is **exactly zero**, otherwise the batch rejects with
-\`PnlRoundingImbalance\`. This is a *declared reference-mark convention*,
-not proof of actual per-lot cost basis or fill execution. Only **the
-losing owner's real, pledged \`~clrm:\` escrow** may pay the winning
-owner's \`~clrm:\` escrow, through the existing restricted
-\`SpotExchange::apply_clearing_transfer_unverified\` seam. If the payer
-does not have enough margin, the entire operation rejects: ordinary
-available accounts, queued or resting \`~spot:\` reserves and real
-\`~ins:\` insurer funds are never used.
+- `validity.js:490–648`: commitment validation checks sender balance, activation, token clearlist membership and channel multisig-address reconstruction when pubkeys are known.
+- `channels.js:754–790`: extracts pubkeys from commit-transaction inputs and tests whether the derived 2-of-2 multisig address matches the channel.
+- `validity.js:1805–1967`: validates a contract-channel trade's price/reference, activation, expiry, commit addresses and channel clearlists (the latter path requires at least one of the two counterparties attested when declared).
+- `validity.js:2395–2423`: another channel-token-trade path checks both commit addresses against applicable property whitelist sets.
 
-The transaction operates on an entire staged clone of the existing
-**single** SpotExchange-owned Ledger, position table and replay IDs.
-Only if every transfer and the reduced lots pass spot-reserve, signed
-open-interest, maintenance, conservation and escrow-owner invariants is
-the state swapped into place. The operation records one fresh external
-replay ID and fences old spot-only snapshots even when its calculated
-PnL transfer is zero. A fault at the single transfer boundary or
-immediately after transfer but before lot changes restores the exact
-pre-call TLCL v2 state.
+The on-chain 2-of-2 **co-signature/witness**, actual funding output and UTXO spent/invalidated at the relevant height still must be **verified by the underlying chain adapter**, not represented by a caller-supplied `bool`. Those source-level whitelist conditions are not all interchangeable. Stage25F does not add a fake co-signature proof or enable forced liquidations based on claimed membership.
 
-**Temporal bound:** an execution height must be strictly after the last
-configured mark and strictly after a previously finalized spot block.
-A due-but-queued spot order prevents admission, rather than letting
-a guessed order/mark priority decide the simulated fill. This does not
-supply market order authentication. The operation does not advance the
-global mark: unaffected positions are still referenced to its prior
-value, and those other owners are not settled or revalued.
+## Admitted synthetic operation: exactly one existing pair
 
-### TLCC research-only integration
+```text
+SyntheticBilateralReduction {
+    long: existing AccountId with a positive position,
+    short: a distinct existing AccountId with a negative position,
+    contracts: strictly positive integer, strictly less than BOTH positions,
+    execution_price_e8: caller-declared positive price
+}
+```
 
-\`UnverifiedClearingEvent::SyntheticBilateralReduction\` is a distinct
-fake event, executed within the existing synthetic TLCC block journal.
-It is not an op code in \`JointProtocolState\`, and types 3/23/31 remain
-default-deny. TLCL/TLCC v2 need **no format change**, since already
-persisting the updated sole Ledger balances, signed lots, position
-owners, replay IDs and mark terms. A whole-block failure restores all
-prior spot, margin, insurer, mark and participant state, and a retained
-rollback witness permits a replacement synthetic fork.
+`reduce_bilateral_positions_unverified(external_id, height, &fill)` is **one explicitly synthetic matched pair**, **not a forced liquidator call**. It never fabricates counterparties or creates/changes a maker order. Both parties reduce exactly equal-and-opposite amounts. Neither position can become flat or flip; opening, full closure and partial-fill remainders are outside this narrow experiment.
 
-## Deliberately unanswered economic decisions (fail closed)
+The frozen `MarkPolicy` supplies notional, linear/inverse and selected `Legacy20DecimalPlaces` or `ExactRational` rounding. The synthetic transfer is calculated as:
 
-1. **Actual price and match authorization:** no authenticated maker, AMM
-   depth, safe-bankruptcy boundary, execution timestamp, order nonce,
-   signed chain provenance or counterparty consent/proof exists. The
-   declared fill can only be an unverified test input.
-2. **Which owners may be forced:** there is no liquidation-eligibility
-   authority, liquidation priority, risk-level ordering, margin seizure
-   mandate or protocol rule that can select an unwilling counterparty.
-3. **Partial quantity and execution:** historical JS uses decimal
-   \`deficit / initialMargin\`, AMM-first sweep and price/time ordering.
-   Their precision, bankruptcy clamp, fees, partial-fill rounding and
-   intent/lot identities are not ratified in Rust. Stage25F admits only
-   one strictly partial *integer* pair; full closure and an unfilled
-   remainder reject.
-4. **Cost basis and realized PnL:** the existing position map stores only
-   signed size, not trade-entry prices. The reference-mark convention
-   implemented for synthetic tests is NOT a historical realized
-   cost-basis rule and cannot settle a live derivatives contract.
-5. **Loss waterfall:** insurance reserve contribution, fee cache,
-   confiscating ordinary available balances, bankruptcy price, ADL,
-   systemic bad debt or debt/IOU issuance are not permitted. Insufficient
-   pledged margin rejects with zero winner payout.
-6. **Contract/source binding:** IDs, fill prices, contract notional,
-   participant names and heights remain independently unverified
-   assertions. Correct checksums, conserved supply and recovery from a
-   checkpoint do not prove economic or blockchain validity.
+```text
+long mark-reference delta  = Stage24A_PnL(+q, last_mark, declared_fill, frozen terms)
+short mark-reference delta = Stage24A_PnL(-q, last_mark, declared_fill, frozen terms)
+```
 
-A trusted liquidation executor must separately ratify and authenticate
-all six dimensions. **This PR does not do so.**
+The pair's exact rounded sum must be **zero** or the whole batch fails. The loser pays **only from their actually funded** `~clrm:` margin escrow into the winner's `~clrm:` escrow in the existing single SpotExchange-owned Ledger. No ordinary available balance, insurer `~ins:` reserve, unfilled orderbook, fake AMM depth or IOU backs a winner. Any insufficient balance or post-transfer maintenance breach rejects with all positions, balances, queues and replay markers unchanged.
 
-## Focused offline tests
+The entire operation uses a staged clone and one atomic commit after invariant verification. Before/after transfer failure injection and repeat-claim tests prove rollback at every admitted boundary. The event is a separate `UnverifiedClearingEvent::SyntheticBilateralReduction` inside **synthetic TLCC only**; neither the E2B full-book transition nor trusted JointChainState replay is modified. Types 3, 23 and 31 remain denied in trusted replay. TLCL/TLCC v2 persistence/rollback captures sole Ledger balances and reduced signed lots without changing snapshot format.
 
-\`\`\`sh
+An execution height must be later than the current reference mark and previously finalized spot height. A due queued spot order rejects rather than allowing a guessed same-block priority. This is a conservative synthetic sequencing restriction, not a statement of the historical maker ordering. **The global mark itself does not advance** in this partial reduction.
+
+## Read-only pinned-JS characterization module
+
+`liquidation_source_characterization.rs` is explicitly independent of all settlement and state APIs. It includes:
+
+- the exact **four-way linear/inverse safe-price inequality matrix**, inclusive at the bankruptcy boundary;
+- an **immutable**, bounded **AMM-first** synthetic depth estimate (highest bid/lowest ask; earliest block time; stable equal-time input order). Ordinary levels remain untouched and no fill is authorized;
+- price/time **sort-only** characterization of ordinary orders, without maker rights or fee settlement;
+- the separate **oracle event/native block volume-price mark** versus oracle TWAP/native VWAP **funding** routes (192-block reference);
+- eight-decimal `ROUND_HALF_UP` weighted average entry for *increasing* exposure; reduction leaves the prior average unchanged;
+- signed average-entry accounting PnL versus previous-mark incremental PnL, including the pinned JS **linear settlePNL notional omission** and sat-tie tests.
+
+These are **source-specific offline diagnostics**, not a newly chosen clearing policy. They are not called from the synthetic bilateral transition.
+
+## Still blocked for economic authorization
+
+1. The actual signed and whitelist-valid **channel trade/commit**, underlying 2-of-2 UTXO witness and time-bounded chain provenance.
+2. Authenticated oracle event or native volume-index **mark**, distinct from the correct funding TWAP/VWAP history.
+3. Real AMM reserve/offer source, a safe bankruptcy boundary from the applicable source method, and actual maker/orderbook matched trades and fees.
+4. Decimal partial-liquidation quantity and rounding/source-branch parity; the synthetic slice remains whole-integer and strictly partial.
+5. Persistent weighted average/realized-versus-incremental accounting and an explicit protocol choice where the pinned JS branches disagree.
+6. Authorized seizure, insolvency/insurance/ADL and any systemic loss rights. JS contains these methods, but no verified chain-bound liquidation observation is connected to Rust yet.
+
+These are **evidence/integration and source-divergence gates**, not claims that the JS lacks these mechanisms. A checksummed checkpoint or synthetically conserved Ledger does not establish permission to force-close a market position.
+
+## Focused offline validation
+
+```sh
 python3 scripts/check_rust_supply_chain.py
 rustfmt --check --edition 2021 src/clearing_partial_impl.rs
 cargo test --frozen --test clearing_partial_closeout
+cargo test --frozen --test liquidation_source_characterization
 cargo fmt --all -- --check
 cargo clippy --all-targets --frozen -- -D warnings
-\`\`\`
+```
 
-The tests cover directional payer/receiver escrows, exact collateral
-conservation, unchanged unrelated owner lots and resting spot orders,
-zero-PnL replay fencing, wrong-side/missing/oversized lots, depleted
-payer margin with untouched insurer, post-transfer maintenance failure
-rollback, repeated and competing claim IDs, failure injection before
-and after the sole possible transfer, stale heights and queued spot
-ordering, TLCL v2 round-trip and TLCC v2 rollback/alternate synthetic
-fork. No testnet/node scan or resource-heavy job is authorized.
+The tests cover existing-pair lot reductions and payer conservation; unchanged unrelated margin owners and resting spot orders; insufficient pledged margin with insurer untouched; full-close/flip/missing owner/competing claims rejection; fault injection before and after the sole transfer; TLCL/TLCC recovery and reorg. Source-only tests independently cover AMM-first and maker price/time, four safe-price directions, avg-entry and incremental-mark distinctions, plus sat-level half-up rounding.
 
-Keep the PR **draft, unmerged**, for code and economic-policy review.
+The supply-chain policy remains **one Rust crate with zero third-party dependencies**, offline and frozen. No changes to formal/Kani work, historical JS repo, node/testnet, wallets or funds.
+
+**PR remains draft and unmerged.**
