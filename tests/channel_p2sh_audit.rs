@@ -284,7 +284,7 @@ fn malformed_or_nonminimal_script_sig_cannot_be_used_as_authority() {
         Err(P2shAuditError::InvalidScriptSig)
     );
     let mut sig = script_sig(false);
-    sig[5] = 0x80; // make first R negative
+    sig[6] = 0x80; // make first R negative
     let sp = spending(txid, 0, &sig);
     assert!(matches!(
         check(&fund, &sp, keys()),
