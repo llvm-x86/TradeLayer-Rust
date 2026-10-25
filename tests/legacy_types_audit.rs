@@ -41,16 +41,22 @@ fn all_36_exact_source_routes_match_pinned_fixture_and_missing_methods() {
     assert!(source_route(u8::MAX).is_none());
     assert!(!source_route(4).unwrap().encoder_exported);
     assert_eq!(source_route(4).unwrap().encoder, "encodeCommitToken");
-    assert_eq!(source_route(15).unwrap().validator, Some("validatePublishOracleData"));
+    assert_eq!(
+        source_route(15).unwrap().validator,
+        Some("validatePublishOracleData")
+    );
     assert_eq!(
         source_route(31).unwrap().validator,
         Some("validateKingSettle")
     );
-    for ty in [28,29,34,35] {
+    for ty in [28, 29, 34, 35] {
         assert!(!source_route(ty).unwrap().decoder_exported, "{ty}");
     }
     for ty in 32..=35 {
-        assert!(!source_route(ty).unwrap().validator_invoked_by_source, "{ty}");
+        assert!(
+            !source_route(ty).unwrap().validator_invoked_by_source,
+            "{ty}"
+        );
     }
     assert!(source_route(32).unwrap().decoder_exported);
     assert!(source_route(33).unwrap().decoder_exported);
@@ -61,7 +67,7 @@ fn all_36_exact_source_routes_match_pinned_fixture_and_missing_methods() {
 #[test]
 fn generic_outer_prefix_doubles_prefixed_type9_2_scalar_and_type15() {
     let inner = "tl90,7,alice,OK";
-    let a = source_generic_concat_unverified(9,inner).unwrap();
+    let a = source_generic_concat_unverified(9, inner).unwrap();
     assert_eq!(a.claimed_ascii(), "tl9tl90,7,alice,OK");
     assert_eq!(a.envelope_kind(), GenericEnvelopeKind::DuplicatedTypePrefix);
     assert_eq!(a.type_id(), 9);
@@ -73,41 +79,50 @@ fn generic_outer_prefix_doubles_prefixed_type9_2_scalar_and_type15() {
         a.require_encoded_transaction_authority(),
         Err(LegacyTypesError::TrustedTransactionExecutionForbidden)
     );
-    let type2scalar = source_generic_concat_unverified(2,"tl20;alice;5;2").unwrap();
+    let type2scalar = source_generic_concat_unverified(2, "tl20;alice;5;2").unwrap();
     assert_eq!(type2scalar.claimed_ascii(), "tl2tl20;alice;5;2");
     assert_eq!(
         type2scalar.envelope_kind(),
         GenericEnvelopeKind::DuplicatedTypePrefix
     );
-    let type2send_all = source_generic_concat_unverified(2,"1;alice").unwrap();
+    let type2send_all = source_generic_concat_unverified(2, "1;alice").unwrap();
     assert_eq!(type2send_all.claimed_ascii(), "tl21;alice");
     assert_eq!(
         type2send_all.envelope_kind(),
         GenericEnvelopeKind::SingleOuterPrefix
     );
-    let close = source_generic_concat_unverified(15,"tlf").unwrap();
+    let close = source_generic_concat_unverified(15, "tlf").unwrap();
     assert_eq!(close.claimed_ascii(), "tlftlf");
-    assert_eq!(close.envelope_kind(), GenericEnvelopeKind::DuplicatedTypePrefix);
-    let source32 = source_generic_concat_unverified(32,"synthetic-rollup").unwrap();
+    assert_eq!(
+        close.envelope_kind(),
+        GenericEnvelopeKind::DuplicatedTypePrefix
+    );
+    let source32 = source_generic_concat_unverified(32, "synthetic-rollup").unwrap();
     assert_eq!(source32.claimed_ascii(), "tlwsynthetic-rollup");
-    assert_eq!(source32.envelope_kind(), GenericEnvelopeKind::SingleOuterPrefix);
-    let foreign = source_generic_concat_unverified(9,"tl4other").unwrap();
-    assert_eq!(foreign.envelope_kind(), GenericEnvelopeKind::ForeignInnerPrefix);
+    assert_eq!(
+        source32.envelope_kind(),
+        GenericEnvelopeKind::SingleOuterPrefix
+    );
+    let foreign = source_generic_concat_unverified(9, "tl4other").unwrap();
+    assert_eq!(
+        foreign.envelope_kind(),
+        GenericEnvelopeKind::ForeignInnerPrefix
+    );
     assert_eq!(foreign.claimed_ascii(), "tl9tl4other");
     assert_eq!(
-        source_generic_concat_unverified(4,"tl4,1"),
+        source_generic_concat_unverified(4, "tl4,1"),
         Err(LegacyTypesError::MissingSourceEncoder(4))
     );
     assert_eq!(
-        source_generic_concat_unverified(36,"whatever"),
+        source_generic_concat_unverified(36, "whatever"),
         Err(LegacyTypesError::UnknownSourceType(36))
     );
     assert_eq!(
-        source_generic_concat_unverified(9,"x\nbad"),
+        source_generic_concat_unverified(9, "x\nbad"),
         Err(LegacyTypesError::ClaimNotPrintableAscii)
     );
     assert_eq!(
-        source_generic_concat_unverified(9,&"x".repeat(4094)),
+        source_generic_concat_unverified(9, &"x".repeat(4094)),
         Err(LegacyTypesError::ClaimedPayloadTooLarge)
     );
 }
@@ -116,11 +131,9 @@ fn generic_outer_prefix_doubles_prefixed_type9_2_scalar_and_type15() {
 fn index_three_argument_call_cannot_run_historical_decoder() {
     // The historical call is Types.decodePayload(txid, marker, payload).
     // Its second argument "tl" becomes the type and its third becomes marker.
-    let parsed = source_inspect_decode_invocation(
-        SourceDecoderInvocation::TxIndexThreeArguments {
-            payload_after_marker:"90,7,alice,OK"
-        },
-    );
+    let parsed = source_inspect_decode_invocation(SourceDecoderInvocation::TxIndexThreeArguments {
+        payload_after_marker: "90,7,alice,OK",
+    });
     assert_eq!(parsed.type_id(), None);
     assert_eq!(
         parsed.outcome(),
@@ -130,11 +143,10 @@ fn index_three_argument_call_cannot_run_historical_decoder() {
         parsed.caveats(),
         &[SourceDecodeCaveat::TxIndexMisorderedCallSignature]
     );
-    let special = source_inspect_decode_invocation(
-        SourceDecoderInvocation::TxIndexThreeArguments {
-            payload_after_marker:"tl"
-        },
-    );
+    let special =
+        source_inspect_decode_invocation(SourceDecoderInvocation::TxIndexThreeArguments {
+            payload_after_marker: "tl",
+        });
     assert_eq!(
         special.outcome(),
         SourceDecodeOutcome::ReturnedErrorObjectUnknownType
@@ -147,7 +159,7 @@ fn index_three_argument_call_cannot_run_historical_decoder() {
 
 #[test]
 fn full_decode_source_call_never_grants_authority_or_validated_output() {
-    let normal = source_inspect_decode_invocation(full(7,"tl",false));
+    let normal = source_inspect_decode_invocation(full(7, "tl", false));
     assert_eq!(
         normal.outcome(),
         SourceDecodeOutcome::WouldInvokeValidatorOnCallerClaims
@@ -165,16 +177,16 @@ fn full_decode_source_call_never_grants_authority_or_validated_output() {
         Err(LegacyTypesError::CanonicalTwoSignerChannelStateAbsent)
     );
     assert_eq!(
-        source_inspect_decode_invocation(full(7,"NOT_TL",false)).outcome(),
+        source_inspect_decode_invocation(full(7, "NOT_TL", false)).outcome(),
         SourceDecodeOutcome::ReturnedErrorObjectInvalidMarker
     );
     assert_eq!(
-        source_inspect_decode_invocation(full(36,"tl",false)).outcome(),
+        source_inspect_decode_invocation(full(36, "tl", false)).outcome(),
         SourceDecodeOutcome::ReturnedErrorObjectUnknownType
     );
-    for id in [0,1,2,4,5,9,11,14,19,23,27,30,31] {
+    for id in [0, 1, 2, 4, 5, 9, 11, 14, 19, 23, 27, 30, 31] {
         assert_eq!(
-            source_inspect_decode_invocation(full(id,"tl",true)).outcome(),
+            source_inspect_decode_invocation(full(id, "tl", true)).outcome(),
             SourceDecodeOutcome::WouldInvokeValidatorOnCallerClaims,
             "{id}"
         );
@@ -183,15 +195,15 @@ fn full_decode_source_call_never_grants_authority_or_validated_output() {
 
 #[test]
 fn missing_reference_type3_returns_unvalidated_decoded_params() {
-    let missing=source_inspect_decode_invocation(full(3,"tl",false));
+    let missing = source_inspect_decode_invocation(full(3, "tl", false));
     assert_eq!(
         missing.outcome(),
         SourceDecodeOutcome::Type3UnvalidatedReturnMissingReferences
     );
-    assert!(missing.caveats().contains(
-        &SourceDecodeCaveat::Type3ValidatorSkippedIfRefsMissing
-    ));
-    let complete=source_inspect_decode_invocation(full(3,"tl",true));
+    assert!(missing
+        .caveats()
+        .contains(&SourceDecodeCaveat::Type3ValidatorSkippedIfRefsMissing));
+    let complete = source_inspect_decode_invocation(full(3, "tl", true));
     assert_eq!(
         complete.outcome(),
         SourceDecodeOutcome::WouldInvokeValidatorOnCallerClaims
@@ -204,17 +216,17 @@ fn missing_reference_type3_returns_unvalidated_decoded_params() {
 
 #[test]
 fn close_oracle_calls_wrong_validator_on_number_and_loses_block() {
-    let report=source_inspect_decode_invocation(full(15,"tl",true));
+    let report = source_inspect_decode_invocation(full(15, "tl", true));
     assert_eq!(
         report.outcome(),
         SourceDecodeOutcome::Type15CallsWrongValidatorWithNumber
     );
-    assert!(report.caveats().contains(
-        &SourceDecodeCaveat::Type15PublishOracleValidatorInsteadOfClose
-    ));
-    assert!(report.caveats().contains(
-        &SourceDecodeCaveat::Type15DecoderReturnsNumberAndBlockAssignmentLost
-    ));
+    assert!(report
+        .caveats()
+        .contains(&SourceDecodeCaveat::Type15PublishOracleValidatorInsteadOfClose));
+    assert!(report
+        .caveats()
+        .contains(&SourceDecodeCaveat::Type15DecoderReturnsNumberAndBlockAssignmentLost));
     assert_eq!(
         report.require_historical_transaction_admission(),
         Err(LegacyTypesError::InputAndHistoricStateNotAuthenticated)
@@ -223,8 +235,8 @@ fn close_oracle_calls_wrong_validator_on_number_and_loses_block() {
 
 #[test]
 fn missing_decoders_and_comment_only_validators_are_not_approval() {
-    for ty in [28,29,34,35] {
-        let report=source_inspect_decode_invocation(full(ty,"tl",true));
+    for ty in [28, 29, 34, 35] {
+        let report = source_inspect_decode_invocation(full(ty, "tl", true));
         assert_eq!(
             report.outcome(),
             SourceDecodeOutcome::WouldThrowMissingDecoder,
@@ -235,47 +247,65 @@ fn missing_decoders_and_comment_only_validators_are_not_approval() {
             Err(LegacyTypesError::TrustedTransactionExecutionForbidden)
         );
     }
-    for ty in [32,33] {
-        let report=source_inspect_decode_invocation(full(ty,"tl",true));
+    for ty in [32, 33] {
+        let report = source_inspect_decode_invocation(full(ty, "tl", true));
         assert_eq!(
             report.outcome(),
             SourceDecodeOutcome::DecodedWithoutAnyValidator
         );
-        assert!(report.caveats().contains(
-            &SourceDecodeCaveat::Type32To35ValidatorCallsCommentedOut
-        ));
+        assert!(report
+            .caveats()
+            .contains(&SourceDecodeCaveat::Type32To35ValidatorCallsCommentedOut));
     }
-    let settle=source_inspect_decode_invocation(full(23,"tl",true));
-    assert!(settle.caveats().contains(
-        &SourceDecodeCaveat::Type23ChannelAddressIsInputSender
-    ));
-    let king=source_inspect_decode_invocation(full(31,"tl",true));
-    assert!(king.caveats().contains(
-        &SourceDecodeCaveat::Type31KingSettleNameVsOtherRegistries
-    ));
+    let settle = source_inspect_decode_invocation(full(23, "tl", true));
+    assert!(settle
+        .caveats()
+        .contains(&SourceDecodeCaveat::Type23ChannelAddressIsInputSender));
+    let king = source_inspect_decode_invocation(full(31, "tl", true));
+    assert!(king
+        .caveats()
+        .contains(&SourceDecodeCaveat::Type31KingSettleNameVsOtherRegistries));
 }
 
 #[test]
 fn type11_reference_string_array_object_precedence_matches_js_helper() {
-    let row=[None,Some(""),Some("first"),Some("second")];
-    assert_eq!(source_resolve_reference_address(ClaimedReference::Missing),"");
-    assert_eq!(source_resolve_reference_address(ClaimedReference::String("literal")),"literal");
-    assert_eq!(source_resolve_reference_address(ClaimedReference::Array(&row)),"first");
+    let row = [None, Some(""), Some("first"), Some("second")];
     assert_eq!(
-        source_resolve_reference_address(ClaimedReference::Object {
-            address:Some("preferred"),sender_address:Some("backup")
-        }),"preferred"
+        source_resolve_reference_address(ClaimedReference::Missing),
+        ""
+    );
+    assert_eq!(
+        source_resolve_reference_address(ClaimedReference::String("literal")),
+        "literal"
+    );
+    assert_eq!(
+        source_resolve_reference_address(ClaimedReference::Array(&row)),
+        "first"
     );
     assert_eq!(
         source_resolve_reference_address(ClaimedReference::Object {
-            address:Some(""),sender_address:Some("backup")
-        }),"backup"
-    );
-    assert_eq!(source_resolve_reference_address(ClaimedReference::UnsupportedPrimitive),"");
-    assert_eq!(
-        source_type11_claimed_recipient("",ClaimedReference::Array(&row)),"first"
+            address: Some("preferred"),
+            sender_address: Some("backup")
+        }),
+        "preferred"
     );
     assert_eq!(
-        source_type11_claimed_recipient("direct",ClaimedReference::Array(&row)),"direct"
+        source_resolve_reference_address(ClaimedReference::Object {
+            address: Some(""),
+            sender_address: Some("backup")
+        }),
+        "backup"
+    );
+    assert_eq!(
+        source_resolve_reference_address(ClaimedReference::UnsupportedPrimitive),
+        ""
+    );
+    assert_eq!(
+        source_type11_claimed_recipient("", ClaimedReference::Array(&row)),
+        "first"
+    );
+    assert_eq!(
+        source_type11_claimed_recipient("direct", ClaimedReference::Array(&row)),
+        "direct"
     );
 }
