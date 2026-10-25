@@ -18,8 +18,8 @@
 //! contract, margin, liquidation or trusted replay path is implemented.
 
 use crate::channel_witness_audit::{
-    audit_native_p2wsh_outpoint_unverified, ClaimedTwoOfTwoPubkeys, Cursor,
-    StructuralChannelError, UnverifiedP2wshOutpointSpend,
+    audit_native_p2wsh_outpoint_unverified, ClaimedTwoOfTwoPubkeys, Cursor, StructuralChannelError,
+    UnverifiedP2wshOutpointSpend,
 };
 use crate::hash256::double_sha256;
 use crate::network_profile::TradeLayerMainnet;
@@ -140,8 +140,8 @@ fn compute_bip143_sighash_all_unverified(
     if script.len() != crate::channel_witness_audit::CANONICAL_COMPRESSED_2_OF_2_SCRIPT_SIZE {
         return Err(StructuralChannelError::InvalidWitnessScript);
     }
-    let script_len = u8::try_from(script.len())
-        .map_err(|_| StructuralChannelError::InvalidWitnessScript)?;
+    let script_len =
+        u8::try_from(script.len()).map_err(|_| StructuralChannelError::InvalidWitnessScript)?;
     let h_prevouts = double_sha256(&prevouts);
     let h_sequence = double_sha256(&sequences);
     let h_outputs = double_sha256(&outputs);
