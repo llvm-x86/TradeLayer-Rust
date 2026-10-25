@@ -80,6 +80,55 @@ pub(crate) fn sha256(input: &[u8]) -> [u8; 32] {
     result
 }
 
+/// SHA256 of logically concatenated slices, without allocating a stripped
+/// SegWit transaction buffer. The pending 64-byte block survives arbitrary
+/// boundaries, including empty slices and a split SHA256 padding boundary.
+/// This is only research TXID fingerprinting; not a consensus hash provider.
+fn sha256_parts(parts: &[&[u8]]) -> [u8; 32] {
+    let mut state = H0;
+    let mut pending = [0u8; 64];
+    let mut filled = 0usize;
+    let mut total_bytes = 0u64;
+    for &part in parts {
+        total_bytes = total_bytes.wrapping_add(part.len() as u64);
+        let mut remaining = part;
+        if filled != 0 {
+            let take = (64 - filled).min(remaining.len());
+            pending[filled..filled + take].copy_from_slice(&remaining[..take]);
+            filled += take;
+            remaining = &remaining[take..];
+            if filled < 64 {
+                continue;
+            }
+            compress(&mut state, &pending);
+        }
+        let mut blocks = remaining.chunks_exact(64);
+        for block in &mut blocks {
+            compress(&mut state, block.try_into().expect("64-byte block"));
+        }
+        let rest = blocks.remainder();
+        pending[..rest.len()].copy_from_slice(rest);
+        filled = rest.len();
+    }
+    let mut tail = [0u8; 128];
+    tail[..filled].copy_from_slice(&pending[..filled]);
+    tail[filled] = 0x80;
+    let padded_len = if filled >= 56 { 128 } else { 64 };
+    tail[padded_len - 8..padded_len].copy_from_slice(&total_bytes.wrapping_mul(8).to_be_bytes());
+    for block in tail[..padded_len].chunks_exact(64) {
+        compress(&mut state, block.try_into().expect("64-byte block"));
+    }
+    let mut result = [0u8; 32];
+    for (out, word) in result.chunks_exact_mut(4).zip(state) {
+        out.copy_from_slice(&word.to_be_bytes());
+    }
+    result
+}
+
+pub(crate) fn double_sha256_parts(parts: &[&[u8]]) -> [u8; 32] {
+    sha256(&sha256_parts(parts))
+}
+
 pub(crate) fn double_sha256(input: &[u8]) -> [u8; 32] {
     sha256(&sha256(input))
 }
@@ -110,5 +159,36 @@ mod tests {
             hex(&sha256(&[b'a'; 55])),
             "9f4390f8d30c2dd92ec9f095b65e2b9ae9b0a925a5258e241c9f1e910f734318"
         );
+    }
+
+    #[test]
+    fn chunked_sha256d_matches_flat_hash_at_all_padding_boundaries() {
+        for len in [
+            0usize, 1, 2, 7, 54, 55, 56, 63, 64, 65, 119, 120, 127, 128, 129, 255, 256, 257, 4095,
+            4096, 16384,
+        ] {
+            let input: Vec<u8> = (0..len)
+                .map(|i| (i as u8).wrapping_mul(31).wrapping_add(19))
+                .collect();
+            for stride in [1usize, 2, 3, 7, 55, 63, 64, 65, 127, 4096] {
+                let mut parts: Vec<&[u8]> = vec![&[]];
+                for chunk in input.chunks(stride) {
+                    parts.push(chunk);
+                    parts.push(&[]);
+                }
+                assert_eq!(
+                    sha256_parts(&parts),
+                    sha256(&input),
+                    "sha256 length {len}, stride {stride}"
+                );
+                assert_eq!(
+                    double_sha256_parts(&parts),
+                    double_sha256(&input),
+                    "sha256d length {len}, stride {stride}"
+                );
+            }
+        }
+        assert_eq!(sha256_parts(&[&[], &[]]), sha256(b""));
+        assert_eq!(double_sha256_parts(&[&[], &[]]), double_sha256(b""));
     }
 }
