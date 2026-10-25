@@ -49,6 +49,7 @@ pub mod network_profile; // Independent Bitcoin/Litecoin/Dogecoin mainnet identi
 pub mod parallel_txindex; // Bounded parallel read-only runtime TXID/OP_RETURN scan and ordered fetch; never consensus.
 pub mod protocol; // Audited legacy transaction catalog, not consensus execution.
 pub mod raw_block_ingest; // Stage8C borrowed raw Bitcoin block preindex, not consensus.
+pub mod wave_precheck; // Stage8D dependency-wave read-only probes, no Script/UTXO or Ledger permission.
 pub mod read_only; // Offline transaction scanning; cannot authorize ledger state.
 pub mod registry; // Standalone tx0/7-9/13-15 registry state; authentication external.
 pub mod root_reconciliation; // Read-only TLPT and zkTL metadata consistency.
