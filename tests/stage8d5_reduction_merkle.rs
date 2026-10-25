@@ -2,8 +2,8 @@
 //! experiments. These are UNVERIFIED read-only observations, never consensus.
 use tradelayer_core::parallel_txindex::{ParallelIndexConfig, ParallelIndexError};
 use tradelayer_core::raw_block_ingest::{
-    merkle_root_unverified, merkle_root_unverified_inplace, RawBlockIngestError, RawBlockTrustError,
-    UnverifiedRawBlockView,
+    merkle_root_unverified, merkle_root_unverified_inplace, RawBlockIngestError,
+    RawBlockTrustError, UnverifiedRawBlockView,
 };
 use tradelayer_core::read_only::{decode_hex, inspect_transaction};
 
@@ -144,7 +144,10 @@ fn pinned_four_transaction_observations_match_every_worker_setting() {
         for window in [1, 7, 64, 256, 512] {
             let cfg = config(workers, window);
             compare_modes(&view, cfg);
-            assert_eq!(view.inspect_parallel_one_team_fast_reduce(cfg).unwrap(), serial);
+            assert_eq!(
+                view.inspect_parallel_one_team_fast_reduce(cfg).unwrap(),
+                serial
+            );
         }
     }
 }
