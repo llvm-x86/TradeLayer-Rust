@@ -34,8 +34,8 @@ use std::collections::BTreeMap;
 use std::ops::Range;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{mpsc, Mutex};
 use std::sync::OnceLock;
+use std::sync::{mpsc, Mutex};
 use std::thread;
 
 pub const MAX_PARALLEL_WORKERS: usize = 16;
@@ -453,16 +453,17 @@ fn weighted_window_claims(
     end: usize,
     workers: usize,
 ) -> Vec<Range<usize>> {
-    let total_work: usize = transactions[start..end].iter().map(prepared_hash_work).sum();
+    let total_work: usize = transactions[start..end]
+        .iter()
+        .map(prepared_hash_work)
+        .sum();
     let target_work = total_work.div_ceil(workers * 4).max(512);
     let mut claims = Vec::new();
     let mut cursor = start;
     while cursor < end {
         let first = cursor;
         let mut work = 0usize;
-        while cursor < end
-            && (cursor == first || (work < target_work && cursor - first < 32))
-        {
+        while cursor < end && (cursor == first || (work < target_work && cursor - first < 32)) {
             work += prepared_hash_work(&transactions[cursor]);
             cursor += 1;
         }
@@ -550,7 +551,13 @@ pub(crate) fn inspect_prepared_block_pooled_weighted(
                     local
                 }))
                 .map_err(|_| ParallelIndexError::WorkerPanicked);
-                if completed.send(WeightedWindowResult { chunk: job.chunk, rows }).is_err() {
+                if completed
+                    .send(WeightedWindowResult {
+                        chunk: job.chunk,
+                        rows,
+                    })
+                    .is_err()
+                {
                     break;
                 }
             }));
@@ -562,12 +569,8 @@ pub(crate) fn inspect_prepared_block_pooled_weighted(
                 transactions.chunks(config.window_transactions).enumerate()
             {
                 let start = window_index * config.window_transactions;
-                let claims = weighted_window_claims(
-                    transactions,
-                    start,
-                    start + window.len(),
-                    worker_count,
-                );
+                let claims =
+                    weighted_window_claims(transactions, start, start + window.len(), worker_count);
                 // Only this window is dispatched at a time. At most 512 raw
                 // observations are retained by workers and result messages.
                 for (chunk, claim) in claims.iter().enumerate() {
