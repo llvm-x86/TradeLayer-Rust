@@ -59,8 +59,14 @@ fn signed_fixture_digest_matches_independent_python_and_denies_authority() {
     let (funding, spending, keys) = pair();
     let result = checked(&funding, &spending, keys).unwrap();
     assert_eq!(result.digest_raw(), exact32(f["expected_legacy_digest"]));
-    assert_eq!(inspect_transaction(&funding).unwrap().txid, exact32(f["funding_txid_raw"]));
-    assert_eq!(inspect_transaction(&spending).unwrap().txid, exact32(f["spending_txid_raw"]));
+    assert_eq!(
+        inspect_transaction(&funding).unwrap().txid,
+        exact32(f["funding_txid_raw"])
+    );
+    assert_eq!(
+        inspect_transaction(&spending).unwrap().txid,
+        exact32(f["spending_txid_raw"])
+    );
     assert_eq!(result.structural().funding_satoshis(), 20_000);
     assert_eq!(
         result.require_verified_channel_signatures(),
@@ -131,7 +137,10 @@ fn changed_funding_value_requires_matching_new_outpoint_and_digest() {
     // Funding version + input count + 36-byte outpoint + empty script +
     // sequence + output count = 4 + 1 + 36 + 1 + 4 + 1.
     funding[47] ^= 1;
-    assert_eq!(checked(&funding, &spending, keys), Err(P2shAuditError::WrongPrevout));
+    assert_eq!(
+        checked(&funding, &spending, keys),
+        Err(P2shAuditError::WrongPrevout)
+    );
     let updated_txid = inspect_transaction(&funding).unwrap().txid;
     // Spending input 0 consumes 36 + 1 + 4 bytes after version/vin count.
     spending[46..78].copy_from_slice(&updated_txid);
