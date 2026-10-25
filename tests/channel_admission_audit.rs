@@ -118,6 +118,7 @@ fn type4_scalar_zero_and_commit_zero_do_not_construct_authority() {
     let claim = type4("alice", PropertyWhitelist::UnrestrictedScalarZero, Some(0));
     let slice = v.type4_commit_lists(claim).unwrap();
     assert_eq!(slice.matched_list_id(), None);
+    assert_eq!(slice.matched_side(), None);
     assert_eq!(
         slice.require_authenticated_channel_admission(),
         Err(AdmissionAuditError::IndependentAdmissionProofUnavailable)
