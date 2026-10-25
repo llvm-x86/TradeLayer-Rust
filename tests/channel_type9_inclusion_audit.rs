@@ -239,6 +239,7 @@ fn forged_claim_fields_and_wrong_positions_reject_despite_valid_merkle_paths() {
             HistoricalAdmissionKind::Type4Commit,
             items,
         )
+        .map(|_| ())
     };
     let mut bogus = events;
     bogus[1].claim.clearlist_id = 7;
