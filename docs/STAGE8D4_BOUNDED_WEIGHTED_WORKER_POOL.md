@@ -6,13 +6,14 @@ Baseline: merged `main@c7a37eb` after Stage8D1b (#132). Stage8D2 weighted static
 
 Stage8D1b's one-team path avoids spawning 8 threads for every 512-TX window but allocates a `OnceLock` result slot for *every* TX (up to 200,000 slots). Stage8D2's static byte-work shards remove atomic claims and OnceLocks, but an initial GitHub runner release comparison on 10,000 synthetic 95%-SegWit TXs found one-team 24.369ms vs static 25.454ms. Static assignment can strand a worker on a long job.
 
-The new opt-in `UnverifiedRawBlockView::inspect_parallel_pooled_weighted` combines persistent workers with strictly bounded per-window output and dynamic claim distribution.
+The first opt-in `UnverifiedRawBlockView::inspect_parallel_pooled_weighted` combines persistent workers with strictly bounded per-window output and dynamic claim distribution. Its first green release build measured 31.536ms against 22.803ms for one-team (10,000 95%-witness, 8 workers); per-claim channel messages are a likely source of overhead. Therefore a second opt-in `inspect_parallel_pooled_barrier` reuses one worker team with start/done barriers per window and an atomic claim index, keeping the bounded scratch-memory property while removing per-claim channels.
 
 ## Implementation
 
 - One `thread::scope` of at most 16 workers for the entire raw block. Each worker receives its next contiguous **claim**, selected dynamically as it becomes free. The CPU work estimate is the raw TX byte length plus stripped TX bytes for SegWit. Claims target roughly four times as many chunks as workers, with a minimum byte target and a maximum of 32 TXs per chunk. The producer never dispatches work from more than one block-order window at once.
 - Bounded worker task queue (`2 * workers`) and at most `config.window_transactions <= 512` simultaneously processed/result-buffered TX observations, even for 10k/200k-TX inputs. Workers use thread-local vectors, returning one message per claim; there are no per-TX OnceLocks, serialized-TX clones, or hot-path atomic fetch/add claims. `mpsc` and `Mutex` are from the Rust standard library.
-- Coordinator collects **all** claim results for a window and reduces in original source order, checking the earliest scan error or duplicate TXID. A worker panic is caught at the claim boundary and reported as `WorkerPanicked`; all workers join before this function returns. No observations from later windows are committed after an error.
+- In **channel mode**, the coordinator collects **all** claim results for a window, reducing in original source order. In **barrier mode**, workers write directly into at most 512 `OnceLock` result slots. They synchronize at the start and completion of each window. The coordinator consumes slots after workers drop all shared references, retaining deterministic source error and duplicate-TXID ordering. A worker panic is caught at the claim boundary and reported as `WorkerPanicked`; all workers join before this function returns. No observations from later windows are committed after an error.
+- The barrier implementation uses one atomic chunk claim per microbatch and at most 512 scratch slots per window, with a shared Arc reference released before the completion barrier. Worker panics are caught and report `WorkerPanicked`. A final barrier reliably releases parked workers after an early error.
 - Existing default `inspect_parallel`, `inspect_parallel_one_team`, serial and owned-Vec paths remain unchanged. Source raw transaction bytes and pre-parsed `TransactionLayout` instances are borrowed.
 - Trust denials remain unconditional: no authenticated active chain, parent UTXO snapshot, script/witness consensus verification, issuer/registry authorization or TradeLayer economic state is inferred.
 
@@ -26,6 +27,7 @@ The existing offline `tradelayer-block-ingest-bench` now additionally reports:
 - `pooled_weighted_vs_one_team_ratio`: same-host, same-run dynamic one-team median divided by pooled weighted median.
 - `pooled_weighted_vs_windowed_ratio`: corresponding old bounded-window comparison.
 - `pooled_weighted_window_result_cap`: enforced result-buffer window in TX slots.
+- `pooled_barrier_prepared_only_median_ms` and `pooled_barrier_vs_one_team_ratio`: per-window barrier scheduler versus the same-run one-team baseline.
 
 There is **no CI speedup threshold**. Run at least 1k/4k/10k synthetic mixes and repeat with varied real raw Bitcoin blocks, a controlled physical host and peak RSS tracking before considering production adoption. The `mpsc` task receiver uses a short mutex hold per *claim*, which may still bottleneck the pool. The task's byte-work estimate is approximate because TL carrier decoding and per-job fixed costs differ.
 
