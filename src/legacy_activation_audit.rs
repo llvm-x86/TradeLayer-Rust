@@ -228,9 +228,7 @@ impl UnverifiedLegacyActivationRegistry {
     ) -> Result<(), LegacyActivationError> {
         Err(LegacyActivationError::HistoricalActivationAuthorityUnavailable)
     }
-    pub const fn require_trusted_protocol_activation(
-        &self,
-    ) -> Result<(), LegacyActivationError> {
+    pub const fn require_trusted_protocol_activation(&self) -> Result<(), LegacyActivationError> {
         Err(LegacyActivationError::TrustedProtocolActivationUnavailable)
     }
 
@@ -261,9 +259,7 @@ impl UnverifiedLegacyActivationRegistry {
                 if event.at.height == previous.height && event.at.block_id != previous.block_id {
                     return Err(LegacyActivationError::ConflictingClaimedBlockAtHeight);
                 }
-                if (event.at.height, event.at.tx_index)
-                    <= (previous.height, previous.tx_index)
-                {
+                if (event.at.height, event.at.tx_index) <= (previous.height, previous.tx_index) {
                     return Err(LegacyActivationError::OutOfOrderClaimedEvents);
                 }
             }
