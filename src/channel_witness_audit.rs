@@ -219,10 +219,8 @@ fn selected_transaction<'a>(
     let mut cursor = Cursor::new(raw);
     cursor.take(4)?; // version
     let has_witness = raw.get(4) == Some(&0);
-    if has_witness {
-        if cursor.take(2)? != [0, 1] {
-            return Err(ScanError::Invalid("invalid witness marker".into()).into());
-        }
+    if has_witness && cursor.take(2)? != [0, 1] {
+        return Err(ScanError::Invalid("invalid witness marker".into()).into());
     }
     let n_inputs = cursor.count()?;
     let vin = usize::try_from(requested_vin).map_err(|_| ScanError::TooLong)?;
