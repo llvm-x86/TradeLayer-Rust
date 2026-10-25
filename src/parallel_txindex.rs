@@ -347,6 +347,86 @@ pub(crate) fn inspect_prepared_block_parallel(
     })
 }
 
+/// EXPERIMENTAL whole-block CPU worker team. In contrast to work_window,
+/// which spawns and joins threads every 512 transactions, this scans all
+/// prepared TXs in ONE scoped team. Worker jobs remain stateless and pure.
+/// Dynamic atomic claims preserve work balancing across variable TX sizes.
+///
+/// Resource tradeoff: this variant allocates ONE result slot per transaction
+/// (bounded by MAX_BLOCK_TRANSACTIONS and MAX_BLOCK_INPUT_BYTES), rather than
+/// the regular 512-slot window. It is opt-in until benchmarks show a repeatable
+/// win and bounded-memory policy is reviewed.
+pub(crate) fn inspect_prepared_block_one_team(
+    transactions: &[PreparedRawTransaction<'_>],
+    config: ParallelIndexConfig,
+) -> Result<UnverifiedOrderedBlockIndex, ParallelIndexError> {
+    let config = config.validate()?;
+    validate_count(transactions.len())?;
+    let mut bytes = 0usize;
+    for (index, row) in transactions.iter().enumerate() {
+        validate_row(index, row.raw)?;
+        bytes = bytes
+            .checked_add(row.raw.len())
+            .filter(|sum| *sum <= MAX_BLOCK_INPUT_BYTES)
+            .ok_or(ParallelIndexError::ExceededBlockByteLimit)?;
+    }
+    if config.workers == 1 || transactions.len() == 1 {
+        return inspect_prepared_block_parallel(transactions, config);
+    }
+    let worker_count = config.workers.min(transactions.len());
+    let claim_size = (config.window_transactions / (worker_count * 4)).clamp(1, 16);
+    let next = AtomicUsize::new(0);
+    let slots: Vec<OnceLock<Result<TransactionObservation, ParallelIndexError>>> =
+        (0..transactions.len()).map(|_| OnceLock::new()).collect();
+    let panicked = thread::scope(|scope| {
+        let handles: Vec<_> = (0..worker_count)
+            .map(|_| {
+                scope.spawn(|| loop {
+                    let first = next.fetch_add(claim_size, Ordering::Relaxed);
+                    if first >= transactions.len() {
+                        break;
+                    }
+                    let end = first.saturating_add(claim_size).min(transactions.len());
+                    for index in first..end {
+                        let row = &transactions[index];
+                        let result = inspect_prepared_transaction(row.raw, row.layout)
+                            .map_err(|source| ParallelIndexError::RawScan { index, source });
+                        // Each index belongs to exactly one atomic claim.
+                        let _ = slots[index].set(result);
+                    }
+                })
+            })
+            .collect();
+        let mut failed = false;
+        for handle in handles {
+            if handle.join().is_err() {
+                failed = true;
+            }
+        }
+        failed
+    });
+    if panicked {
+        return Err(ParallelIndexError::WorkerPanicked);
+    }
+    let mut report = blank_index(transactions.len());
+    let mut seen = BTreeMap::new();
+    // Consume only AFTER all workers join, strictly in original order.
+    // A failed row at a higher index can never mask a lower-index failure.
+    for (index, slot) in slots.into_iter().enumerate() {
+        let observation = slot.into_inner()
+            .ok_or(ParallelIndexError::MissingWorkerResult)??;
+        append_observation(
+            &mut report,
+            &mut seen,
+            index,
+            transactions[index].raw.len(),
+            observation,
+        )?;
+    }
+    debug_assert_eq!(report.raw_bytes_inspected, bytes);
+    Ok(report)
+}
+
 /// Preserve the original owned-Vec API for existing callers. The shared
 /// implementation now accepts borrowed slices without copying transaction
 /// bytes, enabling one-getblock/one-parser/parallel-TXID preindexing.
