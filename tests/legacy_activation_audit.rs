@@ -58,10 +58,7 @@ fn exact_36_legacy_activation_names_preserve_dispatcher_conflicts() {
             Some(name)
         );
     }
-    assert_eq!(
-        UnverifiedLegacyActivationRegistry::name(36),
-        None
-    );
+    assert_eq!(UnverifiedLegacyActivationRegistry::name(36), None);
     // Do NOT remap these to protocol::TRANSACTION_CATALOG automatically.
     assert_eq!(LEGACY_ACTIVATION_NAMES[31], "Batch Move Zk Rollup");
     assert_eq!(LEGACY_ACTIVATION_NAMES[32], "Publish New Tx");
