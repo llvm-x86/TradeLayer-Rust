@@ -130,7 +130,10 @@ pub fn audit_current_block_mark_unverified(
     if expectation.contract_id == 0 || expectation.target_height == 0 {
         return Err(SourceGateError::InvalidContractExpectation);
     }
-    if matches!(expectation.source, ContractMarkSource::Oracle { oracle_id: 0 }) {
+    if matches!(
+        expectation.source,
+        ContractMarkSource::Oracle { oracle_id: 0 }
+    ) {
         return Err(SourceGateError::InvalidContractExpectation);
     }
     if expectation
@@ -164,7 +167,9 @@ pub fn audit_current_block_mark_unverified(
         }
         match (expectation.source, record.route) {
             (
-                ContractMarkSource::Oracle { oracle_id: expected },
+                ContractMarkSource::Oracle {
+                    oracle_id: expected,
+                },
                 AssertedPriceRoute::OraclePublication {
                     oracle_id: actual,
                     publication_txid,
