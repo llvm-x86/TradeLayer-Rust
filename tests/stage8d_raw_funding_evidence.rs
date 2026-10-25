@@ -4,9 +4,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use tradelayer_core::parallel_txindex::ParallelIndexConfig;
 use tradelayer_core::parent_funding_evidence::{
-    inspect_raw_funding_evidence, inspect_waves_with_raw_funding_evidence,
-    FundingEvidenceError, FundingEvidenceTrustError, FundingWaveError,
-    RAW_FUNDING_EVIDENCE_STATUS,
+    inspect_raw_funding_evidence, inspect_waves_with_raw_funding_evidence, FundingEvidenceError,
+    FundingEvidenceTrustError, FundingWaveError, RAW_FUNDING_EVIDENCE_STATUS,
 };
 use tradelayer_core::parent_utxo_snapshot::{
     candidate_snapshot_fingerprint, CandidateOutpoint, CandidateParentSnapshot,
@@ -134,7 +133,10 @@ fn three_prevouts_use_one_exact_raw_funding_transaction() {
         assert_eq!(report.funding.funding_transactions_parsed(), 1);
         assert_eq!(report.funding.exact_prevouts_matched(), 3);
         assert_eq!(report.funding.parent_coverage.external_inputs_matched(), 3);
-        assert_eq!(report.funding.parent_coverage.same_block_outputs_deferred(), 0);
+        assert_eq!(
+            report.funding.parent_coverage.same_block_outputs_deferred(),
+            0
+        );
         assert_eq!(report.probe.positions_observed(), 4);
         assert_eq!(report.probe.wave_count(), 1);
         assert_eq!(report.funding.raw_evidence_bytes(), evidence[0].len());
@@ -145,10 +147,9 @@ fn three_prevouts_use_one_exact_raw_funding_transaction() {
 fn borrower_selects_exact_output_from_both_legacy_and_segwit_funding() {
     let (raw, expected) = funding(0x21);
     for (index, (amount, script)) in expected.iter().enumerate() {
-        let (decoded, decoded_script) =
-            select_unverified_transaction_output(&raw, index as u32)
-                .unwrap()
-                .unwrap();
+        let (decoded, decoded_script) = select_unverified_transaction_output(&raw, index as u32)
+            .unwrap()
+            .unwrap();
         assert_eq!(decoded, *amount);
         assert_eq!(decoded_script, script.as_slice());
     }
@@ -159,10 +160,8 @@ fn independent_python_known_answer_for_one_raw_funding_transaction() {
     let (raw, _) = funding(0x53);
     assert_eq!(raw.len(), 105);
     // Pinned from hashlib.sha256(hashlib.sha256(bytes).digest()).digest().
-    let python_raw_digest = decode_hex(
-        "01adfa763d8cb8bdf850869cd34797535ecd02ff76ff6ee7d28e97d35e85ffd8",
-    )
-    .unwrap();
+    let python_raw_digest =
+        decode_hex("01adfa763d8cb8bdf850869cd34797535ecd02ff76ff6ee7d28e97d35e85ffd8").unwrap();
     assert_eq!(
         inspect_transaction(&raw).unwrap().txid.as_slice(),
         python_raw_digest.as_slice()
