@@ -149,14 +149,10 @@ impl UnverifiedHistoricalAdmissionSlice {
     pub const fn matched_side(&self) -> Option<DirectMatchSide> {
         self.matched_side
     }
-    pub const fn require_authenticated_channel_admission(
-        &self,
-    ) -> Result<(), AdmissionAuditError> {
+    pub const fn require_authenticated_channel_admission(&self) -> Result<(), AdmissionAuditError> {
         Err(AdmissionAuditError::IndependentAdmissionProofUnavailable)
     }
-    pub const fn require_canonical_signed_revision(
-        &self,
-    ) -> Result<(), AdmissionAuditError> {
+    pub const fn require_canonical_signed_revision(&self) -> Result<(), AdmissionAuditError> {
         Err(AdmissionAuditError::CanonicalChannelRevisionUnspecified)
     }
 }
@@ -206,10 +202,7 @@ impl<'a> ClaimedHistoricalDirectView<'a> {
             if entry.network != network {
                 return Err(AdmissionAuditError::ForeignNetworkEvidence);
             }
-            if entry.at.height == 0
-                || entry.at.block_hash == [0; 32]
-                || entry.txid_raw == [0; 32]
-            {
+            if entry.at.height == 0 || entry.at.block_hash == [0; 32] || entry.txid_raw == [0; 32] {
                 return Err(AdmissionAuditError::BadEventPosition);
             }
             check_name(entry.address)?;
@@ -220,8 +213,7 @@ impl<'a> ClaimedHistoricalDirectView<'a> {
                 return Err(AdmissionAuditError::ConflictingBlockAtHeight);
             }
             if let Some(previous) = last {
-                if entry.at.height == previous.height
-                    && entry.at.block_hash != previous.block_hash
+                if entry.at.height == previous.height && entry.at.block_hash != previous.block_hash
                 {
                     return Err(AdmissionAuditError::ConflictingBlockAtHeight);
                 }
