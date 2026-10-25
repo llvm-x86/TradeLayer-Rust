@@ -138,6 +138,10 @@ jobs:
         run: cargo test --frozen --test legacy_txencoder_audit
       - name: Runtime TXID indexing parallel serial-equivalence, bounded mock RPC and reorg denial
         run: cargo test --frozen --test parallel_txindex
+      - name: Legacy txIndex.js exact pinned source Node VM with fake RPC/DB and three-argument decoder
+        run: node scripts/audit_legacy_txindex_source.cjs
+      - name: Legacy txIndex.js Rust source marker offsets, vout-loss and permanent denial
+        run: cargo test --frozen --test legacy_txindex_audit
       - name: Offline runtime multicore TXID source-order benchmark smoke (no performance threshold)
         run: cargo run --frozen --bin tradelayer-index-bench -- 1500 512 4 256 2
       - name: Stage 25F source-only exact rational bankruptcy threshold
@@ -240,6 +244,12 @@ jobs:
         run: python3 scripts/check_rust_supply_chain.py
       - name: Release build without network or lockfile changes
         run: cargo build --all-targets --release --frozen
+      - name: Release synthetic 8000-TX CPU preindex throughput measurement (no speedup gate)
+        run: |
+          target/release/tradelayer-index-bench 8000 512 4 512 3 > /tmp/txindex-release-perf.log
+          cat /tmp/txindex-release-perf.log
+          grep -Fxq 'ordered_equivalence=PASS' /tmp/txindex-release-perf.log
+          grep -Fxq 'full_block_consensus=UNVERIFIED' /tmp/txindex-release-perf.log
 
   # Preserve the preexisting required "check" job name, but make it an
   # explicit AND over both independent jobs. A test or release failure,
