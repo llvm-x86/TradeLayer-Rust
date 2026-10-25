@@ -10,12 +10,16 @@ pub mod bankruptcy_source_audit; // Stage25F pure source-level bankruptcy algebr
 pub mod bitcoin_chainwork; // Bitcoin mainnet nBits/MTP/chainwork from explicit checkpoints; not full consensus.
 pub mod bitcoin_forks; // Bounded greatest-work selection among observed header forks; no active-chain trust.
 pub mod bitcoin_inclusion; // Bitcoin SHA256d header and tx Merkle checks; no full consensus.
+pub mod bitcoin_witness_commitment; // Stage25M unverified Bitcoin BIP141 full-tx witness evidence.
 mod canonical_columns; // Canonical nonzero map mutations for wallet and channel columns.
 pub mod chain; // Trust-boundary and reversible block progression, prototype only.
+pub mod channel_admission_audit; // Stage25M claimed as-of type4/type19 direct clearlist evidence, never authorization.
 pub mod channel_bip143_audit; // Stage 25I exact SegWit-v0 SIGHASH_ALL digest; no signature verification.
 pub mod channel_inclusion_audit; // Stage25L relative Bitcoin Merkle/witness non-authority.
 pub mod channel_p2sh_audit; // Stage 25K legacy P2SH HASH160 outpoint and redeem script, not ECDSA.
 pub mod channel_p2sh_sighash_audit; // Stage 25L read-only legacy P2SH SIGHASH_ALL digest, no ECDSA authority.
+pub mod channel_type9_inclusion_audit; // Stage25N raw type9 event/Bitcoin relative Merkle evidence, no admission.
+pub mod channel_type9_sender_audit; // Stage25O claimed Bitcoin P2WPKH first-input digest and sender-bound candidate, never permission.
 pub mod channel_witness_audit; // Stage 25H raw native P2WSH script/outpoint only; not ECDSA authorization.
 mod checked_amounts; // Bit-precise checked debit/credit arithmetic; Kani proof harnesses.
 pub mod clearing_cadence; // Stage 24C read-only JS clearing callback and funding schedule observations.
