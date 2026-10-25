@@ -45,6 +45,7 @@ pub mod liquidation_input_gate; // Stage 25G read-only current-block provenance 
 pub mod liquidation_source_characterization; // Source-pinned read-only AMM priority and avg-vs-mark audit.
 pub mod network_bound; // Stage 21 profile-bound replay and versioned checkpoint envelopes; unverified.
 pub mod network_profile; // Independent Bitcoin/Litecoin/Dogecoin mainnet identities and proof capabilities.
+pub mod parallel_txindex; // Bounded parallel read-only runtime TXID/OP_RETURN scan and ordered fetch; never consensus.
 pub mod protocol; // Audited legacy transaction catalog, not consensus execution.
 pub mod read_only; // Offline transaction scanning; cannot authorize ledger state.
 pub mod registry; // Standalone tx0/7-9/13-15 registry state; authentication external.
