@@ -9,8 +9,9 @@ git merge-base --is-ancestor "$expected_base" HEAD || {
     echo "Stage25M wrong main source base" >&2; exit 1;
 }
 git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
-git merge-base --is-ancestor "$expected_base" refs/remotes/origin/main || {
-    echo "Pinned Stage25L source is no longer main ancestor; reject" >&2; exit 1;
+expected_main="12d458e04df58bff5a0f295642b3a04774be988c"
+git merge-base --is-ancestor "$expected_main" refs/remotes/origin/main || {
+    echo "Pinned Stage25M admission source no longer in main ancestry" >&2; exit 1;
 }
 while IFS= read -r path; do
     case "$path" in
@@ -18,10 +19,18 @@ while IFS= read -r path; do
         *) echo "Unexpected prepublication production source edit: $path" >&2; exit 1 ;;
     esac
 done < <(git diff --name-only "$expected_base" HEAD)
-[[ "$(git hash-object src/lib.rs)" == "022ac337ba960ea310a6eab5c02a714b57ff6878" ]] || {
+# Compose BOTH Stage25M research efforts on this ephemeral checkout.
+# The admitted source is pinned, even if newer unrelated main commits appear.
+git -c user.name="Stage25M CI" -c user.email="ci@example.invalid" merge --no-commit --no-ff "$expected_main" || {
+    echo "Unexpected Stage25M admission merge conflict" >&2; exit 1;
+}
+[[ -z "$(git diff --name-only --diff-filter=U)" ]] || {
+    echo "Unresolved staged admission merge conflict" >&2; exit 1;
+}
+[[ "$(git hash-object src/lib.rs)" == "aa018961ab02375d6265d3f006517210d2d79e2e" ]] || {
     echo "Changed source module baseline" >&2; exit 1;
 }
-[[ "$(git hash-object .github/workflows/ci.yml)" == "d8635831db24fff41f5f0a6027b2ec47693a449f" ]] || {
+[[ "$(git hash-object .github/workflows/ci.yml)" == "3c24923fe38ead476dadeff997111bde1401ac69" ]] || {
     echo "Changed Rust CI baseline" >&2; exit 1;
 }
 
@@ -57,7 +66,7 @@ if source.count(anchor) != 1 or "Stage 25M BIP141 witness block" in source:
 workflow.write_text(source.replace(anchor, extra + anchor))
 names = [line for line in workflow.read_text().splitlines()
          if line.startswith("      - name: ")]
-if len(names) != 64 or len(set(names)) != 64:
+if len(names) != 66 or len(set(names)) != 66:
     raise SystemExit(f"Expected exactly 64 distinct CI steps; found {len(names)}")
 print(f"STAGE25M_CI_GATES={len(names)}")
 PY
