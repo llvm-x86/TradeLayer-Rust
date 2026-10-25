@@ -69,7 +69,11 @@ fn chained() -> Vec<u8> {
 fn snapshot_for(raw: &[u8], height: u32) -> CandidateParentSnapshot {
     let view = UnverifiedRawBlockView::parse(raw, None).unwrap();
     let generated = (0..view.transaction_count())
-        .map(|index| inspect_transaction(view.raw_transaction(index).unwrap()).unwrap().txid)
+        .map(|index| {
+            inspect_transaction(view.raw_transaction(index).unwrap())
+                .unwrap()
+                .txid
+        })
         .collect::<BTreeSet<_>>();
     let mut entries = Vec::new();
     for index in 1..view.transaction_count() {
@@ -120,7 +124,10 @@ fn exact_three_external_prevouts_and_all_worker_configs() {
             |_, _| UnverifiedProbeVerdict::NoLocalRejection,
         )
         .unwrap();
-        assert_eq!(audited.parent_witness.status(), CANDIDATE_PARENT_UTXO_STATUS);
+        assert_eq!(
+            audited.parent_witness.status(),
+            CANDIDATE_PARENT_UTXO_STATUS
+        );
         assert_eq!(audited.parent_witness.external_inputs_matched(), 3);
         assert_eq!(audited.parent_witness.same_block_outputs_deferred(), 0);
         assert_eq!(
@@ -138,14 +145,11 @@ fn parent_child_grandchild_spends_are_deferred_from_parent_snapshot() {
     let preindex = view.inspect_parallel(config(4)).unwrap();
     let snapshot = snapshot_for(&raw, 900_000);
     assert_eq!(snapshot.entries.len(), 1);
-    let audit = inspect_waves_with_candidate_snapshot(
-        &view,
-        &preindex,
-        config(4),
-        &snapshot,
-        |_, _| UnverifiedProbeVerdict::NoLocalRejection,
-    )
-    .unwrap();
+    let audit =
+        inspect_waves_with_candidate_snapshot(&view, &preindex, config(4), &snapshot, |_, _| {
+            UnverifiedProbeVerdict::NoLocalRejection
+        })
+        .unwrap();
     assert_eq!(audit.parent_witness.external_inputs_matched(), 1);
     assert_eq!(audit.parent_witness.same_block_outputs_deferred(), 2);
     assert_eq!(audit.probe.wave_count(), 3);
@@ -164,16 +168,11 @@ fn missing_external_witness_denies_precheck_before_any_callback() {
     snapshot.entries.remove(1);
     resign(&mut snapshot);
     let calls = AtomicUsize::new(0);
-    let failure = inspect_waves_with_candidate_snapshot(
-        &view,
-        &preindex,
-        config(8),
-        &snapshot,
-        |_, _| {
+    let failure =
+        inspect_waves_with_candidate_snapshot(&view, &preindex, config(8), &snapshot, |_, _| {
             calls.fetch_add(1, Ordering::SeqCst);
             UnverifiedProbeVerdict::NoLocalRejection
-        },
-    );
+        });
     assert!(matches!(
         failure,
         Err(SnapshotWaveError::Snapshot(
@@ -365,16 +364,10 @@ fn complete_snapshot_preflight_denies_double_spends_before_callback() {
     let snapshot = snapshot_for(&raw, 900_000);
     let calls = AtomicUsize::new(0);
     assert_eq!(
-        inspect_waves_with_candidate_snapshot(
-            &view,
-            &indexed,
-            config(4),
-            &snapshot,
-            |_, _| {
-                calls.fetch_add(1, Ordering::SeqCst);
-                UnverifiedProbeVerdict::NoLocalRejection
-            }
-        ),
+        inspect_waves_with_candidate_snapshot(&view, &indexed, config(4), &snapshot, |_, _| {
+            calls.fetch_add(1, Ordering::SeqCst);
+            UnverifiedProbeVerdict::NoLocalRejection
+        }),
         Err(SnapshotWaveError::Snapshot(
             ParentSnapshotError::Dependencies(DependencyAuditError::DuplicateInputSpend {
                 first: 2,
@@ -392,17 +385,13 @@ fn valid_snapshot_still_denies_wave_probe_failure() {
     let indexed = view.inspect_serial().unwrap();
     let snapshot = snapshot_for(&raw, 900_000);
     assert_eq!(
-        inspect_waves_with_candidate_snapshot(
-            &view,
-            &indexed,
-            config(4),
-            &snapshot,
-            |index, _| if index == 2 {
+        inspect_waves_with_candidate_snapshot(&view, &indexed, config(4), &snapshot, |index, _| {
+            if index == 2 {
                 UnverifiedProbeVerdict::Reject
             } else {
                 UnverifiedProbeVerdict::NoLocalRejection
             }
-        ),
+        }),
         Err(SnapshotWaveError::Wave(WaveProbeError::ProbeRejected {
             wave: 0,
             index: 2
