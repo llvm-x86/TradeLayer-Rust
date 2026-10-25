@@ -12,6 +12,7 @@ pub mod bitcoin_forks; // Bounded greatest-work selection among observed header 
 pub mod bitcoin_inclusion; // Bitcoin SHA256d header and tx Merkle checks; no full consensus.
 mod canonical_columns; // Canonical nonzero map mutations for wallet and channel columns.
 pub mod chain; // Trust-boundary and reversible block progression, prototype only.
+pub mod channel_witness_audit; // Stage 25H raw native P2WSH script/outpoint only; not ECDSA authorization.
 mod checked_amounts; // Bit-precise checked debit/credit arithmetic; Kani proof harnesses.
 pub mod clearing_cadence; // Stage 24C read-only JS clearing callback and funding schedule observations.
 pub mod clearing_chain; // Stage 25D unverified combined spot-clearing rollback and TLCC checkpoints.
