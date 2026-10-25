@@ -192,10 +192,8 @@ fn selected_funding_output(
     let observation = inspect_transaction(raw_funding)?;
     let mut cur = Cursor::new(raw_funding);
     cur.take(4)?;
-    if observation.has_witness {
-        if cur.take(2)? != [0, 1] {
-            return Err(ScanError::Invalid("invalid funding witness flag".into()).into());
-        }
+    if observation.has_witness && cur.take(2)? != [0, 1] {
+        return Err(ScanError::Invalid("invalid funding witness flag".into()).into());
     }
     let inputs = cur.count()?;
     for _ in 0..inputs {
