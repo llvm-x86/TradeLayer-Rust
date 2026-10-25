@@ -399,7 +399,6 @@ fn valid_snapshot_still_denies_wave_probe_failure() {
     );
 }
 
-
 #[test]
 fn pinned_independent_python_candidate_fingerprint_vector() {
     // Separately encoded in scripts/audit_stage8d4_candidate_fingerprint.py.
@@ -434,12 +433,11 @@ fn pinned_independent_python_candidate_fingerprint_vector() {
         ],
         expected_fingerprint: [0u8; 32],
     };
-    let expected: [u8; 32] = decode_hex(
-        "6b8b85dde893bbc5adf6c3e50e3cae6d11984038d25bc3d329e6dc76ea4fe198"
-    )
-    .unwrap()
-    .try_into()
-    .unwrap();
+    let expected: [u8; 32] =
+        decode_hex("6b8b85dde893bbc5adf6c3e50e3cae6d11984038d25bc3d329e6dc76ea4fe198")
+            .unwrap()
+            .try_into()
+            .unwrap();
     assert_eq!(candidate_snapshot_fingerprint(&snapshot).unwrap(), expected);
     snapshot.expected_fingerprint = expected;
     snapshot.entries[0].amount_sat += 1;
