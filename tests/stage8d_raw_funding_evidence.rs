@@ -70,7 +70,7 @@ fn funding(seed: u8) -> (Vec<u8>, Vec<(u64, Vec<u8>)>) {
     raw.extend_from_slice(&u32::MAX.to_le_bytes());
     raw.push(outputs.len() as u8);
     for (amount, script) in &outputs {
-        raw.extend_from_slice(&(*amount as u64).to_le_bytes());
+        raw.extend_from_slice(&amount.to_le_bytes());
         raw.push(script.len() as u8);
         raw.extend_from_slice(script);
     }
@@ -87,8 +87,8 @@ fn assemble(seed: u8) -> (Vec<u8>, CandidateParentSnapshot, Vec<Vec<u8>>) {
     let (raw_funding, outputs) = funding(seed);
     let txid = inspect_transaction(&raw_funding).unwrap().txid;
     let mut txs = base_transactions();
-    for index in 1..=3 {
-        rewire(&mut txs[index], txid, (index - 1) as u32);
+    for (index, tx) in txs.iter_mut().enumerate().take(4).skip(1) {
+        rewire(tx, txid, (index - 1) as u32);
     }
     let raw = block(&txs);
     let mut snapshot = CandidateParentSnapshot {
