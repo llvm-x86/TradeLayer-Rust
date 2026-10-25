@@ -31,7 +31,10 @@ use crate::read_only::{
     TransactionObservation, MAX_RAW_TRANSACTION,
 };
 use std::collections::BTreeMap;
+use std::ops::Range;
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{mpsc, Mutex};
 use std::sync::OnceLock;
 use std::thread;
 
@@ -425,6 +428,223 @@ pub(crate) fn inspect_prepared_block_one_team(
         )?;
     }
     debug_assert_eq!(report.raw_bytes_inspected, bytes);
+    Ok(report)
+}
+
+/// CPU-byte-work estimate used ONLY to size scheduling claims.
+/// SegWit requires hashing raw (wtxid) and stripped (txid) bytes.
+/// Classification work may differ, so all chunk assignments remain dynamic.
+fn prepared_hash_work(row: &PreparedRawTransaction<'_>) -> usize {
+    let stripped = row.layout.stripped_bytes();
+    if stripped < row.raw.len() {
+        row.raw.len() + stripped
+    } else {
+        row.raw.len()
+    }
+}
+
+/// Build source-contiguous, variable-sized microclaims from a bounded window.
+/// Each worker pulls the next claim on completion, avoiding the load imbalance
+/// from assigning entire static shards to workers. This returns scheduling
+/// metadata only; transactions remain borrowed from the original raw block.
+fn weighted_window_claims(
+    transactions: &[PreparedRawTransaction<'_>],
+    start: usize,
+    end: usize,
+    workers: usize,
+) -> Vec<Range<usize>> {
+    let total_work: usize = transactions[start..end].iter().map(prepared_hash_work).sum();
+    let target_work = total_work.div_ceil(workers * 4).max(512);
+    let mut claims = Vec::new();
+    let mut cursor = start;
+    while cursor < end {
+        let first = cursor;
+        let mut work = 0usize;
+        while cursor < end
+            && (cursor == first || (work < target_work && cursor - first < 32))
+        {
+            work += prepared_hash_work(&transactions[cursor]);
+            cursor += 1;
+        }
+        claims.push(first..cursor);
+    }
+    claims
+}
+
+#[derive(Debug, Clone, Copy)]
+struct WeightedWindowJob {
+    chunk: usize,
+    first: usize,
+    end: usize,
+}
+
+struct WeightedWindowResult {
+    chunk: usize,
+    rows: Result<Vec<Result<TransactionObservation, ParallelIndexError>>, ParallelIndexError>,
+}
+
+/// EXPERIMENTAL: reuse one scoped worker team across all source-ordered
+/// windows. At most config.window_transactions (<=512) observations can be
+/// in flight in a single window, and the work queue itself is bounded to
+/// twice the number of workers. No per-TX OnceLock, global atomic TX index,
+/// extra crate, unsafe or serialized-TX copying.
+///
+/// Within each window, workers dynamically claim contiguous TX ranges sized
+/// by estimated SHA256d bytes. A worker never touches protocol state. Only
+/// the coordinator reduces observations, detects the earliest error/duplicate
+/// by block position and validates the block Merkle in the existing caller.
+///
+/// Catch unwind at the *job* boundary so worker panics become WorkerPanicked
+/// rather than leaving a missing result stuck behind a blocking receiver.
+/// This remains an untrusted CPU preindex, never Script/UTXO/chain/ledger.
+pub(crate) fn inspect_prepared_block_pooled_weighted(
+    transactions: &[PreparedRawTransaction<'_>],
+    config: ParallelIndexConfig,
+) -> Result<UnverifiedOrderedBlockIndex, ParallelIndexError> {
+    let config = config.validate()?;
+    validate_count(transactions.len())?;
+    let mut total_bytes = 0usize;
+    for (index, row) in transactions.iter().enumerate() {
+        validate_row(index, row.raw)?;
+        total_bytes = total_bytes
+            .checked_add(row.raw.len())
+            .filter(|sum| *sum <= MAX_BLOCK_INPUT_BYTES)
+            .ok_or(ParallelIndexError::ExceededBlockByteLimit)?;
+    }
+    if config.workers == 1 || transactions.len() == 1 {
+        return inspect_prepared_block_parallel(transactions, config);
+    }
+
+    let worker_count = config.workers.min(transactions.len());
+    let (task_sender, task_receiver) = mpsc::sync_channel::<WeightedWindowJob>(worker_count * 2);
+    let task_receiver = Mutex::new(task_receiver);
+    let (result_sender, result_receiver) = mpsc::channel::<WeightedWindowResult>();
+    let mut report = blank_index(transactions.len());
+    let mut seen = BTreeMap::new();
+
+    let outcome = thread::scope(|scope| {
+        let mut handles = Vec::with_capacity(worker_count);
+        for _ in 0..worker_count {
+            let tasks = &task_receiver;
+            let completed = result_sender.clone();
+            handles.push(scope.spawn(move || loop {
+                // Hold the receiver mutex only while accepting the next job.
+                // Worker hashing and classification happen outside the lock.
+                let job = match tasks.lock() {
+                    Ok(guard) => guard.recv(),
+                    Err(_) => break,
+                };
+                let Ok(job) = job else { break };
+                let rows = catch_unwind(AssertUnwindSafe(|| {
+                    let mut local = Vec::with_capacity(job.end - job.first);
+                    for (offset, item) in transactions[job.first..job.end].iter().enumerate() {
+                        let index = job.first + offset;
+                        let row = inspect_prepared_transaction(item.raw, item.layout)
+                            .map_err(|source| ParallelIndexError::RawScan { index, source });
+                        let failed = row.is_err();
+                        local.push(row);
+                        if failed {
+                            break;
+                        }
+                    }
+                    local
+                }))
+                .map_err(|_| ParallelIndexError::WorkerPanicked);
+                if completed.send(WeightedWindowResult { chunk: job.chunk, rows }).is_err() {
+                    break;
+                }
+            }));
+        }
+        drop(result_sender);
+
+        let scanned = (|| {
+            for (window_index, window) in
+                transactions.chunks(config.window_transactions).enumerate()
+            {
+                let start = window_index * config.window_transactions;
+                let claims = weighted_window_claims(
+                    transactions,
+                    start,
+                    start + window.len(),
+                    worker_count,
+                );
+                // Only this window is dispatched at a time. At most 512 raw
+                // observations are retained by workers and result messages.
+                for (chunk, claim) in claims.iter().enumerate() {
+                    task_sender
+                        .send(WeightedWindowJob {
+                            chunk,
+                            first: claim.start,
+                            end: claim.end,
+                        })
+                        .map_err(|_| ParallelIndexError::WorkerPanicked)?;
+                }
+                let mut gathered = (0..claims.len())
+                    .map(|_| None)
+                    .collect::<Vec<Option<WeightedWindowResult>>>();
+                for _ in 0..claims.len() {
+                    let finished = result_receiver
+                        .recv()
+                        .map_err(|_| ParallelIndexError::WorkerPanicked)?;
+                    let slot = gathered
+                        .get_mut(finished.chunk)
+                        .ok_or(ParallelIndexError::MissingWorkerResult)?;
+                    if slot.replace(finished).is_some() {
+                        return Err(ParallelIndexError::MissingWorkerResult);
+                    }
+                }
+                // A panic anywhere takes precedence, matching the original
+                // windowed and one-team scanner's join-failure semantics.
+                if gathered.iter().any(|slot| {
+                    matches!(
+                        slot,
+                        Some(WeightedWindowResult {
+                            rows: Err(ParallelIndexError::WorkerPanicked),
+                            ..
+                        })
+                    )
+                }) {
+                    return Err(ParallelIndexError::WorkerPanicked);
+                }
+                for (claim, received) in claims.into_iter().zip(gathered) {
+                    let rows = received
+                        .ok_or(ParallelIndexError::MissingWorkerResult)?
+                        .rows?;
+                    let row_count = rows.len();
+                    for (offset, row) in rows.into_iter().enumerate() {
+                        let index = claim.start + offset;
+                        append_observation(
+                            &mut report,
+                            &mut seen,
+                            index,
+                            transactions[index].raw.len(),
+                            row?,
+                        )?;
+                    }
+                    if row_count != claim.end - claim.start {
+                        return Err(ParallelIndexError::MissingWorkerResult);
+                    }
+                }
+            }
+            Ok(())
+        })();
+
+        // Closing the queue lets persistent workers exit cleanly after the
+        // final window (or after an early error) before the scope is left.
+        drop(task_sender);
+        let mut panicked = false;
+        for handle in handles {
+            if handle.join().is_err() {
+                panicked = true;
+            }
+        }
+        if panicked {
+            Err(ParallelIndexError::WorkerPanicked)
+        } else {
+            scanned
+        }
+    })?;
+    debug_assert_eq!(report.raw_bytes_inspected, total_bytes);
     Ok(report)
 }
 
