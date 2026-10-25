@@ -151,8 +151,92 @@ fn borrower_selects_exact_output_from_both_legacy_and_segwit_funding() {
                 .unwrap();
         assert_eq!(decoded, *amount);
         assert_eq!(decoded_script, script.as_slice());
-        assert_eq!(decoded_script.as_ptr(), script.as_ptr(), "independent input fixture differs");
     }
+}
+
+#[test]
+fn independent_python_known_answer_for_one_raw_funding_transaction() {
+    let (raw, _) = funding(0x53);
+    assert_eq!(raw.len(), 105);
+    // Pinned from hashlib.sha256(hashlib.sha256(bytes).digest()).digest().
+    let python_raw_digest = decode_hex(
+        "01adfa763d8cb8bdf850869cd34797535ecd02ff76ff6ee7d28e97d35e85ffd8",
+    )
+    .unwrap();
+    assert_eq!(
+        inspect_transaction(&raw).unwrap().txid.as_slice(),
+        python_raw_digest.as_slice()
+    );
+}
+
+#[test]
+fn several_funding_transactions_must_appear_once_in_raw_txid_sort_order() {
+    let (fund_a, outputs_a) = funding(0x31);
+    let (fund_b, outputs_b) = funding(0x32);
+    let id_a = inspect_transaction(&fund_a).unwrap().txid;
+    let id_b = inspect_transaction(&fund_b).unwrap().txid;
+    let mut txs = base_transactions();
+    rewire(&mut txs[1], id_a, 0);
+    rewire(&mut txs[2], id_a, 1);
+    rewire(&mut txs[3], id_b, 0);
+    let raw = block(&txs);
+    let mut snapshot = CandidateParentSnapshot {
+        parent_block_hash_raw: raw[4..36].try_into().unwrap(),
+        parent_height: 900_000,
+        entries: vec![
+            CandidateParentUtxo {
+                outpoint: CandidateOutpoint {
+                    txid_raw: id_a,
+                    vout: 0,
+                },
+                amount_sat: outputs_a[0].0,
+                script_pubkey: outputs_a[0].1.clone(),
+                created_height: 899_500,
+                is_coinbase: false,
+            },
+            CandidateParentUtxo {
+                outpoint: CandidateOutpoint {
+                    txid_raw: id_a,
+                    vout: 1,
+                },
+                amount_sat: outputs_a[1].0,
+                script_pubkey: outputs_a[1].1.clone(),
+                created_height: 899_500,
+                is_coinbase: false,
+            },
+            CandidateParentUtxo {
+                outpoint: CandidateOutpoint {
+                    txid_raw: id_b,
+                    vout: 0,
+                },
+                amount_sat: outputs_b[0].0,
+                script_pubkey: outputs_b[0].1.clone(),
+                created_height: 899_500,
+                is_coinbase: false,
+            },
+        ],
+        expected_fingerprint: [0; 32],
+    };
+    snapshot.entries.sort_by_key(|entry| entry.outpoint);
+    sign(&mut snapshot);
+    let mut evidence = vec![fund_a, fund_b];
+    evidence.sort_by_key(|fund| inspect_transaction(fund).unwrap().txid);
+    let view = UnverifiedRawBlockView::parse(&raw, None).unwrap();
+    let index = view.inspect_serial().unwrap();
+    let report = inspect_raw_funding_evidence(&view, &index, &snapshot, &evidence).unwrap();
+    assert_eq!(report.funding_transactions_parsed(), 2);
+    assert_eq!(report.exact_prevouts_matched(), 3);
+
+    evidence.reverse();
+    assert_eq!(
+        inspect_raw_funding_evidence(&view, &index, &snapshot, &evidence),
+        Err(FundingEvidenceError::UnsortedFundingTransactions { index: 1 })
+    );
+    evidence.pop();
+    assert!(matches!(
+        inspect_raw_funding_evidence(&view, &index, &snapshot, &evidence),
+        Err(FundingEvidenceError::MissingFundingTransaction { .. })
+    ));
 }
 
 #[test]
