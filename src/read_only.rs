@@ -108,6 +108,75 @@ impl<'a> Cursor<'a> {
     }
 }
 
+/// Read a canonical Bitcoin CompactSize prefix from a borrowed byte stream.
+/// Internal block-ingestion boundary: this is syntax, not consensus authority.
+pub(crate) fn compact_size_prefix(raw: &[u8]) -> Result<(u64, usize), ScanError> {
+    let mut cursor = Cursor::new(raw);
+    let count = cursor.varint()?;
+    Ok((count, cursor.offset))
+}
+
+/// Locate ONE complete serialized transaction at the start of a larger
+/// byte stream, without allocation or TXID hashing. A raw block can then
+/// expose borrowed ranges instead of cloning thousands of transaction Vecs.
+///
+/// Returned (full_length, stripped_length) includes version and locktime.
+/// Witness marker/flag and witness data contribute only to full_length.
+/// This matches the strict read-only inspector's supported BIP144 subset;
+/// neither function validates scripts, UTXOs, transactions or consensus.
+pub(crate) fn transaction_prefix_lengths(raw: &[u8]) -> Result<(usize, usize), ScanError> {
+    let mut reader = Cursor::new(raw);
+    reader.read(4)?; // version
+    let has_witness = raw.get(4) == Some(&0);
+    if has_witness {
+        let marker = reader.byte()?;
+        let flag = reader.byte()?;
+        if marker != 0 || flag != 1 {
+            return Err(ScanError::Invalid("unsupported SegWit marker/flag".into()));
+        }
+    }
+    let stripped_start = reader.offset;
+    let input_count = reader.limited_count()?;
+    for _ in 0..input_count {
+        reader.read(36)?;
+        reader.variable_bytes()?;
+        reader.read(4)?;
+    }
+    let output_count = reader.limited_count()?;
+    for _ in 0..output_count {
+        reader.read(8)?;
+        reader.variable_bytes()?;
+    }
+    let stripped_end = reader.offset;
+    if has_witness {
+        let mut nonempty = false;
+        for _ in 0..input_count {
+            let stack_len = reader.varint()?;
+            if stack_len > MAX_IO_COUNT {
+                return Err(ScanError::TooLong);
+            }
+            for _ in 0..stack_len {
+                let item = reader.variable_bytes()?;
+                nonempty |= !item.is_empty();
+            }
+        }
+        if !nonempty {
+            return Err(ScanError::Invalid("superfluous SegWit witness marker".into()));
+        }
+    }
+    reader.read(4)?; // locktime
+    let total_len = reader.offset;
+    if total_len > MAX_RAW_TRANSACTION {
+        return Err(ScanError::TooLong);
+    }
+    let stripped_len = if has_witness {
+        8 + stripped_end - stripped_start
+    } else {
+        total_len
+    };
+    Ok((total_len, stripped_len))
+}
+
 /// Hash in display order, the reverse of SHA256d digest bytes.
 pub fn id_hex(digest: &[u8; 32]) -> String {
     digest
