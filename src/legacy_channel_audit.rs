@@ -393,7 +393,20 @@ impl UnverifiedLegacyChannel {
             .unwrap_or("")
             .to_owned();
         let _predicted = next.source_predict_column(claim.sender);
+        let owners_before = next.participants.clone();
+        let balances_before = next.balances.clone();
         next.assign(claim.sender, &cp, claim.height);
+        // Even the source's "one-sided swap" may replace the former
+        // opposite-column owner with the incoming sender, leaving the old
+        // owner's tokens attached to the newcomer after the swap/align.
+        for (i, previous_owner) in owners_before.iter().enumerate() {
+            if !previous_owner.is_empty()
+                && !next.participants.contains(previous_owner)
+                && balances_before[i].values().any(|atoms| *atoms > 0)
+            {
+                next.possible_crowded_displacement = true;
+            }
+        }
         let side = next.source_resolve_column(claim.sender)
             .ok_or(ChannelSourceError::ColumnUnresolved)?;
         let i = side.index();
