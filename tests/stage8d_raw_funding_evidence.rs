@@ -58,7 +58,7 @@ fn rewire(tx: &mut [u8], prev: [u8; 32], n: u32) {
 }
 
 fn funding(seed: u8) -> (Vec<u8>, Vec<(u64, Vec<u8>)>) {
-    let outputs = vec![
+    let outputs: Vec<(u64, Vec<u8>)> = vec![
         (13_000, vec![0x51]),
         (42_000, [&[0x00, 0x14][..], &[seed; 20]].concat()),
         (90_000, vec![0x6a, 0x01, seed]),
