@@ -2,16 +2,16 @@
 use tradelayer_core::channel_p2sh_audit::{
     audit_legacy_p2sh_two_of_two_unverified, P2shAuditError,
 };
-use tradelayer_core::channel_witness_audit::{
-    ClaimedTwoOfTwoPubkeys, StructuralChannelError,
-};
+use tradelayer_core::channel_witness_audit::{ClaimedTwoOfTwoPubkeys, StructuralChannelError};
 use tradelayer_core::network_profile::TradeLayerMainnet;
 use tradelayer_core::read_only::{decode_hex, inspect_transaction, ScanError};
 
 fn keys() -> ClaimedTwoOfTwoPubkeys {
-    let x: [u8; 32] = decode_hex(
-        "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
-    ).unwrap().try_into().unwrap();
+    let x: [u8; 32] =
+        decode_hex("79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798")
+            .unwrap()
+            .try_into()
+            .unwrap();
     let mut a = [0u8; 33];
     a[0] = 2;
     a[1..].copy_from_slice(&x);
@@ -45,7 +45,8 @@ fn hash160(reverse: bool) -> Vec<u8> {
         "62c5a9dce49968f5ebf6691fb6fa43e1ebede59d"
     } else {
         "3fb5b5fbb96ad2b002a5ab6f3e05da931641c0f4"
-    }).unwrap()
+    })
+    .unwrap()
 }
 
 fn p2sh(reverse: bool) -> Vec<u8> {
@@ -112,21 +113,20 @@ fn spending(prevout_txid_raw: [u8; 32], vout: u32, sig_script: &[u8]) -> Vec<u8>
 
 fn pair(reverse: bool) -> (Vec<u8>, Vec<u8>) {
     let fund = funding(&p2sh(reverse), 15_000);
-    let spend = spending(inspect_transaction(&fund).unwrap().txid, 0, &script_sig(reverse));
+    let spend = spending(
+        inspect_transaction(&fund).unwrap().txid,
+        0,
+        &script_sig(reverse),
+    );
     (fund, spend)
 }
 
 fn check(
-    fund: &[u8], spend: &[u8], claimed: ClaimedTwoOfTwoPubkeys,
+    fund: &[u8],
+    spend: &[u8],
+    claimed: ClaimedTwoOfTwoPubkeys,
 ) -> Result<tradelayer_core::channel_p2sh_audit::UnverifiedP2shTwoOfTwoSpend, P2shAuditError> {
-    audit_legacy_p2sh_two_of_two_unverified(
-        TradeLayerMainnet::Litecoin,
-        fund,
-        0,
-        spend,
-        1,
-        claimed,
-    )
+    audit_legacy_p2sh_two_of_two_unverified(TradeLayerMainnet::Litecoin, fund, 0, spend, 1, claimed)
 }
 
 #[test]
@@ -169,23 +169,47 @@ fn wrong_funding_prevout_or_other_vout_and_zero_funds_reject() {
     let mut txid = inspect_transaction(&fund).unwrap().txid;
     txid[0] ^= 1;
     let wrong = spending(txid, 0, &script_sig(false));
-    assert_eq!(check(&fund, &wrong, keys()), Err(P2shAuditError::WrongPrevout));
-    let wrong = spending(inspect_transaction(&fund).unwrap().txid, 1, &script_sig(false));
-    assert_eq!(check(&fund, &wrong, keys()), Err(P2shAuditError::WrongPrevout));
+    assert_eq!(
+        check(&fund, &wrong, keys()),
+        Err(P2shAuditError::WrongPrevout)
+    );
+    let wrong = spending(
+        inspect_transaction(&fund).unwrap().txid,
+        1,
+        &script_sig(false),
+    );
+    assert_eq!(
+        check(&fund, &wrong, keys()),
+        Err(P2shAuditError::WrongPrevout)
+    );
     assert_eq!(
         audit_legacy_p2sh_two_of_two_unverified(
-            TradeLayerMainnet::Litecoin, &fund, 1, &spend, 1, keys()
+            TradeLayerMainnet::Litecoin,
+            &fund,
+            1,
+            &spend,
+            1,
+            keys()
         ),
         Err(P2shAuditError::FundingVoutOutOfRange)
     );
     assert_eq!(
         audit_legacy_p2sh_two_of_two_unverified(
-            TradeLayerMainnet::Litecoin, &fund, 0, &spend, 2, keys()
+            TradeLayerMainnet::Litecoin,
+            &fund,
+            0,
+            &spend,
+            2,
+            keys()
         ),
         Err(P2shAuditError::SpendingVinOutOfRange)
     );
     let empty_fund = funding(&p2sh(false), 0);
-    let zero_spend = spending(inspect_transaction(&empty_fund).unwrap().txid, 0, &script_sig(false));
+    let zero_spend = spending(
+        inspect_transaction(&empty_fund).unwrap().txid,
+        0,
+        &script_sig(false),
+    );
     assert_eq!(
         check(&empty_fund, &zero_spend, keys()),
         Err(P2shAuditError::InvalidOutputAmount)
@@ -199,14 +223,20 @@ fn a_changed_hash160_redeem_or_a_non_p2sh_output_fails_closed() {
     bad[2] ^= 1;
     let changed_fund = funding(&bad, 15_000);
     let changed_spend = spending(
-        inspect_transaction(&changed_fund).unwrap().txid, 0, &script_sig(false)
+        inspect_transaction(&changed_fund).unwrap().txid,
+        0,
+        &script_sig(false),
     );
     assert_eq!(
         check(&changed_fund, &changed_spend, keys()),
         Err(P2shAuditError::Hash160Mismatch)
     );
     let native = funding(&[0x00, 0x20], 15_000);
-    let native_spend = spending(inspect_transaction(&native).unwrap().txid, 0, &script_sig(false));
+    let native_spend = spending(
+        inspect_transaction(&native).unwrap().txid,
+        0,
+        &script_sig(false),
+    );
     assert_eq!(
         check(&native, &native_spend, keys()),
         Err(P2shAuditError::NotP2shFunding)
@@ -234,22 +264,33 @@ fn malformed_or_nonminimal_script_sig_cannot_be_used_as_authority() {
     let mut sig = script_sig(false);
     sig[1] = 0x4c; // nonminimal PUSHDATA1 opcode instead of PUSH9
     let sp = spending(txid, 0, &sig);
-    assert_eq!(check(&fund, &sp, keys()), Err(P2shAuditError::NonCanonicalPush));
+    assert_eq!(
+        check(&fund, &sp, keys()),
+        Err(P2shAuditError::NonCanonicalPush)
+    );
     let mut sig = script_sig(false);
     let push_redeem_offset = 1 + 1 + fake_der(1, 2).len() + 1 + fake_der(3, 4).len();
     sig[push_redeem_offset] = 0x4c; // strict direct PUSH71 only
     let sp = spending(txid, 0, &sig);
-    assert_eq!(check(&fund, &sp, keys()), Err(P2shAuditError::NonCanonicalPush));
+    assert_eq!(
+        check(&fund, &sp, keys()),
+        Err(P2shAuditError::NonCanonicalPush)
+    );
     let mut sig = script_sig(false);
     sig.push(0);
     let sp = spending(txid, 0, &sig);
-    assert_eq!(check(&fund, &sp, keys()), Err(P2shAuditError::InvalidScriptSig));
+    assert_eq!(
+        check(&fund, &sp, keys()),
+        Err(P2shAuditError::InvalidScriptSig)
+    );
     let mut sig = script_sig(false);
     sig[5] = 0x80; // make first R negative
     let sp = spending(txid, 0, &sig);
     assert!(matches!(
         check(&fund, &sp, keys()),
-        Err(P2shAuditError::Signature(StructuralChannelError::MalformedSignatureEncoding))
+        Err(P2shAuditError::Signature(
+            StructuralChannelError::MalformedSignatureEncoding
+        ))
     ));
 }
 
@@ -297,14 +338,25 @@ fn malformed_transaction_bytes_wrong_network_or_sighash_reject() {
     let (fund, spend) = pair(false);
     assert_eq!(
         audit_legacy_p2sh_two_of_two_unverified(
-            TradeLayerMainnet::Dogecoin, &fund, 0, &spend, 1, keys()
+            TradeLayerMainnet::Dogecoin,
+            &fund,
+            0,
+            &spend,
+            1,
+            keys()
         ),
         Err(P2shAuditError::UnsupportedNetwork)
     );
     // BTC and LTC share this script form, not their network consensus.
     assert!(audit_legacy_p2sh_two_of_two_unverified(
-        TradeLayerMainnet::Bitcoin, &fund, 0, &spend, 1, keys()
-    ).is_ok());
+        TradeLayerMainnet::Bitcoin,
+        &fund,
+        0,
+        &spend,
+        1,
+        keys()
+    )
+    .is_ok());
     let mut malformed = spend.clone();
     malformed.push(0);
     assert_eq!(
@@ -320,7 +372,7 @@ fn malformed_transaction_bytes_wrong_network_or_sighash_reject() {
         ))
     );
     let mut sig = script_sig(false);
-    let sighash_offset = 1 + 1 + fake_der(1,2).len() - 1;
+    let sighash_offset = 1 + 1 + fake_der(1, 2).len() - 1;
     sig[sighash_offset] = 0x02;
     let alt = spending(inspect_transaction(&fund).unwrap().txid, 0, &sig);
     assert_eq!(
