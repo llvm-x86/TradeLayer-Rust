@@ -1,0 +1,66 @@
+{
+  "schema": 1,
+  "id": "TL-TXINDEX-READONLY-V1",
+  "domain": "Offline Bitcoin-style transaction inspection before consensus authorization",
+  "scenarios": [
+    {
+      "id": "TX-ORDER-001",
+      "given": "An ordered block of syntactically parseable synthetic transactions",
+      "when": "A bounded worker pool or serial scanner inspects the same transaction bytes",
+      "then": "TXIDs, witness hashes, candidate positions, and the complete ordered read-only report agree for supported worker and window configurations",
+      "checks": [
+        "parallel-index",
+        "one-team",
+        "hash-oracle"
+      ]
+    },
+    {
+      "id": "TX-FAIL-002",
+      "given": "Malformed bytes, duplicate TXIDs, wrong fetched bytes, or multiple out-of-order worker failures",
+      "when": "The indexed block is rejected",
+      "then": "The first canonical-position error is reported deterministically, with no partial authenticated state transition",
+      "checks": [
+        "parallel-index",
+        "fused-dependencies"
+      ]
+    },
+    {
+      "id": "TX-WAVE-003",
+      "given": "A synthetic block with external prevouts and in-block parent-child dependencies",
+      "when": "The scanner builds read-only dependency waves",
+      "then": "Waves remain deterministic, reject conflicting or invalid relationships, and preserve unknown external UTXOs",
+      "checks": [
+        "fused-dependencies",
+        "dependency-oracle",
+        "raw-block"
+      ]
+    },
+    {
+      "id": "TX-BOUNDARY-004",
+      "given": "An indexed block whose Bitcoin ancestry, scripts and UTXOs are unverified",
+      "when": "A caller requests authenticated consensus or signed-state authority",
+      "then": "Read-only indexing APIs reject those authority requests",
+      "checks": [
+        "parallel-index",
+        "fused-dependencies",
+        "one-team"
+      ]
+    },
+    {
+      "id": "TX-HASH-005",
+      "given": "Pinned legacy and SegWit transaction witnesses",
+      "when": "The indexing optimization computes TXIDs and WTXIDs",
+      "then": "Outputs match independent SHA256d vectors, including non-SegWit TXID equals WTXID",
+      "checks": [
+        "hash-oracle",
+        "hash-fastpath"
+      ]
+    }
+  ],
+  "limits": [
+    "Acceptance only for syntactic/read-only processing of synthetic inputs.",
+    "No tested operation authenticates Bitcoin chainwork, UTXO ownership, witness scripts, consensus, wallet, or live funds.",
+    "Passing does not establish universal equivalence; add adverse counterexamples as reviewed contract cases.",
+    "Changing or weakening a contract requires a separately reviewed authority change."
+  ]
+}

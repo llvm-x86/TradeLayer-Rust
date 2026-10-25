@@ -8,3 +8,19 @@
 /security/ @patrickdugan
 /scripts/check_rust_supply_chain.py @patrickdugan
 /tests/test_rust_supply_chain.py @patrickdugan
+
+# Human-owned executable contract, verifier, referenced oracles and skill.
+/AGENTS.md @patrickdugan
+/contracts/ @patrickdugan
+/.agents/skills/executable-contract/ @patrickdugan
+/scripts/verify_executable_contract.py @patrickdugan
+/scripts/guard_contract_authority.py @patrickdugan
+/scripts/audit_txindex_hash_vectors.py @patrickdugan
+/scripts/audit_stage8d_dependency_waves.py @patrickdugan
+/tests/test_executable_contract.py @patrickdugan
+/tests/parallel_txindex.rs @patrickdugan
+/tests/stage8d_fused_dependency.rs @patrickdugan
+/tests/stage8d_one_team.rs @patrickdugan
+/tests/raw_block_ingest.rs @patrickdugan
+/tests/txindex_hash_fastpath.rs @patrickdugan
+/docs/EXECUTABLE_CONTRACTS.md @patrickdugan

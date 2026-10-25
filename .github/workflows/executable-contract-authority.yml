@@ -1,0 +1,26 @@
+name: Executable Contract Authority
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  contract-authority:
+    runs-on: ubuntu-24.04
+    steps:
+      # This workflow and checkout come from the trusted default branch.
+      # Never check out PR-head code or execute scripts supplied by the PR.
+      - name: Checkout trusted default branch
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Enforce protected executable-contract policy
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          PULL_REQUEST_NUMBER: ${{ github.event.pull_request.number }}
+        run: python3 scripts/guard_contract_authority.py
