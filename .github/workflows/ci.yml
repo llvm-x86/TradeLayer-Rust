@@ -74,6 +74,10 @@ jobs:
         run: python3 scripts/audit_channel_ecdsa_openssl.py --check
       - name: Stage 25J public-only signed 2-of-2 fixture Rust parity and always-deny
         run: cargo test --frozen --test channel_signed_evidence
+      - name: Stage 25L independent Bitcoin P2WSH Merkle and witness non-auth oracle
+        run: python3 scripts/audit_bitcoin_channel_merkle_fixture.py
+      - name: Stage 25L dual Bitcoin Merkle inclusion and always-deny tests
+        run: cargo test --frozen --test channel_inclusion_audit
       - name: Stage 25K independent RIPEMD160 HASH160 Python provider reference
         run: python3 scripts/audit_p2sh_hash160.py
       - name: Stage 25K legacy P2SH two-of-two script and outpoint, no ECDSA
