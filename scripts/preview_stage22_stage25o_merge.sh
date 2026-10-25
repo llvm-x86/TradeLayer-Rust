@@ -59,6 +59,22 @@ Path(".github/workflows/ci.yml").write_text(merged_ci)
 
 formal_lib = show("src/lib.rs", "HEAD")
 main_lib = show("src/lib.rs", "ec11722cf627c2912b8023c9cbe16e36e3f5c853")
+# Stage25M inserted bitcoin_witness_commitment between bitcoin_inclusion
+# and that older module's trailing documentation comment. This exactly
+# reviewed source-only normalization restores the comment to its module.
+# Any other divergence still fails the full nonmodule comparison below.
+old_decl = (
+    "pub mod bitcoin_inclusion;\n"
+    "pub mod bitcoin_witness_commitment; // Stage25M unverified Bitcoin BIP141 full-tx witness evidence.\n"
+    "                                    // Bitcoin SHA256d header and tx Merkle checks; no full consensus.\n"
+)
+new_decl = (
+    "pub mod bitcoin_inclusion; // Bitcoin SHA256d header and tx Merkle checks; no full consensus.\n"
+    "pub mod bitcoin_witness_commitment; // Stage25M unverified Bitcoin BIP141 full-tx witness evidence.\n"
+)
+if main_lib.count(old_decl) != 1 or new_decl in main_lib:
+    raise SystemExit("Unexpected Stage25M bitcoin_inclusion comment source; refuse source merge")
+main_lib = main_lib.replace(old_decl, new_decl)
 module_pattern = re.compile(r"^(?:(?:pub|pub\(crate\)) )?mod (\w+);[^\n]*$", re.MULTILINE)
 def modules(source):
     matches = list(module_pattern.finditer(source))
