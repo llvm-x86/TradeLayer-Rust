@@ -1,0 +1,122 @@
+//! Stage 25L: two Bitcoin txid-Merkle proofs tied to one claimed header branch.
+//!
+//! This is relative, offline evidence only. The stage-16 header segment checks
+//! SHA256d header PoW and parent links against a CALLER-SELECTED anchor, not
+//! full Bitcoin consensus or best-chain membership. Bitcoin txid Merkle roots
+//! do NOT authenticate the SegWit witness bytes without the separate witness
+//! commitment and full-block validation. Stages 25H/I also do not validate
+//! ECDSA or a signed channel-state revision. All spending authorization DENIES.
+//!
+//! Synthetic tests use a RegtestLike target with a fabricated anchor; they
+//! must never be interpreted as Bitcoin mainnet confirmation.
+
+use crate::bitcoin_inclusion::{
+    CheckedHeaderSegment, IncludedTransaction, InclusionError, MerklePath,
+};
+use crate::chain::Tip;
+use crate::channel_witness_audit::{
+    audit_native_p2wsh_outpoint_unverified, ClaimedTwoOfTwoPubkeys, StructuralChannelError,
+    UnverifiedP2wshOutpointSpend,
+};
+use crate::network_profile::TradeLayerMainnet;
+
+/// Disjoint error types keep inclusion, provenance, ordering, and
+/// authorization failures visible to callers.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ChannelInclusionError {
+    UnsupportedNetwork,
+    NoncausalTransactionOrder,
+    FundingMerkle(InclusionError),
+    SpendingMerkle(InclusionError),
+    ChannelStructure(StructuralChannelError),
+    ActiveChainWitnessAndSignaturesUnverified,
+}
+
+/// Both txid-Merkle paths were checked against headers in the SAME locally
+/// linked segment, and the spending input points to the selected funding
+/// output. The private fields and name intentionally grant NO authority.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnverifiedBitcoinChannelInclusion {
+    claimed_anchor: Tip,
+    funding: IncludedTransaction,
+    spending: IncludedTransaction,
+    structural: UnverifiedP2wshOutpointSpend,
+}
+
+impl UnverifiedBitcoinChannelInclusion {
+    pub const fn claimed_anchor(&self) -> Tip {
+        self.claimed_anchor
+    }
+
+    pub const fn funding(&self) -> IncludedTransaction {
+        self.funding
+    }
+
+    pub const fn spending(&self) -> IncludedTransaction {
+        self.spending
+    }
+
+    pub fn structural(&self) -> &UnverifiedP2wshOutpointSpend {
+        &self.structural
+    }
+
+    /// No caller-supplied attestation can upgrade this report to authority.
+    /// Missing proofs include active chain, full block/witness commitment,
+    /// actual ECDSA/script execution, UTXO state and channel revision.
+    pub const fn require_authenticated_channel_spend(&self) -> Result<(), ChannelInclusionError> {
+        Err(ChannelInclusionError::ActiveChainWitnessAndSignaturesUnverified)
+    }
+}
+
+/// Check Bitcoin-only syntactic P2WSH funding/spend and two txid inclusions
+/// against one locally checked segment. For an intra-block spend, the funding
+/// transaction must precede the spending transaction in that block.
+///
+/// This is a necessary structural prerequisite, never a consensus proof.
+/// Litecoin/Dogecoin require separate Scrypt/full-node validation paths.
+#[allow(clippy::too_many_arguments)]
+pub fn audit_bitcoin_p2wsh_relative_inclusion_unverified(
+    network: TradeLayerMainnet,
+    segment: &CheckedHeaderSegment,
+    raw_funding_transaction: &[u8],
+    funding_height: u64,
+    funding_vout: u32,
+    funding_path: &MerklePath,
+    raw_spending_transaction: &[u8],
+    spending_height: u64,
+    spending_vin: u32,
+    spending_path: &MerklePath,
+    claimed_pubkeys: ClaimedTwoOfTwoPubkeys,
+) -> Result<UnverifiedBitcoinChannelInclusion, ChannelInclusionError> {
+    if network != TradeLayerMainnet::Bitcoin {
+        return Err(ChannelInclusionError::UnsupportedNetwork);
+    }
+    if spending_height < funding_height
+        || (spending_height == funding_height && spending_path.tx_index <= funding_path.tx_index)
+    {
+        return Err(ChannelInclusionError::NoncausalTransactionOrder);
+    }
+    let funding = segment
+        .check_transaction_inclusion(funding_height, raw_funding_transaction, funding_path)
+        .map_err(ChannelInclusionError::FundingMerkle)?;
+    let spending = segment
+        .check_transaction_inclusion(spending_height, raw_spending_transaction, spending_path)
+        .map_err(ChannelInclusionError::SpendingMerkle)?;
+    let structural = audit_native_p2wsh_outpoint_unverified(
+        network,
+        raw_funding_transaction,
+        funding_vout,
+        raw_spending_transaction,
+        spending_vin,
+        claimed_pubkeys,
+    )
+    .map_err(ChannelInclusionError::ChannelStructure)?;
+    // Internally CheckedHeaderSegment checks every header's parent link.
+    // Both IncludedTransaction values arise from this single segment.
+    Ok(UnverifiedBitcoinChannelInclusion {
+        claimed_anchor: segment.anchor(),
+        funding,
+        spending,
+        structural,
+    })
+}
