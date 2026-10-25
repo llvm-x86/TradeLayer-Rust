@@ -425,11 +425,13 @@ fn structural_observation_does_not_spend_or_admit_liquidation() {
     // type-4/type-19 admission authorization. No mutation API is exposed.
 }
 
-
 fn bip143_checked(
     funding_bytes: &[u8],
     spend_bytes: &[u8],
-) -> Result<tradelayer_core::channel_bip143_audit::UnverifiedP2wshBip143Digest, StructuralChannelError> {
+) -> Result<
+    tradelayer_core::channel_bip143_audit::UnverifiedP2wshBip143Digest,
+    StructuralChannelError,
+> {
     audit_native_p2wsh_bip143_sighash_all_unverified(
         TradeLayerMainnet::Litecoin,
         funding_bytes,
@@ -488,11 +490,17 @@ fn sighash_all_changes_on_funding_amount_outputs_version_sequence_and_locktime()
         &good_stack(),
         true,
     );
-    assert_ne!(bip143_checked(&new_fund, &new_spend).unwrap().digest_raw(), digest);
+    assert_ne!(
+        bip143_checked(&new_fund, &new_spend).unwrap().digest_raw(),
+        digest
+    );
 
     let mut modified = spend.clone();
     modified[0] ^= 1; // nVersion, not SegWit marker
-    assert_ne!(bip143_checked(&fund, &modified).unwrap().digest_raw(), digest);
+    assert_ne!(
+        bip143_checked(&fund, &modified).unwrap().digest_raw(),
+        digest
+    );
 
     let mut modified = spend.clone();
     // First input's 4-byte sequence follows its outpoint and empty script.
@@ -522,7 +530,10 @@ fn sighash_all_changes_on_funding_amount_outputs_version_sequence_and_locktime()
     let mut modified = spend.clone();
     let locktime_start = modified.len() - 4;
     modified[locktime_start] = 1;
-    assert_ne!(bip143_checked(&fund, &modified).unwrap().digest_raw(), digest);
+    assert_ne!(
+        bip143_checked(&fund, &modified).unwrap().digest_raw(),
+        digest
+    );
 }
 
 #[test]
@@ -542,8 +553,14 @@ fn signature_bytes_are_excluded_from_bip143_preimage_and_not_verified() {
     );
     let changed = bip143_checked(&fund, &altered).unwrap();
     assert_eq!(changed.digest_raw(), original_digest.digest_raw());
-    assert_eq!(changed.structural().spending_txid_display(), original_digest.structural().spending_txid_display());
-    assert_ne!(inspect_transaction(&altered).unwrap().wtxid, original_tx.wtxid);
+    assert_eq!(
+        changed.structural().spending_txid_display(),
+        original_digest.structural().spending_txid_display()
+    );
+    assert_ne!(
+        inspect_transaction(&altered).unwrap().wtxid,
+        original_tx.wtxid
+    );
     assert_eq!(
         changed.require_verified_channel_signatures(),
         Err(StructuralChannelError::SignaturesNotVerified)
@@ -555,13 +572,23 @@ fn wrong_prevout_script_spend_vin_and_non_all_sighash_fail_before_digest() {
     let (fund, spend) = pair();
     assert_eq!(
         audit_native_p2wsh_bip143_sighash_all_unverified(
-            TradeLayerMainnet::Dogecoin, &fund, 0, &spend, 1, keys()
+            TradeLayerMainnet::Dogecoin,
+            &fund,
+            0,
+            &spend,
+            1,
+            keys()
         ),
         Err(StructuralChannelError::UnsupportedNetwork)
     );
     assert_eq!(
         audit_native_p2wsh_bip143_sighash_all_unverified(
-            TradeLayerMainnet::Litecoin, &fund, 0, &spend, 2, keys()
+            TradeLayerMainnet::Litecoin,
+            &fund,
+            0,
+            &spend,
+            2,
+            keys()
         ),
         Err(StructuralChannelError::InvalidInputIndex)
     );
@@ -574,7 +601,11 @@ fn wrong_prevout_script_spend_vin_and_non_all_sighash_fail_before_digest() {
     let mut stack = good_stack();
     *stack[1].last_mut().unwrap() = 2;
     let unsupported = spending(
-        inspect_transaction(&fund).unwrap().txid, 0, &[], &stack, true
+        inspect_transaction(&fund).unwrap().txid,
+        0,
+        &[],
+        &stack,
+        true,
     );
     assert_eq!(
         bip143_checked(&fund, &unsupported),
@@ -584,7 +615,9 @@ fn wrong_prevout_script_spend_vin_and_non_all_sighash_fail_before_digest() {
     altered.push(0);
     assert_eq!(
         bip143_checked(&fund, &altered),
-        Err(StructuralChannelError::RawTransaction(ScanError::TrailingBytes))
+        Err(StructuralChannelError::RawTransaction(
+            ScanError::TrailingBytes
+        ))
     );
 }
 
