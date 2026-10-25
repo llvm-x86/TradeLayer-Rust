@@ -10,6 +10,7 @@ pub mod bitcoin_chainwork; // Bitcoin mainnet nBits/MTP/chainwork from explicit 
 pub mod bitcoin_forks; // Bounded greatest-work selection among observed header forks; no active-chain trust.
 pub mod bitcoin_inclusion; // Bitcoin SHA256d header and tx Merkle checks; no full consensus.
 pub mod chain; // Trust-boundary and reversible block progression, prototype only.
+pub mod channel_bip143_audit; // Stage 25I exact SegWit-v0 SIGHASH_ALL digest; no signature verification.
 pub mod channel_witness_audit; // Stage 25H raw native P2WSH script/outpoint only; not ECDSA authorization.
 pub mod clearing_cadence; // Stage 24C read-only JS clearing callback and funding schedule observations.
 pub mod clearing_chain; // Stage 25D unverified combined spot-clearing rollback and TLCC checkpoints.
