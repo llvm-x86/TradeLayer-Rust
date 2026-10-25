@@ -367,7 +367,7 @@ pub fn inspect_unverified_block_slices_parallel(
     config: ParallelIndexConfig,
 ) -> Result<UnverifiedOrderedBlockIndex, ParallelIndexError> {
     inspect_unverified_block_generic(raw_transactions, config, |item| {
-        inspect_transaction(item.as_ref())
+        inspect_transaction(item)
     })
 }
 
@@ -375,7 +375,7 @@ pub fn inspect_unverified_block_slices_serial(
     raw_transactions: &[&[u8]],
 ) -> Result<UnverifiedOrderedBlockIndex, ParallelIndexError> {
     inspect_unverified_block_generic(raw_transactions, ParallelIndexConfig::serial(), |item| {
-        inspect_transaction(item.as_ref())
+        inspect_transaction(item)
     })
 }
 
