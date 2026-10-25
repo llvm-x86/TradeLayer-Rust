@@ -171,7 +171,7 @@ fn selected_spending_vin<'a>(
     Ok(chosen.expect("vin within checked input count"))
 }
 
-fn parse_two_signatures_and_redeem(script_sig: &[u8]) -> Result<&[u8], P2shAuditError> {
+pub(crate) fn parse_two_signatures_and_redeem(script_sig: &[u8]) -> Result<&[u8], P2shAuditError> {
     // A canonical compressed two-key script is 71 bytes: direct OP_PUSH71,
     // not OP_PUSHDATA1/2/4. DER signatures also use direct minimal pushes.
     let mut reader = Cursor::new(script_sig);
