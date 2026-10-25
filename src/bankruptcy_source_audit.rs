@@ -118,13 +118,6 @@ pub fn characterize_bankruptcy_fraction_unverified(
     let qn = contracts
         .checked_mul(notional)
         .ok_or(BankruptcyAuditError::ArithmeticOverflow)?;
-    let eq_last = input.equity_atoms
-        .checked_mul(last)
-        .ok_or(BankruptcyAuditError::ArithmeticOverflow)?;
-    let scaled = ONE
-        .checked_mul(qn)
-        .ok_or(BankruptcyAuditError::ArithmeticOverflow)?;
-
     if !input.inverse {
         let price_times_size = last
             .checked_mul(qn)
@@ -143,6 +136,12 @@ pub fn characterize_bankruptcy_fraction_unverified(
         };
         fraction(numerator, qn)
     } else {
+        let eq_last = input.equity_atoms
+            .checked_mul(last)
+            .ok_or(BankruptcyAuditError::ArithmeticOverflow)?;
+        let scaled = ONE
+            .checked_mul(qn)
+            .ok_or(BankruptcyAuditError::ArithmeticOverflow)?;
         // Currency units: price_e8 =
         // ONE * last_e8 * (q * notional_e8)
         // / (ONE * (q * notional_e8) ± equity_atoms * last_e8).
