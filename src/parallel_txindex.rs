@@ -523,7 +523,7 @@ pub(crate) fn inspect_prepared_block_pooled_weighted(
     let mut report = blank_index(transactions.len());
     let mut seen = BTreeMap::new();
 
-    let outcome = thread::scope(|scope| {
+    thread::scope(|scope| {
         let mut handles = Vec::with_capacity(worker_count);
         for _ in 0..worker_count {
             let tasks = &task_receiver;
