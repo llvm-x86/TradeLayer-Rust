@@ -95,11 +95,14 @@ fn main() {
     assert_eq!(one_team, new);
     let pooled_weighted = view.inspect_parallel_pooled_weighted(config).unwrap();
     assert_eq!(pooled_weighted, new);
+    let pooled_barrier = view.inspect_parallel_pooled_barrier(config).unwrap();
+    assert_eq!(pooled_barrier, new);
     let mut owned_times = Vec::new();
     let mut full_owned_times = Vec::new();
     let mut prepared_times = Vec::new();
     let mut one_team_times = Vec::new();
     let mut pooled_weighted_times = Vec::new();
+    let mut pooled_barrier_times = Vec::new();
     let mut bulk_times = Vec::new();
     for _ in 0..repeats {
         let start = Instant::now();
@@ -152,6 +155,11 @@ fn main() {
         assert_eq!(*pooled_weighted.ordered_preindex(), serial_by_slot);
         black_box(pooled_weighted);
         let start = Instant::now();
+        let barrier = view.inspect_parallel_pooled_barrier(config).unwrap();
+        pooled_barrier_times.push(start.elapsed());
+        assert_eq!(*barrier.ordered_preindex(), serial_by_slot);
+        black_box(barrier);
+        let start = Instant::now();
         let observed =
             fetch_and_inspect_unverified_block(view.header_hash_raw(), config, |_| Ok(raw.clone()))
                 .unwrap();
@@ -164,6 +172,7 @@ fn main() {
     let prepared_ms = median(prepared_times).as_secs_f64() * 1000.0;
     let one_team_ms = median(one_team_times).as_secs_f64() * 1000.0;
     let pooled_weighted_ms = median(pooled_weighted_times).as_secs_f64() * 1000.0;
+    let pooled_barrier_ms = median(pooled_barrier_times).as_secs_f64() * 1000.0;
     let bulk_ms = median(bulk_times).as_secs_f64() * 1000.0;
     let bulk_seconds = (bulk_ms / 1000.0).max(1e-9);
     println!("benchmark=UNVERIFIED_SYNTHETIC_BULK_BLOCK_INGEST");
@@ -181,6 +190,15 @@ fn main() {
     println!("fused_prepared_only_median_ms={prepared_ms:.3}");
     println!("one_team_prepared_only_median_ms={one_team_ms:.3}");
     println!("pooled_weighted_prepared_only_median_ms={pooled_weighted_ms:.3}");
+    println!("pooled_barrier_prepared_only_median_ms={pooled_barrier_ms:.3}");
+    println!(
+        "pooled_barrier_vs_one_team_ratio={:.3}",
+        one_team_ms / pooled_barrier_ms.max(1e-9)
+    );
+    println!(
+        "pooled_barrier_vs_windowed_ratio={:.3}",
+        prepared_ms / pooled_barrier_ms.max(1e-9)
+    );
     println!(
         "pooled_weighted_vs_one_team_ratio={:.3}",
         one_team_ms / pooled_weighted_ms.max(1e-9)
