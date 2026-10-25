@@ -58,6 +58,8 @@ jobs:
         run: cargo test --frozen --test insured_distressed_closeout
       - name: Stage 25E1 liquidation risk preflight and no-spend source budgets
         run: cargo test --frozen --test liquidation_preflight
+      - name: Stage 25F source-only exact rational bankruptcy threshold
+        run: cargo test --frozen --test bankruptcy_source_audit
       - name: Verify Stage 25A isolated margin and funding atomicity
         run: cargo test --frozen --test clearing_sandbox
       - name: Verify Stage 25B single-ledger spot and clearing invariants
