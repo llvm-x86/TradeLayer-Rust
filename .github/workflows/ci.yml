@@ -150,6 +150,8 @@ jobs:
         run: python3 scripts/audit_stage8d_dependency_waves.py
       - name: Stage 8D no-reparse worker path and fail-closed UTXO DAG waves
         run: cargo test --frozen --test stage8d_fused_dependency
+      - name: Stage 8D1b one scoped TX worker team and serial-equivalent 10k TX proof
+        run: cargo test --frozen --test stage8d_one_team
       - name: Legacy txIndex.js exact pinned source Node VM with fake RPC/DB and three-argument decoder
         run: node scripts/audit_legacy_txindex_source.cjs
       - name: Legacy txIndex.js Rust source marker offsets, vout-loss and permanent denial
@@ -293,6 +295,9 @@ jobs:
           grep -Fxq 'ordered_equivalence=PASS' /tmp/txindex-8d-large.log
           grep -q '^full_pipeline_speed_ratio=' /tmp/txindex-8d-large.log
           grep -Fxq 'full_block_consensus=UNVERIFIED' /tmp/txindex-8d-large.log
+          grep -q '^one_team_prepared_only_median_ms=' /tmp/txindex-8d-large.log
+          grep -q '^one_team_vs_windowed_ratio=' /tmp/txindex-8d-large.log
+          grep -Fxq 'one_team_extra_result_slots=10000' /tmp/txindex-8d-large.log
 
   # Preserve the preexisting required "check" job name, but make it an
   # explicit AND over both independent jobs. A test or release failure,
