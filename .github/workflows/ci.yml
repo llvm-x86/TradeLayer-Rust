@@ -128,6 +128,10 @@ jobs:
         run: node scripts/audit_legacy_types_dispatch.cjs
       - name: Legacy types.js Rust 36-route call-shape, prefix and permanent-denial audit
         run: cargo test --frozen --test legacy_types_audit
+      - name: Legacy txDecoder.js exact-source VM 17-vector and malformed-body oracle
+        run: node scripts/audit_legacy_txdecoder_source.cjs
+      - name: Legacy txDecoder.js Rust 10-layout numeric/ref and permanent-denial adversaries
+        run: cargo test --frozen --test legacy_txdecoder_audit
       - name: Stage 25F source-only exact rational bankruptcy threshold
         run: cargo test --frozen --test bankruptcy_source_audit
       - name: Verify Stage 25A isolated margin and funding atomicity
