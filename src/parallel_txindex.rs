@@ -27,7 +27,8 @@
 //! never asserts a speedup on resource-constrained CI runners.
 
 use crate::read_only::{
-    inspect_transaction, ScanError, TransactionObservation, MAX_RAW_TRANSACTION,
+    inspect_prepared_transaction, inspect_transaction, ScanError, TransactionLayout,
+    TransactionObservation, MAX_RAW_TRANSACTION,
 };
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -277,10 +278,15 @@ fn blank_index(size: usize) -> UnverifiedOrderedBlockIndex {
 /// transactions. CPU parsing/SHA256d is parallel; results are placed in
 /// original block order and never committed to chain or ledger state.
 /// An error aborts the entire report; no partially indexed success escapes.
-fn inspect_unverified_block_generic<T: AsRef<[u8]> + Sync>(
+fn inspect_unverified_block_generic<T, F>(
     raw_transactions: &[T],
     config: ParallelIndexConfig,
-) -> Result<UnverifiedOrderedBlockIndex, ParallelIndexError> {
+    scan: F,
+) -> Result<UnverifiedOrderedBlockIndex, ParallelIndexError>
+where
+    T: AsRef<[u8]> + Sync,
+    F: Fn(&T) -> Result<TransactionObservation, ScanError> + Sync,
+{
     let config = config.validate()?;
     validate_count(raw_transactions.len())?;
     let mut bytes = 0usize;
@@ -299,7 +305,7 @@ fn inspect_unverified_block_generic<T: AsRef<[u8]> + Sync>(
     {
         let start = window_index * config.window_transactions;
         let completed = work_window(start, window.len(), config.workers, &|index| {
-            inspect_transaction(raw_transactions[index].as_ref())
+            scan(&raw_transactions[index])
                 .map_err(|source| ParallelIndexError::RawScan { index, source })
         })?;
         for (offset, result) in completed.into_iter().enumerate() {
@@ -319,6 +325,28 @@ fn inspect_unverified_block_generic<T: AsRef<[u8]> + Sync>(
     Ok(report)
 }
 
+/// Each borrowed raw-TX span retains its one-pass strict structural offsets.
+pub(crate) struct PreparedRawTransaction<'a> {
+    pub(crate) raw: &'a [u8],
+    pub(crate) layout: &'a TransactionLayout,
+}
+impl AsRef<[u8]> for PreparedRawTransaction<'_> {
+    fn as_ref(&self) -> &[u8] {
+        self.raw
+    }
+}
+
+/// Same bounded workers, windows and ordered error semantics as the
+/// original scanner, but WITHOUT a second transaction structural parse.
+pub(crate) fn inspect_prepared_block_parallel(
+    transactions: &[PreparedRawTransaction<'_>],
+    config: ParallelIndexConfig,
+) -> Result<UnverifiedOrderedBlockIndex, ParallelIndexError> {
+    inspect_unverified_block_generic(transactions, config, |item| {
+        inspect_prepared_transaction(item.raw, item.layout)
+    })
+}
+
 /// Preserve the original owned-Vec API for existing callers. The shared
 /// implementation now accepts borrowed slices without copying transaction
 /// bytes, enabling one-getblock/one-parser/parallel-TXID preindexing.
@@ -326,7 +354,9 @@ pub fn inspect_unverified_block_parallel(
     raw_transactions: &[Vec<u8>],
     config: ParallelIndexConfig,
 ) -> Result<UnverifiedOrderedBlockIndex, ParallelIndexError> {
-    inspect_unverified_block_generic(raw_transactions, config)
+    inspect_unverified_block_generic(raw_transactions, config, |item| {
+        inspect_transaction(item.as_ref())
+    })
 }
 
 /// Analyze independent borrowed transaction spans in parallel. No per-TX
@@ -336,13 +366,15 @@ pub fn inspect_unverified_block_slices_parallel(
     raw_transactions: &[&[u8]],
     config: ParallelIndexConfig,
 ) -> Result<UnverifiedOrderedBlockIndex, ParallelIndexError> {
-    inspect_unverified_block_generic(raw_transactions, config)
+    inspect_unverified_block_generic(raw_transactions, config, |item| inspect_transaction(item))
 }
 
 pub fn inspect_unverified_block_slices_serial(
     raw_transactions: &[&[u8]],
 ) -> Result<UnverifiedOrderedBlockIndex, ParallelIndexError> {
-    inspect_unverified_block_generic(raw_transactions, ParallelIndexConfig::serial())
+    inspect_unverified_block_generic(raw_transactions, ParallelIndexConfig::serial(), |item| {
+        inspect_transaction(item)
+    })
 }
 
 pub fn inspect_unverified_block_serial(

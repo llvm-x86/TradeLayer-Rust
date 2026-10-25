@@ -16,10 +16,14 @@
 
 use crate::hash256::double_sha256;
 use crate::parallel_txindex::{
-    inspect_unverified_block_slices_parallel, inspect_unverified_block_slices_serial,
-    ParallelIndexConfig, ParallelIndexError, UnverifiedOrderedBlockIndex,
+    inspect_prepared_block_parallel, ParallelIndexConfig, ParallelIndexError,
+    PreparedRawTransaction, UnverifiedOrderedBlockIndex,
 };
-use crate::read_only::{compact_size_prefix, transaction_prefix_lengths, ScanError};
+use crate::read_only::{
+    compact_size_prefix, prepare_transaction_prefix, source_prevouts_from_layout, RawOutpoint,
+    ScanError, TransactionLayout,
+};
+use std::collections::BTreeMap;
 use std::ops::Range;
 
 pub const MAX_UNVERIFIED_RAW_BLOCK_BYTES: usize = 4_000_000;
@@ -59,6 +63,7 @@ pub struct UnverifiedRawBlockView<'a> {
     header_hash_raw: [u8; 32],
     header_merkle_root_raw: [u8; 32],
     transaction_ranges: Vec<Range<usize>>,
+    layouts: Vec<TransactionLayout>,
     stripped_block_bytes: usize,
     block_weight: u64,
 }
@@ -90,6 +95,7 @@ impl<'a> UnverifiedRawBlockView<'a> {
             return Err(RawBlockIngestError::TooManyTransactions);
         }
         let mut offsets = Vec::with_capacity(count as usize);
+        let mut layouts = Vec::with_capacity(count as usize);
         let mut offset = 80 + size_of_count;
         let mut stripped_size = offset;
         for index in 0..count as usize {
@@ -100,8 +106,10 @@ impl<'a> UnverifiedRawBlockView<'a> {
                         index,
                         source: ScanError::Truncated,
                     })?;
-            let (length, base_length) = transaction_prefix_lengths(remaining)
+            let layout = prepare_transaction_prefix(remaining)
                 .map_err(|source| RawBlockIngestError::TransactionBoundary { index, source })?;
+            let length = layout.total_bytes();
+            let base_length = layout.stripped_bytes();
             let end =
                 offset
                     .checked_add(length)
@@ -110,6 +118,7 @@ impl<'a> UnverifiedRawBlockView<'a> {
                         source: ScanError::TooLong,
                     })?;
             offsets.push(offset..end);
+            layouts.push(layout);
             offset = end;
             stripped_size = stripped_size
                 .checked_add(base_length)
@@ -131,6 +140,7 @@ impl<'a> UnverifiedRawBlockView<'a> {
             header_hash_raw: header_hash,
             header_merkle_root_raw,
             transaction_ranges: offsets,
+            layouts,
             stripped_block_bytes: stripped_size,
             block_weight,
         })
@@ -168,16 +178,23 @@ impl<'a> UnverifiedRawBlockView<'a> {
         config: ParallelIndexConfig,
         parallel: bool,
     ) -> Result<UnverifiedRawBlockIndex, RawBlockIngestError> {
-        let slices: Vec<&[u8]> = self
+        let prepared = self
             .transaction_ranges
             .iter()
-            .map(|range| &self.block_bytes[range.clone()])
-            .collect();
-        let report = if parallel {
-            inspect_unverified_block_slices_parallel(&slices, config)
-        } else {
-            inspect_unverified_block_slices_serial(&slices)
-        }
+            .zip(&self.layouts)
+            .map(|(range, layout)| PreparedRawTransaction {
+                raw: &self.block_bytes[range.clone()],
+                layout,
+            })
+            .collect::<Vec<_>>();
+        let report = inspect_prepared_block_parallel(
+            &prepared,
+            if parallel {
+                config
+            } else {
+                ParallelIndexConfig::serial()
+            },
+        )
         .map_err(RawBlockIngestError::TransactionPreindex)?;
         let txids = report
             .ordered()
@@ -209,6 +226,152 @@ impl<'a> UnverifiedRawBlockView<'a> {
 
     pub const fn require_full_bitcoin_consensus(&self) -> Result<(), RawBlockTrustError> {
         Err(RawBlockTrustError::ActiveChainAndFullConsensusUnverified)
+    }
+}
+
+/// Read-only structural candidate for dependency-aware script prechecks.
+/// Inputs not created in this block are UNVERIFIED external UTXOs. The
+/// schedule cannot prove their values, scripts, confirmations or existence.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DependencyAuditError {
+    MismatchedPreindex,
+    MissingFirstCoinbase,
+    UnexpectedAdditionalCoinbase { index: usize },
+    DuplicateInputSpend { first: usize, second: usize },
+    ForwardOrSelfReference { index: usize, producer: usize },
+    InvalidSameBlockOutput { index: usize, producer: usize },
+    ImmatureSameBlockCoinbaseSpend { index: usize },
+    MalformedInputs { index: usize, source: ScanError },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DependencyTrustError {
+    ParentUtxoSnapshotUnavailable,
+    InputScriptsAndCoinbaseRulesUnverified,
+    CanonicalBlockStateTransitionUnavailable,
+}
+
+/// Each wave contains source-ordered TX positions that have no in-block
+/// parent/child edge BETWEEN THEM. A future verified executor may use
+/// this as a scheduling hint only after authenticating the parent UTXO
+/// snapshot, scripts, fork, consensus and full cross-TX conflicts.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnverifiedDependencyWaves {
+    waves: Vec<Vec<usize>>,
+    wave_by_transaction: Vec<usize>,
+    same_block_edges: usize,
+    unverified_external_prevouts: usize,
+}
+
+impl UnverifiedDependencyWaves {
+    pub fn waves(&self) -> &[Vec<usize>] {
+        &self.waves
+    }
+    pub fn wave_by_transaction(&self) -> &[usize] {
+        &self.wave_by_transaction
+    }
+    pub const fn same_block_edges(&self) -> usize {
+        self.same_block_edges
+    }
+    pub const fn unverified_external_prevouts(&self) -> usize {
+        self.unverified_external_prevouts
+    }
+    pub const fn require_parent_utxo_snapshot(&self) -> Result<(), DependencyTrustError> {
+        Err(DependencyTrustError::ParentUtxoSnapshotUnavailable)
+    }
+    pub const fn require_verified_script_and_coinbase(&self) -> Result<(), DependencyTrustError> {
+        Err(DependencyTrustError::InputScriptsAndCoinbaseRulesUnverified)
+    }
+    pub const fn require_canonical_block_application(&self) -> Result<(), DependencyTrustError> {
+        Err(DependencyTrustError::CanonicalBlockStateTransitionUnavailable)
+    }
+}
+
+impl UnverifiedRawBlockView<'_> {
+    /// Read-only prevout DAG after a successful local TXID/Merkle preindex.
+    /// Forward references, repeated outpoints and same-block coinbase spends
+    /// are deterministically rejected; external UTXOs are counted UNKNOWN.
+    /// No verifier callback is run and NO state is ever mutated.
+    pub fn plan_dependency_waves(
+        &self,
+        scanned: &UnverifiedRawBlockIndex,
+    ) -> Result<UnverifiedDependencyWaves, DependencyAuditError> {
+        let indexed = scanned.ordered_preindex().ordered();
+        if scanned.header_hash_raw != self.header_hash_raw
+            || scanned.header_merkle_root_raw != self.header_merkle_root_raw
+            || indexed.len() != self.layouts.len()
+        {
+            return Err(DependencyAuditError::MismatchedPreindex);
+        }
+        let mut txids = BTreeMap::new();
+        for (i, tx) in indexed.iter().enumerate() {
+            txids.insert(tx.observation.txid, i);
+        }
+        let mut previously_spent = BTreeMap::<RawOutpoint, usize>::new();
+        let mut by_tx = vec![0usize; indexed.len()];
+        let mut waves: Vec<Vec<usize>> = Vec::new();
+        let mut edges = 0usize;
+        let mut external = 0usize;
+        for (index, layout) in self.layouts.iter().enumerate() {
+            let raw = self
+                .raw_transaction(index)
+                .ok_or(DependencyAuditError::MismatchedPreindex)?;
+            let inputs = source_prevouts_from_layout(raw, layout)
+                .map_err(|source| DependencyAuditError::MalformedInputs { index, source })?;
+            let coinbase =
+                inputs.len() == 1 && inputs[0].txid_raw == [0; 32] && inputs[0].vout == u32::MAX;
+            if index == 0 && !coinbase {
+                return Err(DependencyAuditError::MissingFirstCoinbase);
+            }
+            if index > 0 && coinbase {
+                return Err(DependencyAuditError::UnexpectedAdditionalCoinbase { index });
+            }
+            let mut level = 0usize;
+            if !coinbase {
+                for input in inputs {
+                    if let Some(first) = previously_spent.insert(input, index) {
+                        return Err(DependencyAuditError::DuplicateInputSpend {
+                            first,
+                            second: index,
+                        });
+                    }
+                    if let Some(&producer) = txids.get(&input.txid_raw) {
+                        if producer >= index {
+                            return Err(DependencyAuditError::ForwardOrSelfReference {
+                                index,
+                                producer,
+                            });
+                        }
+                        if input.vout >= indexed[producer].observation.output_count {
+                            return Err(DependencyAuditError::InvalidSameBlockOutput {
+                                index,
+                                producer,
+                            });
+                        }
+                        if producer == 0 {
+                            return Err(DependencyAuditError::ImmatureSameBlockCoinbaseSpend {
+                                index,
+                            });
+                        }
+                        level = level.max(by_tx[producer] + 1);
+                        edges += 1;
+                    } else {
+                        external += 1;
+                    }
+                }
+            }
+            by_tx[index] = level;
+            if waves.len() <= level {
+                waves.resize_with(level + 1, Vec::new);
+            }
+            waves[level].push(index);
+        }
+        Ok(UnverifiedDependencyWaves {
+            waves,
+            wave_by_transaction: by_tx,
+            same_block_edges: edges,
+            unverified_external_prevouts: external,
+        })
     }
 }
 

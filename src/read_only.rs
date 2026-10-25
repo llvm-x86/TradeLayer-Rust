@@ -116,15 +116,63 @@ pub(crate) fn compact_size_prefix(raw: &[u8]) -> Result<(u64, usize), ScanError>
     Ok((count, cursor.offset))
 }
 
-/// Locate ONE complete serialized transaction at the start of a larger
-/// byte stream, without allocation or TXID hashing. A raw block can then
-/// expose borrowed ranges instead of cloning thousands of transaction Vecs.
-///
-/// Returned (full_length, stripped_length) includes version and locktime.
-/// Witness marker/flag and witness data contribute only to full_length.
-/// This matches the strict read-only inspector's supported BIP144 subset;
-/// neither function validates scripts, UTXOs, transactions or consensus.
-pub(crate) fn transaction_prefix_lengths(raw: &[u8]) -> Result<(usize, usize), ScanError> {
+/// A single canonical parse over raw TX syntax, storing only the structural
+/// offsets needed for later hashing and source-carrier classification.
+/// Ordinary non-TL transactions allocate no per-TX payload vectors.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct TransactionLayout {
+    total_bytes: usize,
+    stripped_bytes: usize,
+    input_start: usize,
+    first_outpoint_start: usize,
+    outputs_end: usize,
+    has_witness: bool,
+    input_count: u32,
+    output_count: u32,
+    op_return_count: u32,
+    payloads: Vec<(u32, std::ops::Range<usize>)>,
+}
+impl TransactionLayout {
+    pub(crate) const fn total_bytes(&self) -> usize {
+        self.total_bytes
+    }
+    pub(crate) const fn stripped_bytes(&self) -> usize {
+        self.stripped_bytes
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct RawOutpoint {
+    pub(crate) txid_raw: [u8; 32],
+    pub(crate) vout: u32,
+}
+
+/// Extract first-input parent references only when an offline dependency
+/// report is requested. This does not prove that external UTXOs exist.
+pub(crate) fn source_prevouts_from_layout(
+    raw: &[u8],
+    layout: &TransactionLayout,
+) -> Result<Vec<RawOutpoint>, ScanError> {
+    if raw.len() != layout.total_bytes {
+        return Err(ScanError::TrailingBytes);
+    }
+    let mut cursor = Cursor::new(raw);
+    cursor.offset = layout.first_outpoint_start;
+    let mut out = Vec::with_capacity(layout.input_count as usize);
+    for _ in 0..layout.input_count {
+        let txid_raw = cursor.read(32)?.try_into().expect("read 32-byte parent");
+        let vout = u32::from_le_bytes(cursor.read(4)?.try_into().expect("read u32"));
+        out.push(RawOutpoint { txid_raw, vout });
+        cursor.variable_bytes()?;
+        cursor.read(4)?;
+    }
+    Ok(out)
+}
+
+/// Locate exactly one transaction at the start of a possibly larger block
+/// suffix. This strictly parses BIP144 marker, vin/vout, witness and locktime
+/// without computing a TXID or copying serialized bytes.
+pub(crate) fn prepare_transaction_prefix(raw: &[u8]) -> Result<TransactionLayout, ScanError> {
     let mut reader = Cursor::new(raw);
     reader.read(4)?; // version
     let has_witness = raw.get(4) == Some(&0);
@@ -135,29 +183,41 @@ pub(crate) fn transaction_prefix_lengths(raw: &[u8]) -> Result<(usize, usize), S
             return Err(ScanError::Invalid("unsupported SegWit marker/flag".into()));
         }
     }
-    let stripped_start = reader.offset;
+    let input_start = reader.offset;
     let input_count = reader.limited_count()?;
+    let first_outpoint_start = reader.offset;
     for _ in 0..input_count {
         reader.read(36)?;
         reader.variable_bytes()?;
         reader.read(4)?;
     }
     let output_count = reader.limited_count()?;
-    for _ in 0..output_count {
+    let mut op_return_count = 0u32;
+    let mut payloads = Vec::new();
+    for n in 0..output_count {
         reader.read(8)?;
-        reader.variable_bytes()?;
+        let script = reader.variable_bytes()?;
+        if script.first() == Some(&0x6a) {
+            op_return_count += 1;
+            if let Some(payload) = one_op_return_push(script) {
+                if payload.starts_with(b"tl") || payload.starts_with(b"TLR") {
+                    let script_start = reader.offset - script.len();
+                    let start = script_start + script.len() - payload.len();
+                    payloads.push((n as u32, start..reader.offset));
+                }
+            }
+        }
     }
-    let stripped_end = reader.offset;
+    let outputs_end = reader.offset;
     if has_witness {
         let mut nonempty = false;
         for _ in 0..input_count {
-            let stack_len = reader.varint()?;
-            if stack_len > MAX_IO_COUNT {
+            let count = reader.varint()?;
+            if count > MAX_IO_COUNT {
                 return Err(ScanError::TooLong);
             }
-            for _ in 0..stack_len {
-                let item = reader.variable_bytes()?;
-                nonempty |= !item.is_empty();
+            for _ in 0..count {
+                nonempty |= !reader.variable_bytes()?.is_empty();
             }
         }
         if !nonempty {
@@ -166,17 +226,28 @@ pub(crate) fn transaction_prefix_lengths(raw: &[u8]) -> Result<(usize, usize), S
             ));
         }
     }
-    reader.read(4)?; // locktime
-    let total_len = reader.offset;
-    if total_len > MAX_RAW_TRANSACTION {
+    reader.read(4)?;
+    let total_bytes = reader.offset;
+    if total_bytes > MAX_RAW_TRANSACTION {
         return Err(ScanError::TooLong);
     }
-    let stripped_len = if has_witness {
-        8 + stripped_end - stripped_start
+    let stripped_bytes = if has_witness {
+        8 + outputs_end - input_start
     } else {
-        total_len
+        total_bytes
     };
-    Ok((total_len, stripped_len))
+    Ok(TransactionLayout {
+        total_bytes,
+        stripped_bytes,
+        input_start,
+        first_outpoint_start,
+        outputs_end,
+        has_witness,
+        input_count: input_count as u32,
+        output_count: output_count as u32,
+        op_return_count,
+        payloads,
+    })
 }
 
 /// Hash in display order, the reverse of SHA256d digest bytes.
@@ -353,87 +424,52 @@ fn classify(vout: u32, payload: &[u8]) -> Option<Carrier> {
     })
 }
 
-/// Parses a complete Bitcoin-style serialized transaction and identifies TL
-/// OP_RETURN candidates without assigning origins or mutating ledger state.
+/// Hash and classify carriers using a previously validated structural scan.
+/// No second walk through every vin, vout, scriptSig or witness stack.
+pub(crate) fn inspect_prepared_transaction(
+    raw: &[u8],
+    layout: &TransactionLayout,
+) -> Result<TransactionObservation, ScanError> {
+    if raw.len() > MAX_RAW_TRANSACTION {
+        return Err(ScanError::TooLong);
+    }
+    if raw.len() != layout.total_bytes {
+        return Err(ScanError::TrailingBytes);
+    }
+    let wtxid = double_sha256(raw);
+    let txid = if layout.has_witness {
+        double_sha256_parts(&[
+            &raw[..4],
+            &raw[layout.input_start..layout.outputs_end],
+            &raw[raw.len() - 4..],
+        ])
+    } else {
+        wtxid
+    };
+    let carriers = layout
+        .payloads
+        .iter()
+        .filter_map(|(vout, range)| classify(*vout, &raw[range.clone()]))
+        .collect();
+    Ok(TransactionObservation {
+        txid,
+        wtxid,
+        has_witness: layout.has_witness,
+        input_count: layout.input_count,
+        output_count: layout.output_count,
+        op_return_count: layout.op_return_count,
+        carriers,
+    })
+}
+
+/// Standalone TX inspection checks exact length; block preparse uses the
+/// same structural layout against a larger borrowed suffix.
 pub fn inspect_transaction(raw: &[u8]) -> Result<TransactionObservation, ScanError> {
     if raw.len() > MAX_RAW_TRANSACTION {
         return Err(ScanError::TooLong);
     }
-    let mut reader = Cursor::new(raw);
-    let version = reader.read(4)?;
-    let has_witness = raw.get(4).copied() == Some(0);
-    if has_witness {
-        let marker = reader.byte()?;
-        let flag = reader.byte()?;
-        if marker != 0 || flag != 1 {
-            return Err(ScanError::Invalid("unsupported SegWit marker/flag".into()));
-        }
-    }
-    let inputs_start = reader.offset;
-    let inputs = reader.limited_count()?;
-    for _ in 0..inputs {
-        reader.read(36)?; // outpoint
-        reader.variable_bytes()?; // scriptSig
-        reader.read(4)?; // sequence
-    }
-    let outputs = reader.limited_count()?;
-    let mut carriers = Vec::new();
-    let mut op_return_count = 0u32;
-    for n in 0..outputs {
-        reader.read(8)?; // value
-        let script = reader.variable_bytes()?;
-        if script.first() == Some(&0x6a) {
-            op_return_count += 1;
-            if let Some(payload) = one_op_return_push(script) {
-                if let Some(carrier) = classify(n as u32, payload) {
-                    carriers.push(carrier);
-                }
-            }
-        }
-    }
-    let outputs_end = reader.offset;
-    if has_witness {
-        let mut nonempty_witness = false;
-        for _ in 0..inputs {
-            let n = reader.varint()?;
-            if n > MAX_IO_COUNT {
-                return Err(ScanError::TooLong);
-            }
-            for _ in 0..n {
-                let data = reader.variable_bytes()?;
-                nonempty_witness |= !data.is_empty();
-            }
-        }
-        if !nonempty_witness {
-            return Err(ScanError::Invalid(
-                "superfluous SegWit witness marker".into(),
-            ));
-        }
-    }
-    let locktime = reader.read(4)?;
-    if reader.offset != raw.len() {
-        return Err(ScanError::TrailingBytes);
-    }
-    // For non-SegWit serialization, BIP141 defines txid == wtxid.
-    // Hash exactly once. The previous version hashed the same raw bytes
-    // TWICE for each legacy transaction, wasting a hot CPU preindex pass.
-    let wtxid = double_sha256(raw);
-    let txid = if has_witness {
-        // SegWit txid excludes marker, flag and all witness stacks. Hash
-        // the three stripped segments in place, with no temporary Vec.
-        double_sha256_parts(&[version, &raw[inputs_start..outputs_end], locktime])
-    } else {
-        wtxid
-    };
-    Ok(TransactionObservation {
-        txid,
-        wtxid,
-        has_witness,
-        input_count: u32::try_from(inputs).map_err(|_| ScanError::TooLong)?,
-        output_count: u32::try_from(outputs).map_err(|_| ScanError::TooLong)?,
-        op_return_count,
-        carriers,
-    })
+    let layout = prepare_transaction_prefix(raw)?;
+    inspect_prepared_transaction(raw, &layout)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
