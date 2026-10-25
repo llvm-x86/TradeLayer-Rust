@@ -123,17 +123,17 @@ impl UnverifiedP2wshOutpointSpend {
     }
 }
 
-struct Cursor<'a> {
+pub(crate) struct Cursor<'a> {
     bytes: &'a [u8],
     position: usize,
 }
 
 impl<'a> Cursor<'a> {
-    fn new(bytes: &'a [u8]) -> Self {
+    pub(crate) fn new(bytes: &'a [u8]) -> Self {
         Self { bytes, position: 0 }
     }
 
-    fn take(&mut self, n: usize) -> Result<&'a [u8], ScanError> {
+    pub(crate) fn take(&mut self, n: usize) -> Result<&'a [u8], ScanError> {
         let end = self.position.checked_add(n).ok_or(ScanError::TooLong)?;
         let slice = self
             .bytes
@@ -143,7 +143,7 @@ impl<'a> Cursor<'a> {
         Ok(slice)
     }
 
-    fn compact(&mut self) -> Result<u64, ScanError> {
+    pub(crate) fn compact(&mut self) -> Result<u64, ScanError> {
         let code = self.take(1)?[0];
         let value = match code {
             0..=252 => u64::from(code),
@@ -172,7 +172,7 @@ impl<'a> Cursor<'a> {
         Ok(value)
     }
 
-    fn count(&mut self) -> Result<usize, ScanError> {
+    pub(crate) fn count(&mut self) -> Result<usize, ScanError> {
         let count = self.compact()?;
         if count == 0 || count > MAX_IO_COUNT {
             return Err(ScanError::Invalid("invalid input/output count".into()));
@@ -180,7 +180,11 @@ impl<'a> Cursor<'a> {
         usize::try_from(count).map_err(|_| ScanError::TooLong)
     }
 
-    fn data(&mut self) -> Result<&'a [u8], ScanError> {
+    pub(crate) fn offset(&self) -> usize {
+        self.position
+    }
+
+    pub(crate) fn data(&mut self) -> Result<&'a [u8], ScanError> {
         let len = self.compact()?;
         if len > MAX_RAW_TRANSACTION as u64 {
             return Err(ScanError::TooLong);
