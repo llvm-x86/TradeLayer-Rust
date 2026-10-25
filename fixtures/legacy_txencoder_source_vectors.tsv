@@ -1,0 +1,24 @@
+# File7/49 exact source encoder return and Types generic-concat result; !missing means source Types method absent.
+tag	inner_source_return	generic_types_source_return
+activation-256	tl00;9,73	tl0tl00;9,73
+token-issue-multi	tl1a,TK,7,b,1,backupB,0,0,	tl1tl1a,TK,7,b,1,backupB,0,0,
+send-all	1;alice	tl21;alice
+send-whole	tl20;alice;5;2	tl2tl20;alice;5;2
+send-fraction	tl20;alice;5;tro8w	tl2tl20;alice;5;tro8w
+send-multi	0;;5,7;1,tro8w	tl20;;5,7;1,tro8w
+commit-single	tl47,1njchs,channel1,1,[7],0,b	!missing
+commit-multi	tl47,1njchs,channel1,0,[7,b],1	!missing
+commit-long-ref	tl47,1njchs,ref:4,0,b,1	!missing
+whitelist	tl7backupB,ListOne,site,note	tl7tl7backupB,ListOne,site,note
+admin	tl8adminC,1,0,0,b,1	tl8tl8adminC,1,0,0,b,1
+attest-numeric	tl90,7,alice,ok	tl9tl90,7,alice,ok
+attest-boolean-revoke	tl9true,7,alice,ok	tl9tl9true,7,alice,ok
+close-ignores-id	tlf	tlftlf
+withdraw-boolean	tlltrue,7,100000000,1,channel1	tlltlltrue,7,100000000,1,channel1
+withdraw-long-ref	tllfalse,7,50000000,0,ref:10	tlltllfalse,7,50000000,0,ref:10
+transfer-direct	tlm7,1njchs,1,chanB,1,pay	tlmtlm7,1njchs,1,chanB,1,pay
+transfer-long-ref	tlm7,tro8w,0,ref:3,0,	tlmtlm7,tro8w,0,ref:3,0,
+stake-fraud-relay	tlu1,b,7,1njchs,alice,evidence,2,state,dlc,settle,blob,1,next	tlutlu1,b,7,1njchs,alice,evidence,2,state,dlc,settle,blob,1,next
+colored-body	2,7,a,home	tlx2,7,a,home
+bridge-body	7,b,destination	tly7,b,destination
+bind-body	hash,2,btc	tlzhash,2,btc
