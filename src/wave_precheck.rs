@@ -63,15 +63,11 @@ impl UnverifiedWaveProbeReport {
         self.external_prevouts_unverified
     }
 
-    pub const fn require_authenticated_parent_utxos(
-        &self,
-    ) -> Result<(), UnverifiedWaveTrustError> {
+    pub const fn require_authenticated_parent_utxos(&self) -> Result<(), UnverifiedWaveTrustError> {
         Err(UnverifiedWaveTrustError::ParentUtxoSnapshotNotAuthenticated)
     }
 
-    pub const fn require_valid_bitcoin_scripts(
-        &self,
-    ) -> Result<(), UnverifiedWaveTrustError> {
+    pub const fn require_valid_bitcoin_scripts(&self) -> Result<(), UnverifiedWaveTrustError> {
         Err(UnverifiedWaveTrustError::BitcoinScriptsNotVerified)
     }
 
