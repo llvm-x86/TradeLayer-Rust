@@ -157,7 +157,9 @@ fn 256_bit_hash_and_fractional_amounts_are_bounded_exactly() {
     let zero = "0".repeat(64);
     assert_eq!(source_encode_activate_unverified(&[0], &zero).unwrap().source_return(),
         "tl00,0");
-    for invalid in ["f", "g".repeat(64).as_str(), "0".repeat(63).as_str()] {
+    let invalid_digit = "g".repeat(64);
+    let short_hash = "0".repeat(63);
+    for invalid in ["f", invalid_digit.as_str(), short_hash.as_str()] {
         assert_eq!(source_encode_activate_unverified(&[0], invalid),
             Err(LegacyEncoderError::InvalidActivationHex));
     }
