@@ -30,7 +30,7 @@ use crate::read_only::{
     inspect_prepared_transaction, inspect_transaction, ScanError, TransactionLayout,
     TransactionObservation, MAX_RAW_TRANSACTION,
 };
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::OnceLock;
 use std::thread;
@@ -235,9 +235,38 @@ where
         .collect()
 }
 
-fn append_observation(
+// TXIDs are reduced only after workers join and always in block order.
+// A randomized std HashMap changes lookup cost, never duplicate ordering:
+// neither implementation iterates its keys to choose a failure.
+trait TxidSeen {
+    fn first_or_insert(&mut self, txid: [u8; 32], position: usize) -> Option<usize>;
+}
+
+impl TxidSeen for BTreeMap<[u8; 32], usize> {
+    fn first_or_insert(&mut self, txid: [u8; 32], position: usize) -> Option<usize> {
+        if let Some(&first) = self.get(&txid) {
+            return Some(first);
+        }
+        self.insert(txid, position);
+        None
+    }
+}
+
+impl TxidSeen for HashMap<[u8; 32], usize> {
+    fn first_or_insert(&mut self, txid: [u8; 32], position: usize) -> Option<usize> {
+        match self.entry(txid) {
+            std::collections::hash_map::Entry::Occupied(found) => Some(*found.get()),
+            std::collections::hash_map::Entry::Vacant(vacant) => {
+                vacant.insert(position);
+                None
+            }
+        }
+    }
+}
+
+fn append_observation<I: TxidSeen>(
     report: &mut UnverifiedOrderedBlockIndex,
-    seen: &mut BTreeMap<[u8; 32], usize>,
+    seen: &mut I,
     index: usize,
     bytes: usize,
     observation: TransactionObservation,
@@ -248,13 +277,12 @@ fn append_observation(
         .checked_add(bytes)
         .filter(|total| *total <= MAX_BLOCK_INPUT_BYTES)
         .ok_or(ParallelIndexError::ExceededBlockByteLimit)?;
-    if let Some(&first) = seen.get(&observation.txid) {
+    if let Some(first) = seen.first_or_insert(observation.txid, index) {
         return Err(ParallelIndexError::DuplicateTxid {
             first,
             second: index,
         });
     }
-    seen.insert(observation.txid, index);
     report.op_return_outputs += u64::from(observation.op_return_count);
     if !observation.carriers.is_empty() {
         report.candidate_positions.push(index);
@@ -298,7 +326,7 @@ where
             .ok_or(ParallelIndexError::ExceededBlockByteLimit)?;
     }
     let mut report = blank_index(raw_transactions.len());
-    let mut seen = BTreeMap::new();
+    let mut seen = BTreeMap::<[u8; 32], usize>::new();
     for (window_index, window) in raw_transactions
         .chunks(config.window_transactions)
         .enumerate()
@@ -356,9 +384,10 @@ pub(crate) fn inspect_prepared_block_parallel(
 /// (bounded by MAX_BLOCK_TRANSACTIONS and MAX_BLOCK_INPUT_BYTES), rather than
 /// the regular 512-slot window. It is opt-in until benchmarks show a repeatable
 /// win and bounded-memory policy is reviewed.
-pub(crate) fn inspect_prepared_block_one_team(
+fn inspect_prepared_block_one_team_with_index<I: TxidSeen>(
     transactions: &[PreparedRawTransaction<'_>],
     config: ParallelIndexConfig,
+    make_index: impl FnOnce(usize) -> I,
 ) -> Result<UnverifiedOrderedBlockIndex, ParallelIndexError> {
     let config = config.validate()?;
     validate_count(transactions.len())?;
@@ -409,7 +438,7 @@ pub(crate) fn inspect_prepared_block_one_team(
         return Err(ParallelIndexError::WorkerPanicked);
     }
     let mut report = blank_index(transactions.len());
-    let mut seen = BTreeMap::new();
+    let mut seen = make_index(transactions.len());
     // Consume only AFTER all workers join, strictly in original order.
     // A failed row at a higher index can never mask a lower-index failure.
     for (index, slot) in slots.into_iter().enumerate() {
@@ -426,6 +455,28 @@ pub(crate) fn inspect_prepared_block_one_team(
     }
     debug_assert_eq!(report.raw_bytes_inspected, bytes);
     Ok(report)
+}
+
+/// Keep the original deterministic tree reducer as the baseline.
+pub(crate) fn inspect_prepared_block_one_team(
+    transactions: &[PreparedRawTransaction<'_>],
+    config: ParallelIndexConfig,
+) -> Result<UnverifiedOrderedBlockIndex, ParallelIndexError> {
+    inspect_prepared_block_one_team_with_index(transactions, config, |_| {
+        BTreeMap::<[u8; 32], usize>::new()
+    })
+}
+
+/// EXPERIMENTAL source-ordered reduction with randomized std HashMap.
+/// Reserve one key per prepared TX, bounded by prior input-count validation.
+/// This changes only an in-memory, untrusted duplicate-TXID lookup.
+pub(crate) fn inspect_prepared_block_one_team_hash_seen(
+    transactions: &[PreparedRawTransaction<'_>],
+    config: ParallelIndexConfig,
+) -> Result<UnverifiedOrderedBlockIndex, ParallelIndexError> {
+    inspect_prepared_block_one_team_with_index(transactions, config, |count| {
+        HashMap::<[u8; 32], usize>::with_capacity(count)
+    })
 }
 
 /// Preserve the original owned-Vec API for existing callers. The shared
@@ -485,7 +536,7 @@ where
     let config = config.validate()?;
     validate_count(expected_txids_raw.len())?;
     let mut report = blank_index(expected_txids_raw.len());
-    let mut seen = BTreeMap::new();
+    let mut seen = BTreeMap::<[u8; 32], usize>::new();
     for (window_index, window) in expected_txids_raw
         .chunks(config.window_transactions)
         .enumerate()
