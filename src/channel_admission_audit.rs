@@ -133,6 +133,7 @@ pub struct UnverifiedHistoricalAdmissionSlice {
     kind: HistoricalAdmissionKind,
     at: ClaimedEventPosition,
     matched_list_id: Option<u32>,
+    matched_commit_list_id: Option<u32>,
     matched_side: Option<DirectMatchSide>,
 }
 
@@ -145,6 +146,10 @@ impl UnverifiedHistoricalAdmissionSlice {
     }
     pub const fn matched_list_id(&self) -> Option<u32> {
         self.matched_list_id
+    }
+    /// Type4's optional positive commitClearlistId is a distinct rule.
+    pub const fn matched_commit_list_id(&self) -> Option<u32> {
+        self.matched_commit_list_id
     }
     pub const fn matched_side(&self) -> Option<DirectMatchSide> {
         self.matched_side
@@ -283,6 +288,7 @@ impl<'a> ClaimedHistoricalDirectView<'a> {
                 }
             }
         }
+        let mut matched_commit_list_id = None;
         if let Some(list_id) = claim.commit_clearlist_id {
             if list_id > 0 {
                 if !self.direct_member(list_id, claim.sender) {
@@ -290,16 +296,18 @@ impl<'a> ClaimedHistoricalDirectView<'a> {
                     // an evidence gap, NOT a historical rejection verdict.
                     return Err(AdmissionAuditError::NoDirectCommitClearlistWitness);
                 }
-                // Retain the more restrictive positive optional check when
-                // both property and commit restrictions are present.
-                matched_list_id = Some(list_id);
+                // Preserve both independent matches; one is not evidence
+                // that the other type-4 source predicate was satisfied.
+                matched_commit_list_id = Some(list_id);
             }
         }
         Ok(UnverifiedHistoricalAdmissionSlice {
             kind: HistoricalAdmissionKind::Type4Commit,
             at: self.at,
             matched_list_id,
-            matched_side: matched_list_id.map(|_| DirectMatchSide::CommitSender),
+            matched_commit_list_id,
+            matched_side: (matched_list_id.is_some() || matched_commit_list_id.is_some())
+                .then_some(DirectMatchSide::CommitSender),
         })
     }
 
@@ -352,6 +360,7 @@ impl<'a> ClaimedHistoricalDirectView<'a> {
             kind: HistoricalAdmissionKind::Type19ChannelTrade,
             at: self.at,
             matched_list_id: matched.map(|(id, _)| id),
+            matched_commit_list_id: None,
             matched_side: matched.map(|(_, side)| side),
         })
     }
