@@ -35,8 +35,9 @@ fn fake(i:usize) -> Vec<u8> {
     tx.push(1);
     tx.extend_from_slice(&0u64.to_le_bytes());
     let script = if i%200==3 {
-        let mut s=vec![0x6a,15];
-        s.extend_from_slice(b"tl20;alice;5;2");
+        let bytes=b"tl20;alice;5;2";
+        let mut s=vec![0x6a,bytes.len() as u8];
+        s.extend_from_slice(bytes);
         s
     } else {
         let mut s=vec![0x00,0x14];
@@ -87,14 +88,18 @@ fn main() {
     let mut parallel_times=Vec::new();
     for trial in 0..5 {
         // Alternate which path runs first to reduce systematic cache bias.
-        for config in if trial%2==0 {[serial,parallel]} else {[parallel,serial]} {
+        for (parallel_case,config) in if trial%2==0 {
+            [(false,serial),(true,parallel)]
+        } else {
+            [(true,parallel),(false,serial)]
+        } {
             let begin=Instant::now();
             let actual=scan_transactions_parallel_unverified(&txs,config)
                 .expect("synthetic scanner");
             let elapsed=begin.elapsed();
             assert_eq!(actual.ordered(),known.ordered());
-            if config.workers==1 {serial_times.push(elapsed);}
-            else {parallel_times.push(elapsed);}
+            if parallel_case {parallel_times.push(elapsed);}
+            else {serial_times.push(elapsed);}
         }
     }
     let seq=median(serial_times);
