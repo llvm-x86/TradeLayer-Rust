@@ -299,7 +299,7 @@ impl<'a> ClaimedHistoricalDirectView<'a> {
             kind: HistoricalAdmissionKind::Type4Commit,
             at: self.at,
             matched_list_id,
-            matched_side: Some(DirectMatchSide::CommitSender),
+            matched_side: matched_list_id.map(|_| DirectMatchSide::CommitSender),
         })
     }
 
