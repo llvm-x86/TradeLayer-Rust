@@ -86,7 +86,8 @@ fn direct_type4_property_sender_and_optional_commit_list_are_distinct() {
         ))
         .unwrap();
     assert_eq!(result.kind(), HistoricalAdmissionKind::Type4Commit);
-    assert_eq!(result.matched_list_id(), Some(9));
+    assert_eq!(result.matched_list_id(), Some(7));
+    assert_eq!(result.matched_commit_list_id(), Some(9));
     assert_eq!(result.matched_side(), Some(DirectMatchSide::CommitSender));
     assert_eq!(result.claimed_position(), at(41, 1));
     assert_eq!(v.claimed_network(), TradeLayerMainnet::Litecoin);
@@ -118,6 +119,7 @@ fn type4_scalar_zero_and_commit_zero_do_not_construct_authority() {
     let claim = type4("alice", PropertyWhitelist::UnrestrictedScalarZero, Some(0));
     let slice = v.type4_commit_lists(claim).unwrap();
     assert_eq!(slice.matched_list_id(), None);
+    assert_eq!(slice.matched_commit_list_id(), None);
     assert_eq!(slice.matched_side(), None);
     assert_eq!(
         slice.require_authenticated_channel_admission(),
@@ -171,6 +173,7 @@ fn type19_either_side_union_matches_a_direct_member_and_stays_unverified() {
         .type19_channel_lists(type19("alice", "bob", &[17], &[11], 41))
         .unwrap();
     assert_eq!(first.matched_list_id(), Some(11));
+    assert_eq!(first.matched_commit_list_id(), None);
     assert_eq!(first.matched_side(), Some(DirectMatchSide::ChannelB));
     assert_eq!(
         first.require_canonical_signed_revision(),
