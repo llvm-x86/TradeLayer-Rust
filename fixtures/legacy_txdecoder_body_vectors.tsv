@@ -1,0 +1,18 @@
+# Type<TAB>decoder body AFTER type selector<TAB>expected research case
+4	7,a,channel1,1,[7],0,b	commit-singleton-list
+4	s-1-a,2,ref:04,0,b,1,2	commit-synthetic-raw-ref
+4	7,2,channel1,1,[7,b],0	commit-comma-bracket-misparse
+4	7,2	commit-missing-channel-throws
+7	backupB,ListOne,url,desc	whitelist-four-fields
+8	adminC,1,0,0,b,1	admin-base36-and-backup
+9	1,b,alice,ok	attestation-revoke-uppercase
+9	0,7,alice	attestation-missing-meta-throws
+9	91,7,alice,ok	attestation-post-marker-selector-is-not-revoke
+15	f	close-oracle-primitive
+21	1,7,a,1,ref:10	withdrawal-decimal-ref
+21	0,s-1-a,2,0,ref:zz	withdrawal-bad-ref-false
+22	7,a,1,ref:0,1,payRef	transfer-text-ref
+22	7,a,1	transfer-missing-destination-throws
+30	1,b,7,a,alice,hash,2,state,ref,settle,blob,1,next	stake-fraud-all-fields
+32	{"a":1}	zk-batch-opaque-not-validated
+33	2,a,10,home	colored-decimal-action-base36-ratio
