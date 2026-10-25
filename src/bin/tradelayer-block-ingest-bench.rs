@@ -274,6 +274,25 @@ fn main() {
     println!("full_owned_block_pipeline_median_ms={full_owned_ms:.3}");
     println!("fused_prepared_only_median_ms={prepared_ms:.3}");
     println!("one_team_prepared_only_median_ms={one_team_ms:.3}");
+    println!("one_team_hashed_prepared_only_median_ms={hash_seen_ms:.3}");
+    println!("one_team_inplace_merkle_prepared_only_median_ms={inplace_merkle_ms:.3}");
+    println!("one_team_fast_reduce_prepared_only_median_ms={fast_reduce_ms:.3}");
+    println!(
+        "fast_reduce_vs_one_team_ratio={:.3}",
+        one_team_ms / fast_reduce_ms.max(1e-9)
+    );
+    println!("duplicate_btree_median_ms={tree_index_ms:.3}");
+    println!("duplicate_hashmap_median_ms={hash_index_ms:.3}");
+    println!(
+        "duplicate_hashmap_vs_btree_ratio={:.3}",
+        tree_index_ms / hash_index_ms.max(1e-9)
+    );
+    println!("merkle_allocating_median_ms={merkle_reference_ms:.3}");
+    println!("merkle_inplace_median_ms={merkle_inplace_ms:.3}");
+    println!(
+        "merkle_inplace_vs_allocating_ratio={:.3}",
+        merkle_reference_ms / merkle_inplace_ms.max(1e-9)
+    );
     println!(
         "one_team_vs_windowed_ratio={:.3}",
         prepared_ms / one_team_ms.max(1e-9)
