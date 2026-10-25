@@ -250,6 +250,49 @@ pub(crate) fn prepare_transaction_prefix(raw: &[u8]) -> Result<TransactionLayout
     })
 }
 
+/// Inspect one actual output directly from a complete serialized Bitcoin
+/// transaction; return its borrowed script and amount in satoshis.
+///
+/// Strict prefix parsing has already walked the entire transaction, including
+/// SegWit witness stacks. We separately walk the canonical vin/vout region,
+/// checking every output amount and total against Bitcoin MoneyRange. This
+/// provides byte-origin consistency for a *claimed* prevout, not UTXO existence,
+/// coinbase history, funding inclusion, signature validity or spend authority.
+pub fn select_unverified_transaction_output(
+    raw: &[u8],
+    requested_vout: u32,
+) -> Result<Option<(u64, &[u8])>, ScanError> {
+    let layout = prepare_transaction_prefix(raw)?;
+    if raw.len() != layout.total_bytes {
+        return Err(ScanError::TrailingBytes);
+    }
+    let mut reader = Cursor::new(raw);
+    reader.offset = layout.first_outpoint_start;
+    for _ in 0..layout.input_count {
+        reader.read(36)?;
+        reader.variable_bytes()?;
+        reader.read(4)?;
+    }
+    let count = reader.limited_count()?;
+    if count != layout.output_count as usize {
+        return Err(ScanError::Invalid("output count differs from layout".into()));
+    }
+    let mut amount_total = 0u64;
+    let mut selected = None;
+    for index in 0..count {
+        let amount = u64::from_le_bytes(reader.read(8)?.try_into().expect("8-byte amount"));
+        amount_total = amount_total
+            .checked_add(amount)
+            .filter(|total| *total <= 21_000_000 * 100_000_000)
+            .ok_or_else(|| ScanError::Invalid("Bitcoin output MoneyRange exceeded".into()))?;
+        let script = reader.variable_bytes()?;
+        if index == requested_vout as usize {
+            selected = Some((amount, script));
+        }
+    }
+    Ok(selected)
+}
+
 /// Hash in display order, the reverse of SHA256d digest bytes.
 pub fn id_hex(digest: &[u8; 32]) -> String {
     digest
