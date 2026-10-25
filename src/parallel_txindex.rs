@@ -331,7 +331,9 @@ pub(crate) struct PreparedRawTransaction<'a> {
     pub(crate) layout: &'a TransactionLayout,
 }
 impl AsRef<[u8]> for PreparedRawTransaction<'_> {
-    fn as_ref(&self) -> &[u8] { self.raw }
+    fn as_ref(&self) -> &[u8] {
+        self.raw
+    }
 }
 
 /// Same bounded workers, windows and ordered error semantics as the

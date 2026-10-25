@@ -111,18 +111,21 @@ fn main() {
         // worker processing should differ meaningfully.
         let start = Instant::now();
         let full = raw.clone();
-        let full_view = UnverifiedRawBlockView::parse(
-            &full, Some(view.header_hash_raw()),
-        ).unwrap();
-        let full_owned = full_view.transaction_ranges().iter()
+        let full_view = UnverifiedRawBlockView::parse(&full, Some(view.header_hash_raw())).unwrap();
+        let full_owned = full_view
+            .transaction_ranges()
+            .iter()
             .map(|range| full[range.clone()].to_vec())
             .collect::<Vec<_>>();
         let full_result = inspect_unverified_block_parallel(&full_owned, config).unwrap();
         let old_root = merkle_root_unverified(
-            &full_result.ordered().iter()
+            &full_result
+                .ordered()
+                .iter()
                 .map(|row| row.observation.txid)
                 .collect::<Vec<_>>(),
-        ).unwrap();
+        )
+        .unwrap();
         assert_eq!(old_root, full_view.header_merkle_root_raw());
         assert_eq!(full_result, serial_by_slot);
         full_owned_times.push(start.elapsed());
@@ -159,7 +162,10 @@ fn main() {
     println!("full_owned_block_pipeline_median_ms={full_owned_ms:.3}");
     println!("fused_prepared_only_median_ms={prepared_ms:.3}");
     println!("bulk_borrowed_parallel_median_ms={bulk_ms:.3}");
-    println!("full_pipeline_speed_ratio={:.3}", full_owned_ms / bulk_ms.max(1e-9));
+    println!(
+        "full_pipeline_speed_ratio={:.3}",
+        full_owned_ms / bulk_ms.max(1e-9)
+    );
     println!("measured_ratio={:.3}", baseline_ms / bulk_ms.max(1e-9));
     println!(
         "bulk_preindex_txs_per_sec={:.0}",

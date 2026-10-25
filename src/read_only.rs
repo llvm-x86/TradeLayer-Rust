@@ -132,8 +132,12 @@ pub(crate) struct TransactionLayout {
     payloads: Vec<(u32, std::ops::Range<usize>)>,
 }
 impl TransactionLayout {
-    pub(crate) const fn total_bytes(&self) -> usize { self.total_bytes }
-    pub(crate) const fn stripped_bytes(&self) -> usize { self.stripped_bytes }
+    pub(crate) const fn total_bytes(&self) -> usize {
+        self.total_bytes
+    }
+    pub(crate) const fn stripped_bytes(&self) -> usize {
+        self.stripped_bytes
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -145,9 +149,12 @@ pub(crate) struct RawOutpoint {
 /// Extract first-input parent references only when an offline dependency
 /// report is requested. This does not prove that external UTXOs exist.
 pub(crate) fn source_prevouts_from_layout(
-    raw: &[u8], layout: &TransactionLayout,
+    raw: &[u8],
+    layout: &TransactionLayout,
 ) -> Result<Vec<RawOutpoint>, ScanError> {
-    if raw.len() != layout.total_bytes { return Err(ScanError::TrailingBytes); }
+    if raw.len() != layout.total_bytes {
+        return Err(ScanError::TrailingBytes);
+    }
     let mut cursor = Cursor::new(raw);
     cursor.offset = layout.input_start;
     let mut out = Vec::with_capacity(layout.input_count as usize);
@@ -204,23 +211,39 @@ pub(crate) fn prepare_transaction_prefix(raw: &[u8]) -> Result<TransactionLayout
         let mut nonempty = false;
         for _ in 0..input_count {
             let count = reader.varint()?;
-            if count > MAX_IO_COUNT { return Err(ScanError::TooLong); }
+            if count > MAX_IO_COUNT {
+                return Err(ScanError::TooLong);
+            }
             for _ in 0..count {
                 nonempty |= !reader.variable_bytes()?.is_empty();
             }
         }
         if !nonempty {
-            return Err(ScanError::Invalid("superfluous SegWit witness marker".into()));
+            return Err(ScanError::Invalid(
+                "superfluous SegWit witness marker".into(),
+            ));
         }
     }
     reader.read(4)?;
     let total_bytes = reader.offset;
-    if total_bytes > MAX_RAW_TRANSACTION { return Err(ScanError::TooLong); }
-    let stripped_bytes = if has_witness { 8 + outputs_end - input_start } else { total_bytes };
+    if total_bytes > MAX_RAW_TRANSACTION {
+        return Err(ScanError::TooLong);
+    }
+    let stripped_bytes = if has_witness {
+        8 + outputs_end - input_start
+    } else {
+        total_bytes
+    };
     Ok(TransactionLayout {
-        total_bytes, stripped_bytes, input_start, outputs_end, has_witness,
-        input_count: input_count as u32, output_count: output_count as u32,
-        op_return_count, payloads,
+        total_bytes,
+        stripped_bytes,
+        input_start,
+        outputs_end,
+        has_witness,
+        input_count: input_count as u32,
+        output_count: output_count as u32,
+        op_return_count,
+        payloads,
     })
 }
 
@@ -401,33 +424,47 @@ fn classify(vout: u32, payload: &[u8]) -> Option<Carrier> {
 /// Hash and classify carriers using a previously validated structural scan.
 /// No second walk through every vin, vout, scriptSig or witness stack.
 pub(crate) fn inspect_prepared_transaction(
-    raw: &[u8], layout: &TransactionLayout,
+    raw: &[u8],
+    layout: &TransactionLayout,
 ) -> Result<TransactionObservation, ScanError> {
-    if raw.len() > MAX_RAW_TRANSACTION { return Err(ScanError::TooLong); }
-    if raw.len() != layout.total_bytes { return Err(ScanError::TrailingBytes); }
+    if raw.len() > MAX_RAW_TRANSACTION {
+        return Err(ScanError::TooLong);
+    }
+    if raw.len() != layout.total_bytes {
+        return Err(ScanError::TrailingBytes);
+    }
     let wtxid = double_sha256(raw);
     let txid = if layout.has_witness {
         double_sha256_parts(&[
-            &raw[..4], &raw[layout.input_start..layout.outputs_end],
+            &raw[..4],
+            &raw[layout.input_start..layout.outputs_end],
             &raw[raw.len() - 4..],
         ])
     } else {
         wtxid
     };
-    let carriers = layout.payloads.iter()
+    let carriers = layout
+        .payloads
+        .iter()
         .filter_map(|(vout, range)| classify(*vout, &raw[range.clone()]))
         .collect();
     Ok(TransactionObservation {
-        txid, wtxid, has_witness: layout.has_witness,
-        input_count: layout.input_count, output_count: layout.output_count,
-        op_return_count: layout.op_return_count, carriers,
+        txid,
+        wtxid,
+        has_witness: layout.has_witness,
+        input_count: layout.input_count,
+        output_count: layout.output_count,
+        op_return_count: layout.op_return_count,
+        carriers,
     })
 }
 
 /// Standalone TX inspection checks exact length; block preparse uses the
 /// same structural layout against a larger borrowed suffix.
 pub fn inspect_transaction(raw: &[u8]) -> Result<TransactionObservation, ScanError> {
-    if raw.len() > MAX_RAW_TRANSACTION { return Err(ScanError::TooLong); }
+    if raw.len() > MAX_RAW_TRANSACTION {
+        return Err(ScanError::TooLong);
+    }
     let layout = prepare_transaction_prefix(raw)?;
     inspect_prepared_transaction(raw, &layout)
 }

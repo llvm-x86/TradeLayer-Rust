@@ -178,13 +178,22 @@ impl<'a> UnverifiedRawBlockView<'a> {
         config: ParallelIndexConfig,
         parallel: bool,
     ) -> Result<UnverifiedRawBlockIndex, RawBlockIngestError> {
-        let prepared = self.transaction_ranges.iter().zip(&self.layouts)
+        let prepared = self
+            .transaction_ranges
+            .iter()
+            .zip(&self.layouts)
             .map(|(range, layout)| PreparedRawTransaction {
-                raw: &self.block_bytes[range.clone()], layout,
+                raw: &self.block_bytes[range.clone()],
+                layout,
             })
             .collect::<Vec<_>>();
         let report = inspect_prepared_block_parallel(
-            &prepared, if parallel { config } else { ParallelIndexConfig::serial() },
+            &prepared,
+            if parallel {
+                config
+            } else {
+                ParallelIndexConfig::serial()
+            },
         )
         .map_err(RawBlockIngestError::TransactionPreindex)?;
         let txids = report
@@ -255,9 +264,15 @@ pub struct UnverifiedDependencyWaves {
 }
 
 impl UnverifiedDependencyWaves {
-    pub fn waves(&self) -> &[Vec<usize>] { &self.waves }
-    pub fn wave_by_transaction(&self) -> &[usize] { &self.wave_by_transaction }
-    pub const fn same_block_edges(&self) -> usize { self.same_block_edges }
+    pub fn waves(&self) -> &[Vec<usize>] {
+        &self.waves
+    }
+    pub fn wave_by_transaction(&self) -> &[usize] {
+        &self.wave_by_transaction
+    }
+    pub const fn same_block_edges(&self) -> usize {
+        self.same_block_edges
+    }
     pub const fn unverified_external_prevouts(&self) -> usize {
         self.unverified_external_prevouts
     }
@@ -298,13 +313,13 @@ impl UnverifiedRawBlockView<'_> {
         let mut edges = 0usize;
         let mut external = 0usize;
         for (index, layout) in self.layouts.iter().enumerate() {
-            let raw = self.raw_transaction(index)
+            let raw = self
+                .raw_transaction(index)
                 .ok_or(DependencyAuditError::MismatchedPreindex)?;
             let inputs = source_prevouts_from_layout(raw, layout)
                 .map_err(|source| DependencyAuditError::MalformedInputs { index, source })?;
-            let coinbase = inputs.len() == 1
-                && inputs[0].txid_raw == [0; 32]
-                && inputs[0].vout == u32::MAX;
+            let coinbase =
+                inputs.len() == 1 && inputs[0].txid_raw == [0; 32] && inputs[0].vout == u32::MAX;
             if index == 0 && !coinbase {
                 return Err(DependencyAuditError::MissingFirstCoinbase);
             }
@@ -316,18 +331,21 @@ impl UnverifiedRawBlockView<'_> {
                 for input in inputs {
                     if let Some(first) = previously_spent.insert(input, index) {
                         return Err(DependencyAuditError::DuplicateInputSpend {
-                            first, second: index,
+                            first,
+                            second: index,
                         });
                     }
                     if let Some(&producer) = txids.get(&input.txid_raw) {
                         if producer >= index {
                             return Err(DependencyAuditError::ForwardOrSelfReference {
-                                index, producer,
+                                index,
+                                producer,
                             });
                         }
                         if input.vout >= indexed[producer].observation.output_count {
                             return Err(DependencyAuditError::InvalidSameBlockOutput {
-                                index, producer,
+                                index,
+                                producer,
                             });
                         }
                         if producer == 0 {
