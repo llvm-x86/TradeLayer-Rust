@@ -1,9 +1,7 @@
 //! Stage25O: synthetic genuine P2WPKH first-input origin + always-deny.
 //! Header is FABRICATED at a caller-selected anchor; ECDSA math verified
 //! independently by Python + system OpenSSL in the CI harness.
-use tradelayer_core::bitcoin_inclusion::{
-    BitcoinPowProfile, CheckedHeaderSegment, MerklePath,
-};
+use tradelayer_core::bitcoin_inclusion::{BitcoinPowProfile, CheckedHeaderSegment, MerklePath};
 use tradelayer_core::chain::{BlockId, Tip};
 use tradelayer_core::channel_admission_audit::ClaimedDirectAction;
 use tradelayer_core::channel_type9_sender_audit::{
@@ -91,7 +89,10 @@ fn genuine_synthetic_parent_and_type9_origin_match_hash160_address_and_bip143_di
     assert_eq!(report.public_key().to_vec(), raw("pubkey"));
     assert_eq!(report.claimed_sender_address(), sender);
     assert_eq!(report.digest_raw(), fixed32("expected_digest"));
-    assert_eq!(inspect_transaction(&funding).unwrap().txid, fixed32("funding_txid_raw"));
+    assert_eq!(
+        inspect_transaction(&funding).unwrap().txid,
+        fixed32("funding_txid_raw")
+    );
     assert_eq!(
         inspect_transaction(&spending).unwrap().txid,
         fixed32("spending_txid_raw")
@@ -165,7 +166,10 @@ fn forged_signature_witness_preserves_txid_merkle_digest_but_never_grants_author
     let forged = audit(&funding, &spending, &field("sender_bech32")).unwrap();
     assert_eq!(forged.digest_raw(), original.digest_raw());
     assert_eq!(inspect_transaction(&spending).unwrap().txid, original_txid);
-    assert_ne!(inspect_transaction(&spending).unwrap().wtxid, original_wtxid);
+    assert_ne!(
+        inspect_transaction(&spending).unwrap().wtxid,
+        original_wtxid
+    );
     assert_eq!(
         forged.require_authenticated_sender(),
         Err(P2wpkhSenderError::SenderSignatureAndScriptNotVerified)
@@ -194,15 +198,31 @@ fn wrong_merkle_funding_txid_fork_and_spending_order_reject() {
     bad_path.siblings_raw[0][0] ^= 1;
     assert!(matches!(
         audit_bitcoin_type9_p2wpkh_first_input_unverified(
-            TradeLayerMainnet::Bitcoin, &segment(), &funding, 101, 0, &parent_path(),
-            &spending, 101, &bad_path, &sender
+            TradeLayerMainnet::Bitcoin,
+            &segment(),
+            &funding,
+            101,
+            0,
+            &parent_path(),
+            &spending,
+            101,
+            &bad_path,
+            &sender
         ),
         Err(P2wpkhSenderError::HeaderOrMerkle(_))
     ));
     assert_eq!(
         audit_bitcoin_type9_p2wpkh_first_input_unverified(
-            TradeLayerMainnet::Bitcoin, &segment(), &funding, 101, 0, &spend_path(),
-            &spending, 101, &parent_path(), &sender
+            TradeLayerMainnet::Bitcoin,
+            &segment(),
+            &funding,
+            101,
+            0,
+            &spend_path(),
+            &spending,
+            101,
+            &parent_path(),
+            &sender
         ),
         Err(P2wpkhSenderError::NoncausalTransactionOrder)
     );
@@ -216,8 +236,16 @@ fn unsupported_networks_and_wrong_raw_marker_cannot_become_a_sender() {
     for network in [TradeLayerMainnet::Litecoin, TradeLayerMainnet::Dogecoin] {
         assert_eq!(
             audit_bitcoin_type9_p2wpkh_first_input_unverified(
-                network, &segment(), &funding, 101, 0, &parent_path(),
-                &spending, 101, &spend_path(), &sender
+                network,
+                &segment(),
+                &funding,
+                101,
+                0,
+                &parent_path(),
+                &spending,
+                101,
+                &spend_path(),
+                &sender
             ),
             Err(P2wpkhSenderError::UnsupportedNetwork)
         );
