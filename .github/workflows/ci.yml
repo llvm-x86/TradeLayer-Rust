@@ -108,6 +108,8 @@ jobs:
         run: cargo test --frozen --test channel_type9_sender_audit
       - name: Legacy activation.js source-registry name and non-genesis parity oracle
         run: node scripts/audit_legacy_activation_parity.cjs
+      - name: Pinned Validity activation helper versus registry height parity
+        run: node scripts/audit_legacy_validity_activation.cjs
       - name: Legacy activation.js 36-type/33-threshold/Rust permanent-denial parity
         run: cargo test --frozen --test legacy_activation_audit
       - name: Legacy clearlist.js independent Node source collision and xpub Merkle oracle
