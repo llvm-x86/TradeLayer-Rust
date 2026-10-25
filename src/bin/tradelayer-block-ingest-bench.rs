@@ -198,6 +198,21 @@ fn main() {
         assert_eq!(*pooled.ordered_preindex(), serial_by_slot);
         black_box(pooled);
         let start = Instant::now();
+        let hash_only = view.inspect_parallel_one_team_hash_seen(config).unwrap();
+        hash_seen_times.push(start.elapsed());
+        assert_eq!(*hash_only.ordered_preindex(), serial_by_slot);
+        black_box(hash_only);
+        let start = Instant::now();
+        let merkle_only = view.inspect_parallel_one_team_inplace_merkle(config).unwrap();
+        inplace_merkle_times.push(start.elapsed());
+        assert_eq!(*merkle_only.ordered_preindex(), serial_by_slot);
+        black_box(merkle_only);
+        let start = Instant::now();
+        let combined = view.inspect_parallel_one_team_fast_reduce(config).unwrap();
+        fast_reduce_times.push(start.elapsed());
+        assert_eq!(*combined.ordered_preindex(), serial_by_slot);
+        black_box(combined);
+        let start = Instant::now();
         let observed =
             fetch_and_inspect_unverified_block(view.header_hash_raw(), config, |_| Ok(raw.clone()))
                 .unwrap();
@@ -205,10 +220,44 @@ fn main() {
         assert_eq!(*observed.ordered_preindex(), serial_by_slot);
         black_box(observed);
     }
+    // Isolate index and Merkle reducer costs from thread scheduling and
+    // SHA256d transaction hashing. Use the exact same source-ordered IDs.
+    for _ in 0..repeats * 7 {
+        let start = Instant::now();
+        let baseline_index = duplicate_tree(&observed_txids);
+        tree_index_times.push(start.elapsed());
+        assert_eq!(baseline_index, Ok(()));
+        black_box(baseline_index);
+
+        let start = Instant::now();
+        let hashed_index = duplicate_hash(&observed_txids);
+        hash_index_times.push(start.elapsed());
+        assert_eq!(hashed_index, Ok(()));
+        black_box(hashed_index);
+
+        let start = Instant::now();
+        let root = merkle_root_unverified(&observed_txids).unwrap();
+        merkle_reference_times.push(start.elapsed());
+        assert_eq!(root, view.header_merkle_root_raw());
+        black_box(root);
+
+        let start = Instant::now();
+        let root = merkle_root_unverified_inplace(&observed_txids).unwrap();
+        merkle_inplace_times.push(start.elapsed());
+        assert_eq!(root, view.header_merkle_root_raw());
+        black_box(root);
+    }
     let baseline_ms = median(owned_times).as_secs_f64() * 1000.0;
     let full_owned_ms = median(full_owned_times).as_secs_f64() * 1000.0;
     let prepared_ms = median(prepared_times).as_secs_f64() * 1000.0;
     let one_team_ms = median(one_team_times).as_secs_f64() * 1000.0;
+    let hash_seen_ms = median(hash_seen_times).as_secs_f64() * 1000.0;
+    let inplace_merkle_ms = median(inplace_merkle_times).as_secs_f64() * 1000.0;
+    let fast_reduce_ms = median(fast_reduce_times).as_secs_f64() * 1000.0;
+    let tree_index_ms = median(tree_index_times).as_secs_f64() * 1000.0;
+    let hash_index_ms = median(hash_index_times).as_secs_f64() * 1000.0;
+    let merkle_reference_ms = median(merkle_reference_times).as_secs_f64() * 1000.0;
+    let merkle_inplace_ms = median(merkle_inplace_times).as_secs_f64() * 1000.0;
     let bulk_ms = median(bulk_times).as_secs_f64() * 1000.0;
     let bulk_seconds = (bulk_ms / 1000.0).max(1e-9);
     println!("benchmark=UNVERIFIED_SYNTHETIC_BULK_BLOCK_INGEST");
