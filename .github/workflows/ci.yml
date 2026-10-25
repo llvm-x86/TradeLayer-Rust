@@ -86,6 +86,10 @@ jobs:
         run: python3 scripts/audit_p2sh_legacy_ecdsa_openssl.py --check
       - name: Stage 25L Rust read-only P2SH signed-fixture parity and permanent denial
         run: cargo test --frozen --test channel_p2sh_signed_evidence
+      - name: Stage 25M as-of direct clearlist revocation/fork and hard channel-auth refusal
+        run: cargo test --frozen --test channel_admission_audit
+      - name: Stage 25M independent Node type4/type19 pinned source-predicate subset
+        run: node scripts/audit_historical_channel_lists.cjs
       - name: Stage 25F source-only exact rational bankruptcy threshold
         run: cargo test --frozen --test bankruptcy_source_audit
       - name: Verify Stage 25A isolated margin and funding atomicity
