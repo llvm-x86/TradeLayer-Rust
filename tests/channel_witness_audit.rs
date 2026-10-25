@@ -199,7 +199,7 @@ fn rejects_wrong_prevout_even_if_script_and_claimed_signers_are_correct() {
 
 #[test]
 fn rejects_p2sh_unsupported_output_wrong_witness_program_and_empty_value() {
-    let (fund, spend) = pair();
+    let (_, spend) = pair();
     assert_eq!(
         checked(
             &funding(&[0xa9, 0x14, 2, 3, 4, 0x87], 10_000),
