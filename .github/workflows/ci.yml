@@ -124,6 +124,10 @@ jobs:
         run: node scripts/audit_legacy_validity_0789.cjs
       - name: Legacy validity.js Rust Type0/7/8/9 diagnostics and permanent admission denial
         run: cargo test --frozen --test legacy_validity_audit
+      - name: Legacy types.js exact pinned source-blob and 36-route Node VM dispatch oracle
+        run: node scripts/audit_legacy_types_dispatch.cjs
+      - name: Legacy types.js Rust 36-route call-shape, prefix and permanent-denial audit
+        run: cargo test --frozen --test legacy_types_audit
       - name: Stage 25F source-only exact rational bankruptcy threshold
         run: cargo test --frozen --test bankruptcy_source_audit
       - name: Verify Stage 25A isolated margin and funding atomicity
