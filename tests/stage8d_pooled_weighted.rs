@@ -142,7 +142,10 @@ fn stress_ten_thousand_transactions_across_many_windows() {
         let barrier = view
             .inspect_parallel_pooled_barrier(config(workers, window))
             .unwrap();
-        assert_eq!(barrier, expected, "barrier workers={workers} window={window}");
+        assert_eq!(
+            barrier, expected,
+            "barrier workers={workers} window={window}"
+        );
     }
 }
 
