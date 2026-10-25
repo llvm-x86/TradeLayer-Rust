@@ -115,8 +115,7 @@ fn sha256_parts(parts: &[&[u8]]) -> [u8; 32] {
     tail[..filled].copy_from_slice(&pending[..filled]);
     tail[filled] = 0x80;
     let padded_len = if filled >= 56 { 128 } else { 64 };
-    tail[padded_len - 8..padded_len]
-        .copy_from_slice(&total_bytes.wrapping_mul(8).to_be_bytes());
+    tail[padded_len - 8..padded_len].copy_from_slice(&total_bytes.wrapping_mul(8).to_be_bytes());
     for block in tail[..padded_len].chunks_exact(64) {
         compress(&mut state, block.try_into().expect("64-byte block"));
     }
@@ -166,8 +165,8 @@ mod tests {
     #[test]
     fn chunked_sha256d_matches_flat_hash_at_all_padding_boundaries() {
         for len in [
-            0usize, 1, 2, 7, 54, 55, 56, 63, 64, 65, 119, 120, 127, 128,
-            129, 255, 256, 257, 4095, 4096, 16384,
+            0usize, 1, 2, 7, 54, 55, 56, 63, 64, 65, 119, 120, 127, 128, 129, 255, 256, 257, 4095,
+            4096, 16384,
         ] {
             let input: Vec<u8> = (0..len)
                 .map(|i| (i as u8).wrapping_mul(31).wrapping_add(19))

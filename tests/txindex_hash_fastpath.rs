@@ -6,7 +6,15 @@ use tradelayer_core::parallel_txindex::{
 };
 use tradelayer_core::read_only::{decode_hex, inspect_transaction};
 
-fn source_fixture() -> Vec<(&'static str, Vec<u8>, Vec<u8>, [u8; 32], [u8; 32], bool, usize)> {
+fn source_fixture() -> Vec<(
+    &'static str,
+    Vec<u8>,
+    Vec<u8>,
+    [u8; 32],
+    [u8; 32],
+    bool,
+    usize,
+)> {
     include_str!("../fixtures/txindex_segwit_hash_vectors.tsv")
         .lines()
         .filter(|line| !line.is_empty() && !line.starts_with('#') && !line.starts_with("label\t"))
@@ -35,11 +43,18 @@ fn hashlib_legacy_and_segwit_raw_txids_are_byte_exact() {
         assert_eq!(observed.wtxid, wtxid, "{label}: wtxid");
         assert_eq!(observed.has_witness, witness, "{label}: witness marker");
         assert_eq!(observed.carriers.len(), carriers, "{label}: carriers");
-        assert_eq!(inspect_transaction(&stripped).unwrap().txid, txid, "{label}: stripped");
+        assert_eq!(
+            inspect_transaction(&stripped).unwrap().txid,
+            txid,
+            "{label}: stripped"
+        );
         if !witness {
             assert_eq!(observed.txid, observed.wtxid, "{label}: identical hashes");
         } else {
-            assert_ne!(observed.txid, observed.wtxid, "{label}: signed-witness hash");
+            assert_ne!(
+                observed.txid, observed.wtxid,
+                "{label}: signed-witness hash"
+            );
         }
     }
 }
@@ -50,7 +65,11 @@ fn mixed_legacy_and_witness_source_order_remains_identical_parallel_or_serial() 
     let witness = &cases[1].1;
     let mut raws = Vec::with_capacity(1047);
     for index in 0..1047u32 {
-        let mut tx = if index % 3 == 0 { witness.clone() } else { legacy.clone() };
+        let mut tx = if index % 3 == 0 {
+            witness.clone()
+        } else {
+            legacy.clone()
+        };
         // Only a synthetic first-input parent outpoint is varied for uniqueness.
         // Offset: 4 version + (2 witness flag) + 1 input count.
         let outpoint_start = if index % 3 == 0 { 7 } else { 5 };
@@ -64,8 +83,12 @@ fn mixed_legacy_and_witness_source_order_remains_identical_parallel_or_serial() 
         for window in [1, 7, 64, 512] {
             let parallel = inspect_unverified_block_parallel(
                 &raws,
-                ParallelIndexConfig { workers, window_transactions: window },
-            ).unwrap();
+                ParallelIndexConfig {
+                    workers,
+                    window_transactions: window,
+                },
+            )
+            .unwrap();
             assert_eq!(parallel, serial, "workers={workers} window={window}");
             assert_eq!(
                 parallel.require_authenticated_transaction_state(),

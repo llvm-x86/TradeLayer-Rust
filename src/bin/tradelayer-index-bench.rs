@@ -126,7 +126,14 @@ fn main() {
     println!("benchmark=UNVERIFIED_SYNTHETIC_TXID_SCAN");
     println!("transaction_count={count}");
     println!("segwit_percent={segwit_percent}");
-    println!("witness_transactions={}", baseline.ordered().iter().filter(|tx| tx.observation.has_witness).count());
+    println!(
+        "witness_transactions={}",
+        baseline
+            .ordered()
+            .iter()
+            .filter(|tx| tx.observation.has_witness)
+            .count()
+    );
     println!("raw_bytes={total_bytes}");
     println!("candidate_count={}", baseline.candidate_positions().len());
     println!("workers={workers}");
