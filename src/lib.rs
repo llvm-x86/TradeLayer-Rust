@@ -12,6 +12,7 @@ pub mod bitcoin_inclusion; // Bitcoin SHA256d header and tx Merkle checks; no fu
 pub mod chain; // Trust-boundary and reversible block progression, prototype only.
 pub mod channel_bip143_audit; // Stage 25I exact SegWit-v0 SIGHASH_ALL digest; no signature verification.
 pub mod channel_p2sh_audit; // Stage 25K legacy P2SH HASH160 outpoint and redeem script, not ECDSA.
+pub mod channel_p2sh_sighash_audit; // Stage 25L read-only legacy P2SH SIGHASH_ALL digest, no ECDSA authority.
 pub mod channel_witness_audit; // Stage 25H raw native P2WSH script/outpoint only; not ECDSA authorization.
 pub mod clearing_cadence; // Stage 24C read-only JS clearing callback and funding schedule observations.
 pub mod clearing_chain; // Stage 25D unverified combined spot-clearing rollback and TLCC checkpoints.
