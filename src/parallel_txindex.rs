@@ -277,17 +277,17 @@ fn blank_index(size: usize) -> UnverifiedOrderedBlockIndex {
 /// transactions. CPU parsing/SHA256d is parallel; results are placed in
 /// original block order and never committed to chain or ledger state.
 /// An error aborts the entire report; no partially indexed success escapes.
-pub fn inspect_unverified_block_parallel(
-    raw_transactions: &[Vec<u8>],
+fn inspect_unverified_block_generic<T: AsRef<[u8]> + Sync>(
+    raw_transactions: &[T],
     config: ParallelIndexConfig,
 ) -> Result<UnverifiedOrderedBlockIndex, ParallelIndexError> {
     let config = config.validate()?;
     validate_count(raw_transactions.len())?;
     let mut bytes = 0usize;
     for (index, raw) in raw_transactions.iter().enumerate() {
-        validate_row(index, raw)?;
+        validate_row(index, raw.as_ref())?;
         bytes = bytes
-            .checked_add(raw.len())
+            .checked_add(raw.as_ref().len())
             .filter(|sum| *sum <= MAX_BLOCK_INPUT_BYTES)
             .ok_or(ParallelIndexError::ExceededBlockByteLimit)?;
     }
@@ -299,7 +299,7 @@ pub fn inspect_unverified_block_parallel(
     {
         let start = window_index * config.window_transactions;
         let completed = work_window(start, window.len(), config.workers, &|index| {
-            inspect_transaction(&raw_transactions[index])
+            inspect_transaction(raw_transactions[index].as_ref())
                 .map_err(|source| ParallelIndexError::RawScan { index, source })
         })?;
         for (offset, result) in completed.into_iter().enumerate() {
@@ -309,7 +309,7 @@ pub fn inspect_unverified_block_parallel(
                 &mut report,
                 &mut seen,
                 index,
-                raw_transactions[index].len(),
+                raw_transactions[index].as_ref().len(),
                 observation,
             )?;
         }
@@ -317,6 +317,32 @@ pub fn inspect_unverified_block_parallel(
     // A validated untrusted observation must account for every input byte.
     debug_assert_eq!(report.raw_bytes_inspected, bytes);
     Ok(report)
+}
+
+/// Preserve the original owned-Vec API for existing callers. The shared
+/// implementation now accepts borrowed slices without copying transaction
+/// bytes, enabling one-getblock/one-parser/parallel-TXID preindexing.
+pub fn inspect_unverified_block_parallel(
+    raw_transactions: &[Vec<u8>],
+    config: ParallelIndexConfig,
+) -> Result<UnverifiedOrderedBlockIndex, ParallelIndexError> {
+    inspect_unverified_block_generic(raw_transactions, config)
+}
+
+/// Analyze independent borrowed transaction spans in parallel. No per-TX
+/// serialized byte buffer is allocated or retained by this function.
+/// Results and the lowest failing index are ordered by original block index.
+pub fn inspect_unverified_block_slices_parallel(
+    raw_transactions: &[&[u8]],
+    config: ParallelIndexConfig,
+) -> Result<UnverifiedOrderedBlockIndex, ParallelIndexError> {
+    inspect_unverified_block_generic(raw_transactions, config)
+}
+
+pub fn inspect_unverified_block_slices_serial(
+    raw_transactions: &[&[u8]],
+) -> Result<UnverifiedOrderedBlockIndex, ParallelIndexError> {
+    inspect_unverified_block_generic(raw_transactions, ParallelIndexConfig::serial())
 }
 
 pub fn inspect_unverified_block_serial(
