@@ -1,8 +1,8 @@
 //! Stage25F pinned-source bankruptcy PRICE ONLY. Never a market fill.
 use std::cmp::Ordering;
 use tradelayer_core::bankruptcy_source_audit::{
-    characterize_bankruptcy_fraction_unverified as threshold,
-    BankruptcyAuditError as Error, BankruptcyInputs as Input,
+    characterize_bankruptcy_fraction_unverified as threshold, BankruptcyAuditError as Error,
+    BankruptcyInputs as Input,
 };
 
 const ONE: u64 = 100_000_000;
@@ -42,8 +42,14 @@ fn linear_long_and_short_boundaries_use_signed_quantity_and_notional() {
     assert_eq!(long.floor_e8(), 95 * u128::from(ONE));
     assert_eq!(short.floor_e8(), 105 * u128::from(ONE));
     assert!(long.is_exact_e8());
-    assert_eq!(long.compare_declared_quote_e8(95 * ONE), Ok(Ordering::Equal));
-    assert_eq!(short.compare_declared_quote_e8(105 * ONE), Ok(Ordering::Equal));
+    assert_eq!(
+        long.compare_declared_quote_e8(95 * ONE),
+        Ok(Ordering::Equal)
+    );
+    assert_eq!(
+        short.compare_declared_quote_e8(105 * ONE),
+        Ok(Ordering::Equal)
+    );
 }
 
 #[test]
@@ -56,7 +62,10 @@ fn inverse_long_and_short_use_historical_reciprocal_formula() {
     assert_eq!(long.floor_e8(), 50 * u128::from(ONE));
     assert_eq!(short.floor_e8(), 200 * u128::from(ONE));
     assert_eq!(long.compare_declared_quote_e8(49 * ONE), Ok(Ordering::Less));
-    assert_eq!(short.compare_declared_quote_e8(201 * ONE), Ok(Ordering::Greater));
+    assert_eq!(
+        short.compare_declared_quote_e8(201 * ONE),
+        Ok(Ordering::Greater)
+    );
 }
 
 #[test]
@@ -114,5 +123,8 @@ fn no_spendable_execution_or_verifier_is_exposed_by_the_fraction() {
     assert_eq!(price.floor_e8(), 99 * u128::from(ONE));
     // The only public result is a rational inequality. It has no
     // account, signature, token, payout, side-effect or authorization.
-    assert_eq!(price.compare_declared_quote_e8(99 * ONE), Ok(Ordering::Equal));
+    assert_eq!(
+        price.compare_declared_quote_e8(99 * ONE),
+        Ok(Ordering::Equal)
+    );
 }
