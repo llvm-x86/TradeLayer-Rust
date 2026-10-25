@@ -79,7 +79,10 @@ fn cpu_parallelism_matches_serial_exactly_even_across_small_windows() {
     assert_eq!(expected.transaction_count(), rows.len());
     assert!(expected.candidate_positions().len() >= 10);
     assert!(expected.op_return_output_count() >= 10);
-    assert!(expected.candidate_positions().windows(2).all(|p| p[0] < p[1]));
+    assert!(expected
+        .candidate_positions()
+        .windows(2)
+        .all(|p| p[0] < p[1]));
     let bytes: usize = rows.iter().map(Vec::len).sum();
     assert_eq!(expected.raw_bytes_inspected(), bytes);
     for workers in [1, 2, 3, 4, 8, 16] {
@@ -125,7 +128,10 @@ fn first_block_order_failure_does_not_depend_on_worker_schedule() {
         index: 19,
         source: ScanError::Truncated,
     };
-    assert_eq!(inspect_unverified_block_serial(&rows), Err(expected.clone()));
+    assert_eq!(
+        inspect_unverified_block_serial(&rows),
+        Err(expected.clone())
+    );
     for workers in [1, 2, 4, 8] {
         for window in [1, 32, 64, 256] {
             assert_eq!(
@@ -143,8 +149,8 @@ fn checked_txids_stay_positional_under_out_of_order_mock_rpc_completion() {
         .iter()
         .map(|raw| inspect_transaction(raw).unwrap().txid)
         .collect();
-    let serial = fetch_and_inspect_unverified_serial(&txids, |index, _| Ok(rows[index].clone()))
-        .unwrap();
+    let serial =
+        fetch_and_inspect_unverified_serial(&txids, |index, _| Ok(rows[index].clone())).unwrap();
     let in_flight = AtomicUsize::new(0);
     let peak = AtomicUsize::new(0);
     let parallel = fetch_and_inspect_unverified_parallel(&txids, config(6, 17), |index, _| {
@@ -219,7 +225,10 @@ fn duplicate_txids_in_the_same_block_fail_closed_in_both_modes() {
         first: 19,
         second: 199,
     };
-    assert_eq!(inspect_unverified_block_serial(&rows), Err(duplicate.clone()));
+    assert_eq!(
+        inspect_unverified_block_serial(&rows),
+        Err(duplicate.clone())
+    );
     assert_eq!(
         inspect_unverified_block_parallel(&rows, config(8, 128)),
         Err(duplicate.clone())
@@ -271,9 +280,7 @@ fn configuration_and_raw_byte_limits_fail_before_any_ledger_effect() {
         inspect_unverified_block_parallel(&oversized, config(4, 2)),
         Err(ParallelIndexError::OversizedRawTransaction { index: 0 })
     );
-    let large: Vec<_> = (0..34)
-        .map(|i| synthetic_tx(i, false, 970_000))
-        .collect();
+    let large: Vec<_> = (0..34).map(|i| synthetic_tx(i, false, 970_000)).collect();
     assert!(large.iter().map(Vec::len).sum::<usize>() > MAX_BLOCK_INPUT_BYTES);
     assert_eq!(
         inspect_unverified_block_parallel(&large, config(4, 128)),
@@ -288,7 +295,10 @@ fn reorg_reinspection_has_no_cross_fork_memoized_candidates_or_source_state() {
     let mut fork = common.clone();
     fork[9] = synthetic_tx(999_009, true, 144);
     let current = inspect_unverified_block_parallel(&fork, config(4, 32)).unwrap();
-    assert_ne!(old.ordered()[9].observation.txid, current.ordered()[9].observation.txid);
+    assert_ne!(
+        old.ordered()[9].observation.txid,
+        current.ordered()[9].observation.txid
+    );
     assert_eq!(
         current.ordered()[9].observation.txid,
         inspect_transaction(&fork[9]).unwrap().txid
