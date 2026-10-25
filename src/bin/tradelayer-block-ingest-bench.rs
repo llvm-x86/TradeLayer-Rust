@@ -231,13 +231,13 @@ fn main() {
         let baseline_index = duplicate_tree(&observed_txids);
         tree_index_times.push(start.elapsed());
         assert_eq!(baseline_index, Ok(()));
-        black_box(baseline_index);
+        let _ = black_box(baseline_index);
 
         let start = Instant::now();
         let hashed_index = duplicate_hash(&observed_txids);
         hash_index_times.push(start.elapsed());
         assert_eq!(hashed_index, Ok(()));
-        black_box(hashed_index);
+        let _ = black_box(hashed_index);
 
         let start = Instant::now();
         let root = merkle_root_unverified(&observed_txids).unwrap();
