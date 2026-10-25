@@ -75,6 +75,7 @@ pub enum SourceEncoderCaveat {
     WithdrawalDecimalAmountVersusBase36Decoder,
     WithdrawalBooleanLiteralVersusOneFlag,
     BodyOnlyWithAbsentSourceDecoder,
+    BodyOnlyWithoutCalledValidator,
     HistoricalNativeGenesisUnverified,
     NoHistoricalSignerOrNetworkEvidence,
 }
@@ -532,7 +533,7 @@ pub fn source_encode_colored_coin_unverified(
     raw_text(home_address)?;
     source_output(33,format!("{action},{},{},{}",b36_id(u128::from(property_id))?,
         b36_id(u128::from(sats_ratio))?,home_address),
-        SourceInnerEnvelope::BodyOnly,vec![SourceEncoderCaveat::BodyOnlyWithAbsentSourceDecoder])
+        SourceInnerEnvelope::BodyOnly,vec![SourceEncoderCaveat::BodyOnlyWithoutCalledValidator])
 }
 pub fn source_encode_bridge_unverified(
     property_id:u64,amount:u64,destination_address:&str,
