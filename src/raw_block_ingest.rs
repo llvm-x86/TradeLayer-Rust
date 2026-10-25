@@ -17,8 +17,8 @@
 use crate::hash256::double_sha256;
 use crate::parallel_txindex::{
     inspect_prepared_block_one_team, inspect_prepared_block_parallel,
-    inspect_prepared_block_pooled_weighted, ParallelIndexConfig, ParallelIndexError,
-    PreparedRawTransaction, UnverifiedOrderedBlockIndex,
+    inspect_prepared_block_pooled_barrier, inspect_prepared_block_pooled_weighted,
+    ParallelIndexConfig, ParallelIndexError, PreparedRawTransaction, UnverifiedOrderedBlockIndex,
 };
 use crate::read_only::{
     compact_size_prefix, prepare_transaction_prefix, source_prevouts_from_layout, RawOutpoint,
@@ -75,6 +75,7 @@ enum PreindexSchedule {
     Windowed,
     OneTeam,
     PooledWeighted,
+    PooledBarrier,
 }
 
 impl<'a> UnverifiedRawBlockView<'a> {
@@ -205,6 +206,9 @@ impl<'a> UnverifiedRawBlockView<'a> {
             PreindexSchedule::PooledWeighted => {
                 inspect_prepared_block_pooled_weighted(&prepared, config)
             }
+            PreindexSchedule::PooledBarrier => {
+                inspect_prepared_block_pooled_barrier(&prepared, config)
+            }
         }
         .map_err(RawBlockIngestError::TransactionPreindex)?;
         let txids = report
@@ -251,6 +255,15 @@ impl<'a> UnverifiedRawBlockView<'a> {
         config: ParallelIndexConfig,
     ) -> Result<UnverifiedRawBlockIndex, RawBlockIngestError> {
         self.index(config, PreindexSchedule::PooledWeighted)
+    }
+
+    /// Experimental single scoped team with per-window worker barriers and
+    /// bounded result slots. No stateful UTXO or TradeLayer authority.
+    pub fn inspect_parallel_pooled_barrier(
+        &self,
+        config: ParallelIndexConfig,
+    ) -> Result<UnverifiedRawBlockIndex, RawBlockIngestError> {
+        self.index(config, PreindexSchedule::PooledBarrier)
     }
 
     pub fn inspect_serial(&self) -> Result<UnverifiedRawBlockIndex, RawBlockIngestError> {
