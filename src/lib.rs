@@ -49,7 +49,6 @@ pub mod network_profile; // Independent Bitcoin/Litecoin/Dogecoin mainnet identi
 pub mod parallel_txindex; // Bounded parallel read-only runtime TXID/OP_RETURN scan and ordered fetch; never consensus.
 pub mod protocol; // Audited legacy transaction catalog, not consensus execution.
 pub mod raw_block_ingest; // Stage8C borrowed raw Bitcoin block preindex, not consensus.
-pub mod wave_precheck; // Stage8D dependency-wave read-only probes, no Script/UTXO or Ledger permission.
 pub mod read_only; // Offline transaction scanning; cannot authorize ledger state.
 pub mod registry; // Standalone tx0/7-9/13-15 registry state; authentication external.
 pub mod root_reconciliation; // Read-only TLPT and zkTL metadata consistency.
@@ -57,6 +56,7 @@ pub mod spot; // Stage 19 isolated type-5/6 rational matching experiment; unveri
 pub mod spot_chain; // Stage 20 typed unverified spot block replay and complete TLSP/TLSC checkpoints.
 pub mod state_commitment; // Experimental domain-separated state and transition metadata; no proof verifier.
 pub mod unified_chain; // Offline reversible registry+ledger block projection; adapter external.
+pub mod wave_precheck; // Stage8D dependency-wave read-only probes, no Script/UTXO or Ledger permission.
 pub mod wire; // Read-only legacy ASCII format analysis; never auto-fallback.
 pub mod wire_v1;
 pub mod withdrawal_parity; // Read-only JS-like deferred queue oracle for differential tests.
