@@ -64,6 +64,8 @@ jobs:
         run: cargo test --frozen --test liquidation_source_characterization
       - name: Stage 25E1 liquidation risk preflight and no-spend source budgets
         run: cargo test --frozen --test liquidation_preflight
+      - name: Stage 25G unverified mark and two-of-two admission gate
+        run: cargo test --frozen --test liquidation_input_gate
       - name: Stage 25F source-only exact rational bankruptcy threshold
         run: cargo test --frozen --test bankruptcy_source_audit
       - name: Verify Stage 25A isolated margin and funding atomicity

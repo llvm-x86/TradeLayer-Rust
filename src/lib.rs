@@ -27,6 +27,7 @@ pub mod joint_chain; // Stage 22 mixed unverified block replay and TLJC checkpoi
 mod journal_move; // Fail-closed single-use settlement journal movement; Kani harness.
 pub mod ledger; // In-memory atomic accounting primitives; not chain consensus.
 pub mod liquidation_audit; // Stage 25E1 read-only maintenance, bankruptcy and insurance-deficit preflight.
+pub mod liquidation_input_gate; // Stage 25G read-only current-block provenance and mandatory authorization gap.
 pub mod liquidation_source_characterization; // Source-pinned read-only AMM priority and avg-vs-mark audit.
 pub mod network_bound; // Stage 21 profile-bound replay and versioned checkpoint envelopes; unverified.
 pub mod network_profile; // Independent Bitcoin/Litecoin/Dogecoin mainnet identities and proof capabilities.
