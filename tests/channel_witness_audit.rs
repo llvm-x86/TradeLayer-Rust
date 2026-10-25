@@ -1,6 +1,7 @@
 //! Stage 25H offline raw UTXO/witness-script commitment audits.
 //! Syntactically DER-looking fake signatures deliberately pass inspection,
 //! but the caller can NEVER infer actual ECDSA validity or authorization.
+use tradelayer_core::channel_bip143_audit::audit_native_p2wsh_bip143_sighash_all_unverified;
 use tradelayer_core::channel_witness_audit::{
     audit_native_p2wsh_outpoint_unverified, ClaimedTwoOfTwoPubkeys, StructuralChannelError,
     CANONICAL_COMPRESSED_2_OF_2_SCRIPT_SIZE,
@@ -422,4 +423,181 @@ fn structural_observation_does_not_spend_or_admit_liquidation() {
     }
     // There is no conversion to a Ledger Operation, ClearingSandbox, or
     // type-4/type-19 admission authorization. No mutation API is exposed.
+}
+
+
+fn bip143_checked(
+    funding_bytes: &[u8],
+    spend_bytes: &[u8],
+) -> Result<tradelayer_core::channel_bip143_audit::UnverifiedP2wshBip143Digest, StructuralChannelError> {
+    audit_native_p2wsh_bip143_sighash_all_unverified(
+        TradeLayerMainnet::Litecoin,
+        funding_bytes,
+        0,
+        spend_bytes,
+        1,
+        keys(),
+    )
+}
+
+fn expected_32(hex: &str) -> [u8; 32] {
+    decode_hex(hex).unwrap().try_into().unwrap()
+}
+
+#[test]
+fn independently_calculated_python_bip143_v0_sighash_all_vector() {
+    // Python hashlib.sha256 (twice), independent from Rust's custom SHA.
+    // scripts/audit_bip143_channel_fixture.py freezes this second-language
+    // computation of serialized funding, selected SECOND input, 71-byte
+    // scriptCode, base-chain funding amount, sequences and all outputs.
+    let (fund, spend) = pair();
+    let checked = bip143_checked(&fund, &spend).unwrap();
+    assert_eq!(
+        checked.digest_raw(),
+        expected_32("5dc9f28f470cf591f0e7aacd431bbbdd31c8011ba96f3eb13c17e1ec8d408210")
+    );
+    assert_eq!(
+        checked.hash_prevouts_raw(),
+        expected_32("ea816a41f5f26c3bf6798e1120432065e3ff7679880d45d1bc24820e23d3d308")
+    );
+    assert_eq!(
+        checked.hash_sequence_raw(),
+        expected_32("752adad0a7b9ceca853768aebb6965eca126a62965f698a0c1bc43d83db632ad")
+    );
+    assert_eq!(
+        checked.hash_outputs_raw(),
+        expected_32("7ce42f6d181802782fc3ea5329d76e8fe344cbc1aa49742806d5a71528d6cd49")
+    );
+    assert_eq!(checked.structural().spending_vin(), 1);
+    assert_eq!(checked.structural().funding_satoshis(), 10_000);
+    assert_eq!(
+        checked.require_verified_channel_signatures(),
+        Err(StructuralChannelError::SignaturesNotVerified)
+    );
+}
+
+#[test]
+fn sighash_all_changes_on_funding_amount_outputs_version_sequence_and_locktime() {
+    let (fund, spend) = pair();
+    let digest = bip143_checked(&fund, &spend).unwrap().digest_raw();
+    let new_fund = funding(&script_pubkey(), 10_001);
+    let new_spend = spending(
+        inspect_transaction(&new_fund).unwrap().txid,
+        0,
+        &[],
+        &good_stack(),
+        true,
+    );
+    assert_ne!(bip143_checked(&new_fund, &new_spend).unwrap().digest_raw(), digest);
+
+    let mut modified = spend.clone();
+    modified[0] ^= 1; // nVersion, not SegWit marker
+    assert_ne!(bip143_checked(&fund, &modified).unwrap().digest_raw(), digest);
+
+    let mut modified = spend.clone();
+    // First input's 4-byte sequence follows its outpoint and empty script.
+    let first_seq = 4 + 2 + 1 + 32 + 4 + 1;
+    modified[first_seq] ^= 1;
+    let sequence_change = bip143_checked(&fund, &modified).unwrap();
+    assert_ne!(sequence_change.digest_raw(), digest);
+    assert_ne!(
+        sequence_change.hash_sequence_raw(),
+        bip143_checked(&fund, &spend).unwrap().hash_sequence_raw()
+    );
+
+    let mut modified = spend.clone();
+    // All outputs, including amounts and scripts, must bind in SIGHASH_ALL.
+    let idx = modified
+        .windows(8)
+        .position(|window| window == 8_000u64.to_le_bytes())
+        .unwrap();
+    modified[idx] ^= 1; // output amount, not funding amount
+    let output_change = bip143_checked(&fund, &modified).unwrap();
+    assert_ne!(output_change.digest_raw(), digest);
+    assert_ne!(
+        output_change.hash_outputs_raw(),
+        bip143_checked(&fund, &spend).unwrap().hash_outputs_raw()
+    );
+
+    let mut modified = spend.clone();
+    let locktime_start = modified.len() - 4;
+    modified[locktime_start] = 1;
+    assert_ne!(bip143_checked(&fund, &modified).unwrap().digest_raw(), digest);
+}
+
+#[test]
+fn signature_bytes_are_excluded_from_bip143_preimage_and_not_verified() {
+    let (fund, original) = pair();
+    let original_tx = inspect_transaction(&original).unwrap();
+    let original_digest = bip143_checked(&fund, &original).unwrap();
+    let mut stack = good_stack();
+    stack[1] = fake_der(3, 4); // fake DER from a different non-keypair
+    stack[2] = fake_der(4, 5);
+    let altered = spending(
+        inspect_transaction(&fund).unwrap().txid,
+        0,
+        &[],
+        &stack,
+        true,
+    );
+    let changed = bip143_checked(&fund, &altered).unwrap();
+    assert_eq!(changed.digest_raw(), original_digest.digest_raw());
+    assert_eq!(changed.structural().spending_txid_display(), original_digest.structural().spending_txid_display());
+    assert_ne!(inspect_transaction(&altered).unwrap().wtxid, original_tx.wtxid);
+    assert_eq!(
+        changed.require_verified_channel_signatures(),
+        Err(StructuralChannelError::SignaturesNotVerified)
+    );
+}
+
+#[test]
+fn wrong_prevout_script_spend_vin_and_non_all_sighash_fail_before_digest() {
+    let (fund, spend) = pair();
+    assert_eq!(
+        audit_native_p2wsh_bip143_sighash_all_unverified(
+            TradeLayerMainnet::Dogecoin, &fund, 0, &spend, 1, keys()
+        ),
+        Err(StructuralChannelError::UnsupportedNetwork)
+    );
+    assert_eq!(
+        audit_native_p2wsh_bip143_sighash_all_unverified(
+            TradeLayerMainnet::Litecoin, &fund, 0, &spend, 2, keys()
+        ),
+        Err(StructuralChannelError::InvalidInputIndex)
+    );
+    let mut altered_fund = fund.clone();
+    altered_fund[20] ^= 1;
+    assert_eq!(
+        bip143_checked(&altered_fund, &spend),
+        Err(StructuralChannelError::WrongPrevout)
+    );
+    let mut stack = good_stack();
+    *stack[1].last_mut().unwrap() = 2;
+    let unsupported = spending(
+        inspect_transaction(&fund).unwrap().txid, 0, &[], &stack, true
+    );
+    assert_eq!(
+        bip143_checked(&fund, &unsupported),
+        Err(StructuralChannelError::UnsupportedSignatureHashType)
+    );
+    let mut altered = spend.clone();
+    altered.push(0);
+    assert_eq!(
+        bip143_checked(&fund, &altered),
+        Err(StructuralChannelError::RawTransaction(ScanError::TrailingBytes))
+    );
+}
+
+#[test]
+fn bip143_digest_alone_cannot_authorize_channel_or_liquidation() {
+    let (fund, spend) = pair();
+    let observation = bip143_checked(&fund, &spend).unwrap();
+    let digest = observation.digest_raw();
+    assert_ne!(digest, [0u8; 32]);
+    // Even after source-correct BIP143 arithmetic, neither ECDSA signer
+    // is checked. Stage25G's always-deny authorization remains separate.
+    assert_eq!(
+        observation.require_verified_channel_signatures(),
+        Err(StructuralChannelError::SignaturesNotVerified)
+    );
 }
