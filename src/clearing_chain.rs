@@ -9,7 +9,7 @@
 use crate::chain::{BlockHeader, Tip, MAX_REORG_HISTORY};
 use crate::clearing_sandbox::{
     ClearingError, ClearingSandbox, ClearingSnapshotError, CollateralPolicy, InsurancePolicy,
-    MarkTerms, MatchedContractTrade,
+    MarkTerms, MatchedContractTrade, SyntheticBilateralReduction,
 };
 use crate::codec::{verify_crc, with_crc, Cursor, MAX_CHECKPOINT_BYTES};
 use crate::ledger::{AccountId, Operation, PropertyId, TxId};
@@ -51,6 +51,13 @@ pub enum UnverifiedClearingEvent {
     MatchedTrades {
         txid: TxId,
         trades: Vec<MatchedContractTrade>,
+    },
+    /// A single caller-declared, UNVERIFIED synthetic bilateral reduction
+    /// between two preexisting opposite positions. Not liquidation authority,
+    /// not an AMM fill and not a new trusted transaction type.
+    SyntheticBilateralReduction {
+        txid: TxId,
+        fill: SyntheticBilateralReduction,
     },
     Funding {
         txid: TxId,
@@ -270,6 +277,13 @@ impl ClearingChainState {
                 }
                 UnverifiedClearingEvent::MatchedTrades { txid, trades } => {
                     staged.apply_matched_trades_unverified(*txid, trades)?;
+                }
+                UnverifiedClearingEvent::SyntheticBilateralReduction { txid, fill } => {
+                    staged.reduce_bilateral_positions_unverified(
+                        *txid,
+                        block.header.height,
+                        fill,
+                    )?;
                 }
                 UnverifiedClearingEvent::Funding {
                     txid,
