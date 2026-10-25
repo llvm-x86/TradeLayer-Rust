@@ -191,17 +191,26 @@ where
     let slots: Vec<OnceLock<Result<T, ParallelIndexError>>> =
         (0..length).map(|_| OnceLock::new()).collect();
     let next = AtomicUsize::new(0);
+    // Dynamic micro-batching reduces atomic contention for thousands of
+    // cheap TXID scans, while preserving >=4 scheduling opportunities per
+    // worker and retaining fine-grained balancing for slow read-only RPC.
+    // No thread is allowed to mutate protocol state through this function.
+    let worker_slots = worker_count.min(length);
+    let claim_size = (length / (worker_slots * 4)).clamp(1, 8);
     let panicked = thread::scope(|scope| {
-        let handles: Vec<_> = (0..worker_count.min(length))
+        let handles: Vec<_> = (0..worker_slots)
             .map(|_| {
                 scope.spawn(|| loop {
-                    let offset = next.fetch_add(1, Ordering::Relaxed);
+                    let offset = next.fetch_add(claim_size, Ordering::Relaxed);
                     if offset >= length {
                         break;
                     }
-                    let result = job(start + offset);
-                    // Every index is dispensed to exactly one worker.
-                    let _ = slots[offset].set(result);
+                    let end = offset.saturating_add(claim_size).min(length);
+                    for (slot, cell) in slots.iter().enumerate().take(end).skip(offset) {
+                        let result = job(start + slot);
+                        // Each index is owned by exactly one claimed range.
+                        let _ = cell.set(result);
+                    }
                 })
             })
             .collect();
