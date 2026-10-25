@@ -90,6 +90,10 @@ jobs:
         run: cargo test --frozen --test channel_admission_audit
       - name: Stage 25M independent Node type4/type19 pinned source-predicate subset
         run: node scripts/audit_historical_channel_lists.cjs
+      - name: Stage 25N independent Python synthetic type9 txid-Merkle vectors
+        run: python3 scripts/audit_type9_merkle_vectors.py
+      - name: Stage 25N Bitcoin raw type9 source origin and always-deny evidence
+        run: cargo test --frozen --test channel_type9_inclusion_audit
       - name: Stage 25F source-only exact rational bankruptcy threshold
         run: cargo test --frozen --test bankruptcy_source_audit
       - name: Verify Stage 25A isolated margin and funding atomicity
