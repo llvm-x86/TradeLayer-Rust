@@ -1,0 +1,31 @@
+name: Stage25M BIP141 witness-commitment source prepublication
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "ci/stage25m/**"
+      - ".github/workflows/stage25m-bip141-preflight.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stage25m-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  staged-source:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Checkout exact staged BIP141 research files
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install pinned Rust 1.90
+        run: rustup toolchain install 1.90.0 --profile minimal --component rustfmt --component clippy
+      - name: Run full frozen prepublication BIP141 Rust and independent Python gates
+        run: bash ci/stage25m/preflight.sh
