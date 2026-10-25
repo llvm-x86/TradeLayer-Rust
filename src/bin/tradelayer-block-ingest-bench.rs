@@ -92,6 +92,8 @@ fn main() {
     let new = view.inspect_parallel(config).unwrap();
     assert_eq!(old, *new.ordered_preindex());
     let mut owned_times = Vec::new();
+    let mut full_owned_times = Vec::new();
+    let mut prepared_times = Vec::new();
     let mut bulk_times = Vec::new();
     for _ in 0..repeats {
         let start = Instant::now();
@@ -103,6 +105,33 @@ fn main() {
         let serial_by_slot = inspect_unverified_block_parallel(&owned, config).unwrap();
         owned_times.push(start.elapsed());
         black_box(&serial_by_slot);
+        // Equal-work comparison: both paths clone the single fetched raw
+        // block, check its header, discover TX byte ranges and calculate
+        // the TXID Merkle. Only owned-copy/reparse versus prepared-fused
+        // worker processing should differ meaningfully.
+        let start = Instant::now();
+        let full = raw.clone();
+        let full_view = UnverifiedRawBlockView::parse(
+            &full, Some(view.header_hash_raw()),
+        ).unwrap();
+        let full_owned = full_view.transaction_ranges().iter()
+            .map(|range| full[range.clone()].to_vec())
+            .collect::<Vec<_>>();
+        let full_result = inspect_unverified_block_parallel(&full_owned, config).unwrap();
+        let old_root = merkle_root_unverified(
+            &full_result.ordered().iter()
+                .map(|row| row.observation.txid)
+                .collect::<Vec<_>>(),
+        ).unwrap();
+        assert_eq!(old_root, full_view.header_merkle_root_raw());
+        assert_eq!(full_result, serial_by_slot);
+        full_owned_times.push(start.elapsed());
+        black_box(full_result);
+        let start = Instant::now();
+        let prepared_only = view.inspect_parallel(config).unwrap();
+        prepared_times.push(start.elapsed());
+        assert_eq!(*prepared_only.ordered_preindex(), serial_by_slot);
+        black_box(prepared_only);
         let start = Instant::now();
         let observed =
             fetch_and_inspect_unverified_block(view.header_hash_raw(), config, |_| Ok(raw.clone()))
@@ -112,6 +141,8 @@ fn main() {
         black_box(observed);
     }
     let baseline_ms = median(owned_times).as_secs_f64() * 1000.0;
+    let full_owned_ms = median(full_owned_times).as_secs_f64() * 1000.0;
+    let prepared_ms = median(prepared_times).as_secs_f64() * 1000.0;
     let bulk_ms = median(bulk_times).as_secs_f64() * 1000.0;
     let bulk_seconds = (bulk_ms / 1000.0).max(1e-9);
     println!("benchmark=UNVERIFIED_SYNTHETIC_BULK_BLOCK_INGEST");
@@ -125,7 +156,10 @@ fn main() {
     println!("bulk_mock_rpc_calls_per_iteration=1");
     println!("legacy_per_tx_mock_rpc_calls_if_fetched_individually={count}");
     println!("owned_vector_parallel_median_ms={baseline_ms:.3}");
+    println!("full_owned_block_pipeline_median_ms={full_owned_ms:.3}");
+    println!("fused_prepared_only_median_ms={prepared_ms:.3}");
     println!("bulk_borrowed_parallel_median_ms={bulk_ms:.3}");
+    println!("full_pipeline_speed_ratio={:.3}", full_owned_ms / bulk_ms.max(1e-9));
     println!("measured_ratio={:.3}", baseline_ms / bulk_ms.max(1e-9));
     println!(
         "bulk_preindex_txs_per_sec={:.0}",
