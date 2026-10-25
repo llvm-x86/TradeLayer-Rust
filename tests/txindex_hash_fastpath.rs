@@ -47,7 +47,8 @@ fn hashlib_legacy_and_segwit_raw_txids_are_byte_exact() {
         wtxid,
         has_witness,
         carriers,
-    } in cases {
+    } in cases
+    {
         let observed = inspect_transaction(&raw).unwrap();
         assert_eq!(observed.txid, txid, "{label}: txid");
         assert_eq!(observed.wtxid, wtxid, "{label}: wtxid");
