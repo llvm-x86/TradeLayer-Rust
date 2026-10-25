@@ -57,6 +57,15 @@ if len(names) != len(set(names)):
     raise SystemExit("Duplicate Rust CI steps")
 print(f"CI_STAGE25L_GATES={len(names)}")
 PY
+# Format the ephemeral source BEFORE the full required prepublication gate.
+# GitHub logs identify the exact formatted bytes to publish after approval.
+cargo fmt --all
+while IFS= read -r path; do
+    case "$path" in
+      src/lib.rs|.github/workflows/ci.yml) ;;
+      *) echo "Unexpected tracked source mutation during rustfmt: $path" >&2; exit 1 ;;
+    esac
+done < <(git diff --name-only)
 git diff --check
 python3 scripts/check_rust_supply_chain.py
 python3 -m unittest discover -s tests -p test_rust_supply_chain.py -v
@@ -71,4 +80,20 @@ echo "STAGE25L_TEST_BLOB=$(git hash-object tests/channel_inclusion_audit.rs)"
 echo "STAGE25L_VECTOR_BLOB=$(git hash-object scripts/audit_bitcoin_channel_merkle_fixture.py)"
 echo "STAGE25L_LIB_BLOB=$(git hash-object src/lib.rs)"
 echo "STAGE25L_CI_BLOB=$(git hash-object .github/workflows/ci.yml)"
+# Capture exactly the FORMAT-CHECKED source to publish. These are public
+# research-only bytes; all secrets and private keys are out of scope.
+python3 - <<'PY'
+import base64
+from pathlib import Path
+paths = (
+    "src/channel_inclusion_audit.rs",
+    "tests/channel_inclusion_audit.rs",
+    "scripts/audit_bitcoin_channel_merkle_fixture.py",
+    "src/lib.rs",
+    ".github/workflows/ci.yml",
+)
+for path in paths:
+    print("STAGE25L_BASE64 " + path + " " +
+          base64.b64encode(Path(path).read_bytes()).decode("ascii"))
+PY
 echo "PASS: Stage25L full frozen Rust prepublication check, NO Rust source push"
