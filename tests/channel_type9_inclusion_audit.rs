@@ -40,7 +40,10 @@ fn path(i: usize) -> MerklePath {
     }
 }
 fn segment() -> CheckedHeaderSegment {
-    let header: [u8; 80] = decode_hex(&fixture("header_hex")).unwrap().try_into().unwrap();
+    let header: [u8; 80] = decode_hex(&fixture("header_hex"))
+        .unwrap()
+        .try_into()
+        .unwrap();
     CheckedHeaderSegment::check_against_claimed_anchor(
         Tip {
             height: 100,
@@ -84,9 +87,23 @@ fn sample_events<'a>(
     paths: &'a [MerklePath; 5],
 ) -> [ClaimedIncludedType9<'a>; 3] {
     [
-        event(0, &tx[0], &paths[0], 7, "alice", ClaimedDirectAction::Attest),
+        event(
+            0,
+            &tx[0],
+            &paths[0],
+            7,
+            "alice",
+            ClaimedDirectAction::Attest,
+        ),
         event(1, &tx[1], &paths[1], 11, "bob", ClaimedDirectAction::Attest),
-        event(2, &tx[2], &paths[2], 7, "alice", ClaimedDirectAction::Revoke),
+        event(
+            2,
+            &tx[2],
+            &paths[2],
+            7,
+            "alice",
+            ClaimedDirectAction::Revoke,
+        ),
     ]
 }
 fn source_raws() -> [Vec<u8>; 5] {
@@ -116,7 +133,10 @@ fn type9_merkle_origin_matches_exact_raw_txid_and_direct_claims_as_of_type4() {
     assert_eq!(report.target().tx_index(), 3);
     assert_eq!(report.included_event_count(), 3);
     assert_eq!(report.relative_events()[1].tx_index(), 1);
-    assert_eq!(report.relative_events()[2].block_id().0, point(3).block_hash);
+    assert_eq!(
+        report.relative_events()[2].block_id().0,
+        point(3).block_hash
+    );
     for (i, bytes) in tx.iter().enumerate() {
         assert_eq!(
             inspect_transaction(bytes).unwrap().txid,
@@ -231,13 +251,22 @@ fn forged_claim_fields_and_wrong_positions_reject_despite_valid_merkle_paths() {
     assert_eq!(run(&bogus), Err(Type9OriginError::EventSemanticMismatch));
     bogus = events;
     bogus[1].claim.txid_raw[0] ^= 1;
-    assert_eq!(run(&bogus), Err(Type9OriginError::ConflictingClaimedLocation));
+    assert_eq!(
+        run(&bogus),
+        Err(Type9OriginError::ConflictingClaimedLocation)
+    );
     bogus = events;
     bogus[1].claim.at.tx_index = 4;
-    assert_eq!(run(&bogus), Err(Type9OriginError::ConflictingClaimedLocation));
+    assert_eq!(
+        run(&bogus),
+        Err(Type9OriginError::ConflictingClaimedLocation)
+    );
     bogus = events;
     bogus[1].claim.at.block_hash[0] ^= 1;
-    assert_eq!(run(&bogus), Err(Type9OriginError::ConflictingClaimedLocation));
+    assert_eq!(
+        run(&bogus),
+        Err(Type9OriginError::ConflictingClaimedLocation)
+    );
     bogus = events;
     bogus[1].claim.network = TradeLayerMainnet::Litecoin;
     assert_eq!(run(&bogus), Err(Type9OriginError::UnsupportedNetwork));
@@ -336,10 +365,8 @@ fn raw_with_opreturns(payloads: &[&str]) -> Vec<u8> {
 
 #[test]
 fn raw_type9_parser_rejects_nested_ambiguous_and_special_semantics() {
-    let normal = inspect_raw_type9_candidate_unverified(
-        &raw_with_opreturns(&["tl90,7,alice,OK"]),
-    )
-    .unwrap();
+    let normal =
+        inspect_raw_type9_candidate_unverified(&raw_with_opreturns(&["tl90,7,alice,OK"])).unwrap();
     assert_eq!(normal.clearlist_id(), 7);
     assert_eq!(normal.target(), "alice");
     assert_eq!(normal.metadata(), "OK");
@@ -349,15 +376,14 @@ fn raw_type9_parser_rejects_nested_ambiguous_and_special_semantics() {
         Err(Type9OriginError::OriginIsNotAuthorization)
     );
     assert_eq!(
-        inspect_raw_type9_candidate_unverified(
-            &raw_with_opreturns(&["tl9tl90,7,alice,OK"])
-        ),
+        inspect_raw_type9_candidate_unverified(&raw_with_opreturns(&["tl9tl90,7,alice,OK"])),
         Err(Type9OriginError::AmbiguousNestedEnvelope)
     );
     assert_eq!(
-        inspect_raw_type9_candidate_unverified(
-            &raw_with_opreturns(&["tl90,7,alice,OK", "tl90,b,bob,OK"])
-        ),
+        inspect_raw_type9_candidate_unverified(&raw_with_opreturns(&[
+            "tl90,7,alice,OK",
+            "tl90,b,bob,OK"
+        ])),
         Err(Type9OriginError::BadCarrier)
     );
     for payload in [
