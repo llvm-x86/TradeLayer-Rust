@@ -33,7 +33,7 @@ fn vector(key: &str) -> Vec<u8> {
         .filter(|line| !line.starts_with('#') && !line.is_empty())
         .find_map(|line| {
             let (name, value) = line.split_once('\t')?;
-            (name == key).then_some(raw(value))
+            (name == key).then(|| raw(value))
         })
         .unwrap()
 }
@@ -43,7 +43,7 @@ fn stage25j(key: &str) -> Vec<u8> {
         .filter(|line| !line.starts_with('#') && !line.is_empty())
         .find_map(|line| {
             let (name, value) = line.split_once('\t')?;
-            (name == key).then_some(raw(value))
+            (name == key).then(|| raw(value))
         })
         .unwrap()
 }
