@@ -380,7 +380,7 @@ pub fn source_encode_send_unverified(
                 .collect::<Result<Vec<_>, _>>()?
                 .join(",");
             let mut caveats = vec![SourceEncoderCaveat::MultiSendMisparsedAsScalarByDecoder];
-            if amount_atoms.iter().any(|n| n % ATOMS_PER_TOKEN != 0) {
+            if amount_atoms.iter().any(|n| !n.is_multiple_of(ATOMS_PER_TOKEN)) {
                 caveats.push(SourceEncoderCaveat::FractionalAmountMissingTilde);
             }
             source_output(
