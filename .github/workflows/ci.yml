@@ -70,6 +70,10 @@ jobs:
         run: cargo test --frozen --test channel_witness_audit
       - name: Stage 25I independent hashlib BIP143 and published vector
         run: python3 scripts/audit_bip143_channel_fixture.py
+      - name: Stage 25J independent OpenSSL ECDSA two-signer test vectors
+        run: python3 scripts/audit_channel_ecdsa_openssl.py --check
+      - name: Stage 25J public-only signed 2-of-2 fixture Rust parity and always-deny
+        run: cargo test --frozen --test channel_signed_evidence
       - name: Stage 25F source-only exact rational bankruptcy threshold
         run: cargo test --frozen --test bankruptcy_source_audit
       - name: Verify Stage 25A isolated margin and funding atomicity
