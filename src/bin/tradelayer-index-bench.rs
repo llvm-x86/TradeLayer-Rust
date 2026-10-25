@@ -6,8 +6,8 @@ use std::hint::black_box;
 use std::process;
 use std::time::{Duration, Instant};
 use tradelayer_core::parallel_txindex::{
-    inspect_unverified_block_parallel, inspect_unverified_block_serial,
-    ParallelIndexConfig, MAX_BLOCK_INPUT_BYTES, MAX_PARALLEL_WORKERS,
+    inspect_unverified_block_parallel, inspect_unverified_block_serial, ParallelIndexConfig,
+    MAX_BLOCK_INPUT_BYTES, MAX_PARALLEL_WORKERS,
 };
 
 fn compact(dst: &mut Vec<u8>, n: usize) {
@@ -92,8 +92,8 @@ fn main() {
     }
     // Two warmups; exclude cold startup/shim overhead from measurements.
     let baseline = inspect_unverified_block_serial(&raws).expect("synthetic serial");
-    let first_parallel = inspect_unverified_block_parallel(&raws, config)
-        .expect("synthetic parallel");
+    let first_parallel =
+        inspect_unverified_block_parallel(&raws, config).expect("synthetic parallel");
     assert_eq!(baseline, first_parallel, "parallel changed indexed results");
     black_box(&baseline);
     black_box(&first_parallel);
@@ -101,13 +101,12 @@ fn main() {
     let mut parallel_times = Vec::new();
     for _ in 0..repeats {
         let start = Instant::now();
-        let serial = inspect_unverified_block_serial(&raws)
-            .expect("synthetic serial repeat");
+        let serial = inspect_unverified_block_serial(&raws).expect("synthetic serial repeat");
         serial_times.push(start.elapsed());
         black_box(serial);
         let start = Instant::now();
-        let parallel = inspect_unverified_block_parallel(&raws, config)
-            .expect("synthetic parallel repeat");
+        let parallel =
+            inspect_unverified_block_parallel(&raws, config).expect("synthetic parallel repeat");
         parallel_times.push(start.elapsed());
         assert_eq!(parallel, baseline, "nondeterministic block source results");
         black_box(parallel);
