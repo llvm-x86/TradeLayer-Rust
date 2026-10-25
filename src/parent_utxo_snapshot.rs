@@ -150,7 +150,9 @@ pub struct UnverifiedSnapshotWaveReport {
     pub probe: UnverifiedWaveProbeReport,
 }
 
-fn encode_candidate_snapshot(snapshot: &CandidateParentSnapshot) -> Result<Vec<u8>, ParentSnapshotError> {
+fn encode_candidate_snapshot(
+    snapshot: &CandidateParentSnapshot,
+) -> Result<Vec<u8>, ParentSnapshotError> {
     if snapshot.entries.len() > MAX_CANDIDATE_SNAPSHOT_ENTRIES {
         return Err(ParentSnapshotError::CandidateSnapshotTooLarge);
     }
@@ -179,7 +181,11 @@ fn encode_candidate_snapshot(snapshot: &CandidateParentSnapshot) -> Result<Vec<u
             return Err(ParentSnapshotError::FutureCandidateOutput { index });
         }
         let new_len = 32 + 4 + 8 + 4 + 1 + 4 + entry.script_pubkey.len();
-        if out.len().checked_add(new_len).is_none_or(|n| n > MAX_CANDIDATE_SNAPSHOT_BYTES) {
+        if out
+            .len()
+            .checked_add(new_len)
+            .is_none_or(|n| n > MAX_CANDIDATE_SNAPSHOT_BYTES)
+        {
             return Err(ParentSnapshotError::CandidateSnapshotTooLarge);
         }
         out.extend_from_slice(&entry.outpoint.txid_raw);
@@ -233,7 +239,8 @@ pub fn inspect_parent_candidate_snapshot(
     let rows = preindex.ordered_preindex().ordered();
     let mut produced_txids = BTreeMap::new();
     for (index, row) in rows.iter().enumerate() {
-        let raw = view.raw_transaction(index)
+        let raw = view
+            .raw_transaction(index)
             .ok_or(ParentSnapshotError::MissingRawTransaction { index })?;
         let observed = inspect_transaction(raw)
             .map_err(|source| ParentSnapshotError::InvalidRawTransaction { index, source })?;
@@ -253,7 +260,8 @@ pub fn inspect_parent_candidate_snapshot(
     let mut external = 0usize;
     let mut deferred = 0usize;
     for index in 1..view.transaction_count() {
-        let raw = view.raw_transaction(index)
+        let raw = view
+            .raw_transaction(index)
             .ok_or(ParentSnapshotError::MissingRawTransaction { index })?;
         let layout = prepare_transaction_prefix(raw)
             .map_err(|source| ParentSnapshotError::InvalidRawTransaction { index, source })?;
@@ -271,8 +279,7 @@ pub fn inspect_parent_candidate_snapshot(
             let Some((_, entry)) = table.get(&outpoint) else {
                 return Err(ParentSnapshotError::MissingExternalPrevout { index, input });
             };
-            if entry.is_coinbase
-                && spend_height - entry.created_height < BITCOIN_COINBASE_MATURITY
+            if entry.is_coinbase && spend_height - entry.created_height < BITCOIN_COINBASE_MATURITY
             {
                 return Err(ParentSnapshotError::ImmatureClaimedCoinbase { index, input });
             }
