@@ -20,8 +20,7 @@ use crate::parent_utxo_snapshot::{
 };
 use crate::raw_block_ingest::{UnverifiedRawBlockIndex, UnverifiedRawBlockView};
 use crate::read_only::{
-    inspect_transaction, select_unverified_transaction_output, ScanError,
-    MAX_RAW_TRANSACTION,
+    inspect_transaction, select_unverified_transaction_output, ScanError, MAX_RAW_TRANSACTION,
 };
 use crate::wave_precheck::{
     inspect_dependency_waves_with_probe, UnverifiedProbeVerdict, UnverifiedWaveProbeReport,
@@ -125,8 +124,7 @@ pub fn inspect_raw_funding_evidence(
             .push(entry);
     }
 
-    if raw_funding_transactions.len()
-        > crate::parent_utxo_snapshot::MAX_CANDIDATE_SNAPSHOT_ENTRIES
+    if raw_funding_transactions.len() > crate::parent_utxo_snapshot::MAX_CANDIDATE_SNAPSHOT_ENTRIES
     {
         return Err(FundingEvidenceError::EvidenceTooLarge);
     }
@@ -164,8 +162,8 @@ pub fn inspect_raw_funding_evidence(
         };
         for entry in rows {
             let vout = entry.outpoint.vout;
-            let Some((amount, script)) = select_unverified_transaction_output(raw, vout)
-                .map_err(|source| {
+            let Some((amount, script)) =
+                select_unverified_transaction_output(raw, vout).map_err(|source| {
                     FundingEvidenceError::FundingTransactionMalformed { index, source }
                 })?
             else {
@@ -210,13 +208,8 @@ pub fn inspect_waves_with_raw_funding_evidence<F>(
 where
     F: Fn(usize, &[u8]) -> UnverifiedProbeVerdict + Sync,
 {
-    let funding = inspect_raw_funding_evidence(
-        view,
-        preindex,
-        snapshot,
-        raw_funding_transactions,
-    )
-    .map_err(FundingWaveError::Funding)?;
+    let funding = inspect_raw_funding_evidence(view, preindex, snapshot, raw_funding_transactions)
+        .map_err(FundingWaveError::Funding)?;
     let probe = inspect_dependency_waves_with_probe(view, preindex, config, probe)
         .map_err(FundingWaveError::Wave)?;
     Ok(UnverifiedFundingWaveReport { funding, probe })
