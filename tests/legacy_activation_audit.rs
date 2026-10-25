@@ -241,8 +241,16 @@ fn wrong_network_admin_order_hash_and_missing_block_id_fail_atomically() {
         registry.apply_claimed_batch(&[e(LTC, 7, 10, 1, ADMIN, Some("bad\nhash"))]),
         Err(LegacyActivationError::InvalidCodeHash)
     );
+    let oversized_hash = "x".repeat(257);
+    let oversized = ClaimedLegacyActivation {
+        network: LTC,
+        at: at(10, 1, 10),
+        transaction_type: 7,
+        claimed_sender: ADMIN,
+        claimed_code_hash: Some(&oversized_hash),
+    };
     assert_eq!(
-        registry.apply_claimed_batch(&[e(LTC, 7, 10, 1, ADMIN, Some(&"x".repeat(257)))]),
+        registry.apply_claimed_batch(&[oversized]),
         Err(LegacyActivationError::InvalidCodeHash)
     );
     let mut missing = e(LTC, 7, 10, 1, ADMIN, None);
