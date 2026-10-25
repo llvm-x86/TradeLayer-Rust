@@ -171,9 +171,7 @@ fn selected_spending_vin<'a>(
     Ok(chosen.expect("vin within checked input count"))
 }
 
-fn parse_two_signatures_and_redeem(
-    script_sig: &[u8],
-) -> Result<(&[u8], &[u8], &[u8]), P2shAuditError> {
+fn parse_two_signatures_and_redeem(script_sig: &[u8]) -> Result<&[u8], P2shAuditError> {
     // A canonical compressed two-key script is 71 bytes: direct OP_PUSH71,
     // not OP_PUSHDATA1/2/4. DER signatures also use direct minimal pushes.
     let mut reader = Cursor::new(script_sig);
@@ -202,7 +200,7 @@ fn parse_two_signatures_and_redeem(
     if first == second {
         return Err(P2shAuditError::DuplicateSignatures);
     }
-    Ok((first, second, redeem))
+    Ok(redeem)
 }
 
 /// Research-only historical P2SH source path. This checks the real
@@ -241,7 +239,7 @@ pub fn audit_legacy_p2sh_two_of_two_unverified(
     if selected_spend.prevout != expected {
         return Err(P2shAuditError::WrongPrevout);
     }
-    let (_sig_a, _sig_b, redeem) = parse_two_signatures_and_redeem(selected_spend.script_sig)?;
+    let redeem = parse_two_signatures_and_redeem(selected_spend.script_sig)?;
     check_script(redeem, claimed_pubkeys).map_err(P2shAuditError::RedeemScript)?;
     let digest = hash160(redeem);
     if digest != spk[2..22] {
