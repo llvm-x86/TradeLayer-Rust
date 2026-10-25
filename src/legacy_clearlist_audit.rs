@@ -232,7 +232,7 @@ pub fn source_build_xpub_merkle_tree(
         .iter()
         .map(|xpub| digest_hex(xpub.as_bytes()))
         .collect();
-    if leaves.len() % 2 != 0 {
+    if !leaves.len().is_multiple_of(2) {
         leaves.push(leaves.last().expect("nonempty").clone());
     }
     let mut layers = vec![leaves.clone()];
