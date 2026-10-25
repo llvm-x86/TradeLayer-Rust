@@ -149,7 +149,7 @@ fn all_22_shared_pinned_source_inner_and_generic_encoder_strings_match() {
 }
 
 #[test]
-fn 256_bit_hash_and_fractional_amounts_are_bounded_exactly() {
+fn full_256_bit_hash_and_fractional_amounts_are_bounded_exactly() {
     let max_hash = "f".repeat(64);
     let observation = source_encode_activate_unverified(&[35], &max_hash).unwrap();
     assert_eq!(observation.source_return(),
