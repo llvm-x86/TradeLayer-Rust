@@ -246,7 +246,24 @@ def main():
     assert all(verify(openssl, key, der, digest) for key, der in zip(keys, sigs))
     assert not verify(openssl, keys[0], sigs[1], digest)
     assert not verify(openssl, keys[1], sigs[0], digest)
-    assert not verify(openssl, keys[1], sigs[0], digest)
+
+    # Actually reserialize swapped and duplicated signature PUSHes in the
+    # spending input. The digest is unchanged; CHECKMULTISIG ordering fails.
+    signed_a, signed_b = bytes.fromhex(f['signature_a']), bytes.fromhex(f['signature_b'])
+    redeem = bytes.fromhex(f['redeem_script'])
+    for first, second in ((signed_b, signed_a), (signed_a, signed_a)):
+        alt_script = b'\x00' + bytes([len(first)]) + first + bytes([len(second)]) + second + b'\x47' + redeem
+        alt_inputs = list(spend.inputs)
+        old = alt_inputs[vin]
+        alt_inputs[vin] = Input(old.prevout, alt_script, old.sequence,
+                                old.prevout_offset, old.sequence_offset)
+        alt_raw = serialized(alt_inputs, spend.outputs, spend.version, spend.locktime)
+        alt_digest, _, alt_keys, alt_sigs = legacy_digest(
+            fund, parse_tx(alt_raw), vout, vin, expected_keys)
+        assert alt_digest == digest
+        assert not all(verify(openssl, key, sig, alt_digest)
+                       for key, sig in zip(alt_keys, alt_sigs))
+
     altered_sig = bytearray(sigs[0])
     altered_sig[9] ^= 1
     assert not verify(openssl, keys[0], bytes(altered_sig), digest)
