@@ -113,9 +113,7 @@ impl UnverifiedSourceEncoding {
     ) -> Result<(), LegacyEncoderError> {
         Err(LegacyEncoderError::HistoricalTransactionNotAuthenticated)
     }
-    pub const fn require_authenticated_list_activation(
-        &self,
-    ) -> Result<(), LegacyEncoderError> {
+    pub const fn require_authenticated_list_activation(&self) -> Result<(), LegacyEncoderError> {
         Err(LegacyEncoderError::HistoricalListAndActivationUnverified)
     }
     pub const fn require_signed_channel_revision(&self) -> Result<(), LegacyEncoderError> {
@@ -210,7 +208,9 @@ fn code_hash_base36(source_hex: &str) -> Result<String, LegacyEncoderError> {
     if source_hex.len() != 64 || !source_hex.bytes().all(|b| b.is_ascii_hexdigit()) {
         return Err(LegacyEncoderError::InvalidActivationHex);
     }
-    let mut bytes: Vec<u8> = source_hex.as_bytes().chunks_exact(2)
+    let mut bytes: Vec<u8> = source_hex
+        .as_bytes()
+        .chunks_exact(2)
         .map(|pair| {
             let n = std::str::from_utf8(pair).expect("hex ASCII checked");
             u8::from_str_radix(n, 16).expect("hex digit checked")
@@ -244,9 +244,17 @@ pub fn source_encode_activate_unverified(
         return Err(LegacyEncoderError::InvalidActivationType);
     }
     let hash = code_hash_base36(hash_hex_256)?;
-    let types = type_ids.iter().map(u8::to_string).collect::<Vec<_>>().join(";");
-    source_output(0, format!("tl0{types},{hash}"), SourceInnerEnvelope::SingleTypePrefixed,
-        vec![SourceEncoderCaveat::HistoricalNativeGenesisUnverified])
+    let types = type_ids
+        .iter()
+        .map(u8::to_string)
+        .collect::<Vec<_>>()
+        .join(";");
+    source_output(
+        0,
+        format!("tl0{types},{hash}"),
+        SourceInnerEnvelope::SingleTypePrefixed,
+        vec![SourceEncoderCaveat::HistoricalNativeGenesisUnverified],
+    )
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -268,25 +276,45 @@ pub fn source_encode_token_issue_unverified(
     if c.whitelists.len() > MAX_SOURCE_LIST_IDS {
         return Err(LegacyEncoderError::TooManyListIds);
     }
-    let whites = c.whitelists.iter().map(|n| b36_id(u128::from(*n)))
-        .collect::<Result<Vec<_>,_>>()?.join(",");
-    let procedural = c.procedural_type.map(|n| b36_id(u128::from(n)))
-        .transpose()?.unwrap_or_default();
+    let whites = c
+        .whitelists
+        .iter()
+        .map(|n| b36_id(u128::from(*n)))
+        .collect::<Result<Vec<_>, _>>()?
+        .join(",");
+    let procedural = c
+        .procedural_type
+        .map(|n| b36_id(u128::from(n)))
+        .transpose()?
+        .unwrap_or_default();
     let raw = format!(
         "tl1{},{},{},{},{},{},{},{}",
-        b36_id(c.initial_amount)?, c.ticker, whites,
-        u8::from(c.managed), c.backup_address, u8::from(c.nft),
-        u8::from(c.colored_coin_hybrid), procedural
+        b36_id(c.initial_amount)?,
+        c.ticker,
+        whites,
+        u8::from(c.managed),
+        c.backup_address,
+        u8::from(c.nft),
+        u8::from(c.colored_coin_hybrid),
+        procedural
     );
-    source_output(1, raw, SourceInnerEnvelope::SingleTypePrefixed,
+    source_output(
+        1,
+        raw,
+        SourceInnerEnvelope::SingleTypePrefixed,
         if c.whitelists.len() > 1 {
             vec![SourceEncoderCaveat::MultiWhitelistCommaShiftsDecoderFields]
-        } else {vec![]})
+        } else {
+            vec![]
+        },
+    )
 }
 
 #[derive(Debug, Clone, Copy)]
 pub enum ClaimedSend<'a> {
-    SendAll { recipient: &'a str },
+    SendAll {
+        recipient: &'a str,
+    },
     Single {
         recipient: &'a str,
         property_id: u64,
@@ -303,35 +331,64 @@ pub fn source_encode_send_unverified(
     match input {
         ClaimedSend::SendAll { recipient } => {
             required_text(recipient)?;
-            source_output(2, format!("1;{recipient}"), SourceInnerEnvelope::BodyOnly,vec![])
+            source_output(
+                2,
+                format!("1;{recipient}"),
+                SourceInnerEnvelope::BodyOnly,
+                vec![],
+            )
         }
-        ClaimedSend::Single {recipient,property_id,amount_atoms} => {
+        ClaimedSend::Single {
+            recipient,
+            property_id,
+            amount_atoms,
+        } => {
             required_text(recipient)?;
-            let mut caveats=vec![];
+            let mut caveats = vec![];
             if amount_atoms % ATOMS_PER_TOKEN != 0 {
                 caveats.push(SourceEncoderCaveat::FractionalAmountMissingTilde);
             }
-            source_output(2,format!("tl20;{recipient};{};{}",
-                b36_id(u128::from(property_id))?,
-                source_encode_amount_unverified(amount_atoms)?),
-                SourceInnerEnvelope::SingleTypePrefixed,caveats)
+            source_output(
+                2,
+                format!(
+                    "tl20;{recipient};{};{}",
+                    b36_id(u128::from(property_id))?,
+                    source_encode_amount_unverified(amount_atoms)?
+                ),
+                SourceInnerEnvelope::SingleTypePrefixed,
+                caveats,
+            )
         }
-        ClaimedSend::Multi {property_ids,amount_atoms} => {
-            if property_ids.len()!=amount_atoms.len() {
+        ClaimedSend::Multi {
+            property_ids,
+            amount_atoms,
+        } => {
+            if property_ids.len() != amount_atoms.len() {
                 return Err(LegacyEncoderError::MismatchedMultiSendArrays);
             }
-            if property_ids.len()>MAX_SOURCE_LIST_IDS {
+            if property_ids.len() > MAX_SOURCE_LIST_IDS {
                 return Err(LegacyEncoderError::TooManyListIds);
             }
-            let ids=property_ids.iter().map(|n| b36_id(u128::from(*n)))
-                .collect::<Result<Vec<_>,_>>()?.join(",");
-            let amounts=amount_atoms.iter().map(|n| source_encode_amount_unverified(*n))
-                .collect::<Result<Vec<_>,_>>()?.join(",");
-            let mut caveats=vec![SourceEncoderCaveat::MultiSendMisparsedAsScalarByDecoder];
-            if amount_atoms.iter().any(|n| n%ATOMS_PER_TOKEN!=0) {
+            let ids = property_ids
+                .iter()
+                .map(|n| b36_id(u128::from(*n)))
+                .collect::<Result<Vec<_>, _>>()?
+                .join(",");
+            let amounts = amount_atoms
+                .iter()
+                .map(|n| source_encode_amount_unverified(*n))
+                .collect::<Result<Vec<_>, _>>()?
+                .join(",");
+            let mut caveats = vec![SourceEncoderCaveat::MultiSendMisparsedAsScalarByDecoder];
+            if amount_atoms.iter().any(|n| n % ATOMS_PER_TOKEN != 0) {
                 caveats.push(SourceEncoderCaveat::FractionalAmountMissingTilde);
             }
-            source_output(2,format!("0;;{ids};{amounts}"), SourceInnerEnvelope::BodyOnly,caveats)
+            source_output(
+                2,
+                format!("0;;{ids};{amounts}"),
+                SourceInnerEnvelope::BodyOnly,
+                caveats,
+            )
         }
     }
 }
@@ -344,209 +401,335 @@ pub enum ClaimedClearLists<'a> {
 }
 #[derive(Debug, Clone, Copy)]
 pub struct ClaimedCommit<'a> {
-    pub property_id:u64,
-    pub amount_atoms:u128,
-    pub channel_address:&'a str,
-    pub ref_vout:u64,
-    pub pay_enabled:bool,
-    pub clear_lists:ClaimedClearLists<'a>,
-    pub colored_output:bool,
-    pub commit_clearlist_id:Option<u64>,
+    pub property_id: u64,
+    pub amount_atoms: u128,
+    pub channel_address: &'a str,
+    pub ref_vout: u64,
+    pub pay_enabled: bool,
+    pub clear_lists: ClaimedClearLists<'a>,
+    pub colored_output: bool,
+    pub commit_clearlist_id: Option<u64>,
 }
-fn optional_long_ref(
-    address:&str,
-    ref_vout:u64,
-) -> Result<(String,bool),LegacyEncoderError> {
+fn optional_long_ref(address: &str, ref_vout: u64) -> Result<(String, bool), LegacyEncoderError> {
     required_text(address)?;
-    if address.len()>42 {
-        Ok((format!("ref:{}",safe_id(u128::from(ref_vout))?),true))
+    if address.len() > 42 {
+        Ok((format!("ref:{}", safe_id(u128::from(ref_vout))?), true))
     } else {
-        Ok((address.into(),false))
+        Ok((address.into(), false))
     }
 }
 pub fn source_encode_commit_unverified(
-    c:ClaimedCommit<'_>,
-) -> Result<UnverifiedSourceEncoding,LegacyEncoderError> {
+    c: ClaimedCommit<'_>,
+) -> Result<UnverifiedSourceEncoding, LegacyEncoderError> {
     amount_safe(c.amount_atoms)?;
-    let (channel,long)=optional_long_ref(c.channel_address,c.ref_vout)?;
-    let lists=match c.clear_lists {
-        ClaimedClearLists::NotSet=>String::new(),
-        ClaimedClearLists::Scalar(n)=>b36_id(u128::from(n))?,
-        ClaimedClearLists::Array(items)=>{
-            if items.len()>MAX_SOURCE_LIST_IDS {
+    let (channel, long) = optional_long_ref(c.channel_address, c.ref_vout)?;
+    let lists = match c.clear_lists {
+        ClaimedClearLists::NotSet => String::new(),
+        ClaimedClearLists::Scalar(n) => b36_id(u128::from(n))?,
+        ClaimedClearLists::Array(items) => {
+            if items.len() > MAX_SOURCE_LIST_IDS {
                 return Err(LegacyEncoderError::TooManyListIds);
             }
-            format!("[{}]",items.iter().map(|n| b36_id(u128::from(*n)))
-                .collect::<Result<Vec<_>,_>>()?.join(","))
+            format!(
+                "[{}]",
+                items
+                    .iter()
+                    .map(|n| b36_id(u128::from(*n)))
+                    .collect::<Result<Vec<_>, _>>()?
+                    .join(",")
+            )
         }
     };
-    let tail=c.commit_clearlist_id.map(|id| b36_id(u128::from(id)))
-        .transpose()?.map(|v| format!(",{v}")).unwrap_or_default();
-    let mut caveats=vec![SourceEncoderCaveat::GenericTypesEncoderMissingType4Export];
+    let tail = c
+        .commit_clearlist_id
+        .map(|id| b36_id(u128::from(id)))
+        .transpose()?
+        .map(|v| format!(",{v}"))
+        .unwrap_or_default();
+    let mut caveats = vec![SourceEncoderCaveat::GenericTypesEncoderMissingType4Export];
     if matches!(c.clear_lists,ClaimedClearLists::Array(items) if items.len()>1) {
         caveats.push(SourceEncoderCaveat::CommitClearlistCommasBreakDecoder);
     }
     if long {
         caveats.push(SourceEncoderCaveat::LongAddressSubstitutedByCallerClaimedRef);
     }
-    source_output(4,format!("tl4{},{},{channel},{},{},{}{}",
-        b36_id(u128::from(c.property_id))?,b36(c.amount_atoms),
-        u8::from(c.pay_enabled),lists,u8::from(c.colored_output),tail
-    ),SourceInnerEnvelope::SingleTypePrefixed,caveats)
+    source_output(
+        4,
+        format!(
+            "tl4{},{},{channel},{},{},{}{}",
+            b36_id(u128::from(c.property_id))?,
+            b36(c.amount_atoms),
+            u8::from(c.pay_enabled),
+            lists,
+            u8::from(c.colored_output),
+            tail
+        ),
+        SourceInnerEnvelope::SingleTypePrefixed,
+        caveats,
+    )
 }
 
 pub fn source_encode_create_whitelist_unverified(
-    backup:&str,name:&str,url:&str,description:&str,
-) -> Result<UnverifiedSourceEncoding,LegacyEncoderError> {
-    for s in [backup,name,url,description] {raw_text(s)?;}
-    source_output(7,format!("tl7{backup},{name},{url},{description}"),
-        SourceInnerEnvelope::SingleTypePrefixed,vec![])
+    backup: &str,
+    name: &str,
+    url: &str,
+    description: &str,
+) -> Result<UnverifiedSourceEncoding, LegacyEncoderError> {
+    for s in [backup, name, url, description] {
+        raw_text(s)?;
+    }
+    source_output(
+        7,
+        format!("tl7{backup},{name},{url},{description}"),
+        SourceInnerEnvelope::SingleTypePrefixed,
+        vec![],
+    )
 }
 pub fn source_encode_update_admin_unverified(
-    new_address:&str,whitelist:bool,oracle:bool,token:bool,
-    id:u64,update_backup:bool,
-) -> Result<UnverifiedSourceEncoding,LegacyEncoderError> {
+    new_address: &str,
+    whitelist: bool,
+    oracle: bool,
+    token: bool,
+    id: u64,
+    update_backup: bool,
+) -> Result<UnverifiedSourceEncoding, LegacyEncoderError> {
     raw_text(new_address)?;
-    source_output(8,format!("tl8{new_address},{},{},{},{},{}",
-        u8::from(whitelist),u8::from(oracle),u8::from(token),
-        b36_id(u128::from(id))?,u8::from(update_backup)),
-        SourceInnerEnvelope::SingleTypePrefixed,vec![])
+    source_output(
+        8,
+        format!(
+            "tl8{new_address},{},{},{},{},{}",
+            u8::from(whitelist),
+            u8::from(oracle),
+            u8::from(token),
+            b36_id(u128::from(id))?,
+            u8::from(update_backup)
+        ),
+        SourceInnerEnvelope::SingleTypePrefixed,
+        vec![],
+    )
 }
-#[derive(Debug,Clone,Copy,PartialEq,Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SourceRevokeArgument {
     Numeric(bool),
     Boolean(bool),
 }
 pub fn source_encode_attestation_unverified(
-    revoke:SourceRevokeArgument,id:u64,target:&str,metadata:&str,
-) -> Result<UnverifiedSourceEncoding,LegacyEncoderError> {
-    raw_text(target)?;raw_text(metadata)?;
-    let literal=match revoke {
-        SourceRevokeArgument::Numeric(true)=>"1",
-        SourceRevokeArgument::Numeric(false)=>"0",
-        SourceRevokeArgument::Boolean(true)=>"true",
-        SourceRevokeArgument::Boolean(false)=>"false",
+    revoke: SourceRevokeArgument,
+    id: u64,
+    target: &str,
+    metadata: &str,
+) -> Result<UnverifiedSourceEncoding, LegacyEncoderError> {
+    raw_text(target)?;
+    raw_text(metadata)?;
+    let literal = match revoke {
+        SourceRevokeArgument::Numeric(true) => "1",
+        SourceRevokeArgument::Numeric(false) => "0",
+        SourceRevokeArgument::Boolean(true) => "true",
+        SourceRevokeArgument::Boolean(false) => "false",
     };
-    source_output(9,format!("tl9{literal},{},{target},{metadata}",b36_id(u128::from(id))?),
+    source_output(
+        9,
+        format!(
+            "tl9{literal},{},{target},{metadata}",
+            b36_id(u128::from(id))?
+        ),
         SourceInnerEnvelope::SingleTypePrefixed,
-        if matches!(revoke,SourceRevokeArgument::Boolean(_)) {
+        if matches!(revoke, SourceRevokeArgument::Boolean(_)) {
             vec![SourceEncoderCaveat::RawBooleanRevokeDoesNotDecodeAsTrue]
-        } else {vec![]})
+        } else {
+            vec![]
+        },
+    )
 }
 pub fn source_encode_close_oracle_unverified(
-    _oracle_id:u64,
-) -> Result<UnverifiedSourceEncoding,LegacyEncoderError> {
+    _oracle_id: u64,
+) -> Result<UnverifiedSourceEncoding, LegacyEncoderError> {
     // Operator precedence: (marker + typeStr?.toString(36)) ?? fallback.
     // The concatenation is never nullish; oracle ID is discarded.
-    source_output(15,"tlf".into(),SourceInnerEnvelope::SingleTypePrefixed,
-        vec![SourceEncoderCaveat::CloseOracleIgnoresIdAndReturnsPrefixOnly])
+    source_output(
+        15,
+        "tlf".into(),
+        SourceInnerEnvelope::SingleTypePrefixed,
+        vec![SourceEncoderCaveat::CloseOracleIgnoresIdAndReturnsPrefixOnly],
+    )
 }
 
-#[derive(Debug,Clone,Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct ClaimedWithdrawal<'a> {
-    pub withdraw_all:bool,
-    pub property_id:u64,
-    pub amount_atoms:u128,
-    pub column:u8,
-    pub channel_address:&'a str,
-    pub ref_vout:u64,
+    pub withdraw_all: bool,
+    pub property_id: u64,
+    pub amount_atoms: u128,
+    pub column: u8,
+    pub channel_address: &'a str,
+    pub ref_vout: u64,
 }
 pub fn source_encode_withdrawal_unverified(
-    c:ClaimedWithdrawal<'_>,
-) -> Result<UnverifiedSourceEncoding,LegacyEncoderError> {
+    c: ClaimedWithdrawal<'_>,
+) -> Result<UnverifiedSourceEncoding, LegacyEncoderError> {
     amount_safe(c.amount_atoms)?;
-    if c.column>1 {return Err(LegacyEncoderError::MissingOrMalformedField);}
-    let (channel,long)=optional_long_ref(c.channel_address,c.ref_vout)?;
-    let mut caveats=vec![
+    if c.column > 1 {
+        return Err(LegacyEncoderError::MissingOrMalformedField);
+    }
+    let (channel, long) = optional_long_ref(c.channel_address, c.ref_vout)?;
+    let mut caveats = vec![
         SourceEncoderCaveat::WithdrawalDecimalAmountVersusBase36Decoder,
         SourceEncoderCaveat::WithdrawalBooleanLiteralVersusOneFlag,
     ];
-    if long {caveats.push(SourceEncoderCaveat::LongAddressSubstitutedByCallerClaimedRef);}
-    source_output(21,format!("tll{},{},{},{},{channel}",
-        c.withdraw_all,b36_id(u128::from(c.property_id))?,c.amount_atoms,c.column),
-        SourceInnerEnvelope::SingleTypePrefixed,caveats)
+    if long {
+        caveats.push(SourceEncoderCaveat::LongAddressSubstitutedByCallerClaimedRef);
+    }
+    source_output(
+        21,
+        format!(
+            "tll{},{},{},{},{channel}",
+            c.withdraw_all,
+            b36_id(u128::from(c.property_id))?,
+            c.amount_atoms,
+            c.column
+        ),
+        SourceInnerEnvelope::SingleTypePrefixed,
+        caveats,
+    )
 }
 
-#[derive(Debug,Clone,Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct ClaimedTransfer<'a> {
-    pub property_id:u64,
-    pub amount_atoms:u128,
-    pub is_column_a:bool,
-    pub destination_address:&'a str,
-    pub ref_vout:u64,
-    pub pay:bool,
-    pub pay_ref:&'a str,
+    pub property_id: u64,
+    pub amount_atoms: u128,
+    pub is_column_a: bool,
+    pub destination_address: &'a str,
+    pub ref_vout: u64,
+    pub pay: bool,
+    pub pay_ref: &'a str,
 }
 pub fn source_encode_transfer_unverified(
-    c:ClaimedTransfer<'_>,
-) -> Result<UnverifiedSourceEncoding,LegacyEncoderError> {
-    amount_safe(c.amount_atoms)?;raw_text(c.pay_ref)?;
-    let (destination,long)=optional_long_ref(c.destination_address,c.ref_vout)?;
-    source_output(22,format!("tlm{},{},{},{destination},{},{}",
-        b36_id(u128::from(c.property_id))?,
-        b36(c.amount_atoms),u8::from(c.is_column_a),u8::from(c.pay),c.pay_ref),
+    c: ClaimedTransfer<'_>,
+) -> Result<UnverifiedSourceEncoding, LegacyEncoderError> {
+    amount_safe(c.amount_atoms)?;
+    raw_text(c.pay_ref)?;
+    let (destination, long) = optional_long_ref(c.destination_address, c.ref_vout)?;
+    source_output(
+        22,
+        format!(
+            "tlm{},{},{},{destination},{},{}",
+            b36_id(u128::from(c.property_id))?,
+            b36(c.amount_atoms),
+            u8::from(c.is_column_a),
+            u8::from(c.pay),
+            c.pay_ref
+        ),
         SourceInnerEnvelope::SingleTypePrefixed,
-        if long {vec![SourceEncoderCaveat::LongAddressSubstitutedByCallerClaimedRef]}
-        else {vec![]})
+        if long {
+            vec![SourceEncoderCaveat::LongAddressSubstitutedByCallerClaimedRef]
+        } else {
+            vec![]
+        },
+    )
 }
 
-#[derive(Debug,Clone,Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct ClaimedStakeFraudRelay<'a> {
-    pub action:u64,
-    pub oracle_id:u64,
-    pub staked_property_id:u64,
-    pub amount_atoms:u128,
-    pub accused_address:&'a str,
-    pub evidence_hash:&'a str,
-    pub relay_type:u64,
-    pub state_hash:&'a str,
-    pub dlc_ref:&'a str,
-    pub settlement_state:&'a str,
-    pub relay_blob:&'a str,
-    pub auto_roll:bool,
-    pub next_dlc_ref:&'a str,
+    pub action: u64,
+    pub oracle_id: u64,
+    pub staked_property_id: u64,
+    pub amount_atoms: u128,
+    pub accused_address: &'a str,
+    pub evidence_hash: &'a str,
+    pub relay_type: u64,
+    pub state_hash: &'a str,
+    pub dlc_ref: &'a str,
+    pub settlement_state: &'a str,
+    pub relay_blob: &'a str,
+    pub auto_roll: bool,
+    pub next_dlc_ref: &'a str,
 }
 pub fn source_encode_stake_fraud_relay_unverified(
-    c:ClaimedStakeFraudRelay<'_>,
-) -> Result<UnverifiedSourceEncoding,LegacyEncoderError> {
+    c: ClaimedStakeFraudRelay<'_>,
+) -> Result<UnverifiedSourceEncoding, LegacyEncoderError> {
     amount_safe(c.amount_atoms)?;
-    for s in [c.accused_address,c.evidence_hash,c.state_hash,
-        c.dlc_ref,c.settlement_state,c.relay_blob,c.next_dlc_ref] {
+    for s in [
+        c.accused_address,
+        c.evidence_hash,
+        c.state_hash,
+        c.dlc_ref,
+        c.settlement_state,
+        c.relay_blob,
+        c.next_dlc_ref,
+    ] {
         raw_text(s)?;
     }
-    let fields=vec![
+    let fields = vec![
         b36_id(u128::from(c.action))?,
         b36_id(u128::from(c.oracle_id))?,
         b36_id(u128::from(c.staked_property_id))?,
-        b36(c.amount_atoms),c.accused_address.into(),c.evidence_hash.into(),
-        b36_id(u128::from(c.relay_type))?,c.state_hash.into(),c.dlc_ref.into(),
-        c.settlement_state.into(),c.relay_blob.into(),u8::from(c.auto_roll).to_string(),
-        c.next_dlc_ref.into()
+        b36(c.amount_atoms),
+        c.accused_address.into(),
+        c.evidence_hash.into(),
+        b36_id(u128::from(c.relay_type))?,
+        c.state_hash.into(),
+        c.dlc_ref.into(),
+        c.settlement_state.into(),
+        c.relay_blob.into(),
+        u8::from(c.auto_roll).to_string(),
+        c.next_dlc_ref.into(),
     ];
-    source_output(30,format!("tlu{}",fields.join(",")),
-        SourceInnerEnvelope::SingleTypePrefixed,vec![])
+    source_output(
+        30,
+        format!("tlu{}", fields.join(",")),
+        SourceInnerEnvelope::SingleTypePrefixed,
+        vec![],
+    )
 }
 
 pub fn source_encode_colored_coin_unverified(
-    action:u8,property_id:u64,sats_ratio:u64,home_address:&str,
-) -> Result<UnverifiedSourceEncoding,LegacyEncoderError> {
+    action: u8,
+    property_id: u64,
+    sats_ratio: u64,
+    home_address: &str,
+) -> Result<UnverifiedSourceEncoding, LegacyEncoderError> {
     raw_text(home_address)?;
-    source_output(33,format!("{action},{},{},{}",b36_id(u128::from(property_id))?,
-        b36_id(u128::from(sats_ratio))?,home_address),
-        SourceInnerEnvelope::BodyOnly,vec![SourceEncoderCaveat::BodyOnlyWithoutCalledValidator])
+    source_output(
+        33,
+        format!(
+            "{action},{},{},{}",
+            b36_id(u128::from(property_id))?,
+            b36_id(u128::from(sats_ratio))?,
+            home_address
+        ),
+        SourceInnerEnvelope::BodyOnly,
+        vec![SourceEncoderCaveat::BodyOnlyWithoutCalledValidator],
+    )
 }
 pub fn source_encode_bridge_unverified(
-    property_id:u64,amount:u64,destination_address:&str,
-) -> Result<UnverifiedSourceEncoding,LegacyEncoderError> {
+    property_id: u64,
+    amount: u64,
+    destination_address: &str,
+) -> Result<UnverifiedSourceEncoding, LegacyEncoderError> {
     raw_text(destination_address)?;
-    source_output(34,format!("{},{},{}",b36_id(u128::from(property_id))?,
-        b36_id(u128::from(amount))?,destination_address),
-        SourceInnerEnvelope::BodyOnly,vec![SourceEncoderCaveat::BodyOnlyWithAbsentSourceDecoder])
+    source_output(
+        34,
+        format!(
+            "{},{},{}",
+            b36_id(u128::from(property_id))?,
+            b36_id(u128::from(amount))?,
+            destination_address
+        ),
+        SourceInnerEnvelope::BodyOnly,
+        vec![SourceEncoderCaveat::BodyOnlyWithAbsentSourceDecoder],
+    )
 }
 pub fn source_encode_smart_bind_unverified(
-    contract_hash:&str,contract_type:&str,host_chain:&str,
-) -> Result<UnverifiedSourceEncoding,LegacyEncoderError> {
-    for s in [contract_hash,contract_type,host_chain] {raw_text(s)?;}
-    source_output(35,format!("{contract_hash},{contract_type},{host_chain}"),
-        SourceInnerEnvelope::BodyOnly,vec![SourceEncoderCaveat::BodyOnlyWithAbsentSourceDecoder])
+    contract_hash: &str,
+    contract_type: &str,
+    host_chain: &str,
+) -> Result<UnverifiedSourceEncoding, LegacyEncoderError> {
+    for s in [contract_hash, contract_type, host_chain] {
+        raw_text(s)?;
+    }
+    source_output(
+        35,
+        format!("{contract_hash},{contract_type},{host_chain}"),
+        SourceInnerEnvelope::BodyOnly,
+        vec![SourceEncoderCaveat::BodyOnlyWithAbsentSourceDecoder],
+    )
 }
