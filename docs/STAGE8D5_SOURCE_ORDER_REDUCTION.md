@@ -24,6 +24,8 @@ The existing release `tradelayer-block-ingest-bench` measures the full *prepared
 - `one_team_fast_reduce_prepared_only_median_ms` both changes
 - `fast_reduce_vs_one_team_ratio` (baseline / combined; above 1 means faster)
 
+The four one-team variants are timed in forward order on even repetitions and reverse order on odd repetitions; CI executes four repetitions per workload to counterbalance variant position.
+
 For attribution, the benchmark additionally times precomputed TXIDs through duplicate-only `BTreeMap` vs `HashMap` lookup and allocating vs in-place Merkle, using the same raw digest order and `7 * repeats` same-process sweeps per workload. The reported isolated ratios are informative for the reducer only; end-to-end one-team timing decides whether any proposed production change is useful. The release workflow checks that outputs exist but **never** imposes a CI speedup threshold.
 
 Measure the existing 1,000-TX 0%-SegWit/1-worker, 4,000-TX 50%-SegWit/4-worker and 10,000-TX 95%-SegWit/8-worker synthetic workloads; then test real Bitcoin blocks and a stable host before promoting either variant. Do not extrapolate these timings to Bitcoin Core signature checking, chain state transitions, UTXO IO or network RPC.
@@ -38,9 +40,9 @@ cargo clippy --all-targets --frozen -- -D warnings
 cargo test --frozen --test stage8d5_reduction_merkle
 cargo test --frozen
 cargo build --all-targets --release --frozen
-target/release/tradelayer-block-ingest-bench 1000 1 0 3
-target/release/tradelayer-block-ingest-bench 4000 4 50 3
-target/release/tradelayer-block-ingest-bench 10000 8 95 3
+target/release/tradelayer-block-ingest-bench 1000 1 0 4
+target/release/tradelayer-block-ingest-bench 4000 4 50 4
+target/release/tradelayer-block-ingest-bench 10000 8 95 4
 ```
 
 **Promotion gate:** only after exact-head frozen tests, lint, release and required strict `check` pass; require a consistent prepared-only end-to-end win on a representative same-host real-block corpus. Otherwise retain this as a measured negative result in draft, preserving the merged default and immutable scanner authority boundaries.
