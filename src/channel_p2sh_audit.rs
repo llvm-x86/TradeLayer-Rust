@@ -65,14 +65,30 @@ pub struct UnverifiedP2shTwoOfTwoSpend {
 }
 
 impl UnverifiedP2shTwoOfTwoSpend {
-    pub const fn network(&self) -> TradeLayerMainnet { self.network }
-    pub const fn funding_txid_display(&self) -> [u8; 32] { self.funding_txid_display }
-    pub const fn spending_txid_display(&self) -> [u8; 32] { self.spending_txid_display }
-    pub const fn funding_vout(&self) -> u32 { self.funding_vout }
-    pub const fn spending_vin(&self) -> u32 { self.spending_vin }
-    pub const fn funding_satoshis(&self) -> u64 { self.funding_satoshis }
-    pub const fn script_hash160(&self) -> [u8; 20] { self.script_hash160 }
-    pub const fn claimed_pubkeys(&self) -> ClaimedTwoOfTwoPubkeys { self.signer_pubkeys }
+    pub const fn network(&self) -> TradeLayerMainnet {
+        self.network
+    }
+    pub const fn funding_txid_display(&self) -> [u8; 32] {
+        self.funding_txid_display
+    }
+    pub const fn spending_txid_display(&self) -> [u8; 32] {
+        self.spending_txid_display
+    }
+    pub const fn funding_vout(&self) -> u32 {
+        self.funding_vout
+    }
+    pub const fn spending_vin(&self) -> u32 {
+        self.spending_vin
+    }
+    pub const fn funding_satoshis(&self) -> u64 {
+        self.funding_satoshis
+    }
+    pub const fn script_hash160(&self) -> [u8; 20] {
+        self.script_hash160
+    }
+    pub const fn claimed_pubkeys(&self) -> ClaimedTwoOfTwoPubkeys {
+        self.signer_pubkeys
+    }
     pub const fn require_verified_channel_signatures(&self) -> Result<(), P2shAuditError> {
         Err(P2shAuditError::SignaturesNotVerified)
     }
@@ -87,8 +103,13 @@ struct SpendingInput<'a> {
     script_sig: &'a [u8],
 }
 
-fn selected_funding_vout<'a>(tx: &'a [u8], target: u32) -> Result<FundingOutput<'a>, P2shAuditError> {
-    if tx.len() > MAX_RAW_TRANSACTION { return Err(ScanError::TooLong.into()); }
+fn selected_funding_vout<'a>(
+    tx: &'a [u8],
+    target: u32,
+) -> Result<FundingOutput<'a>, P2shAuditError> {
+    if tx.len() > MAX_RAW_TRANSACTION {
+        return Err(ScanError::TooLong.into());
+    }
     let inspected = inspect_transaction(tx)?;
     let mut cursor = Cursor::new(tx);
     cursor.take(4)?; // version
@@ -103,31 +124,49 @@ fn selected_funding_vout<'a>(tx: &'a [u8], target: u32) -> Result<FundingOutput<
     }
     let n_outputs = cursor.count()?;
     let vout = usize::try_from(target).map_err(|_| ScanError::TooLong)?;
-    if vout >= n_outputs { return Err(P2shAuditError::FundingVoutOutOfRange); }
+    if vout >= n_outputs {
+        return Err(P2shAuditError::FundingVoutOutOfRange);
+    }
     let mut chosen = None;
     for i in 0..n_outputs {
         let value = u64::from_le_bytes(cursor.take(8)?.try_into().expect("8-byte sats"));
         let script = cursor.data()?;
-        if i == vout { chosen = Some(FundingOutput { value, script }); }
+        if i == vout {
+            chosen = Some(FundingOutput { value, script });
+        }
     }
     Ok(chosen.expect("vout within checked output count"))
 }
 
-fn selected_spending_vin<'a>(tx: &'a [u8], target: u32) -> Result<SpendingInput<'a>, P2shAuditError> {
-    if tx.len() > MAX_RAW_TRANSACTION { return Err(ScanError::TooLong.into()); }
+fn selected_spending_vin<'a>(
+    tx: &'a [u8],
+    target: u32,
+) -> Result<SpendingInput<'a>, P2shAuditError> {
+    if tx.len() > MAX_RAW_TRANSACTION {
+        return Err(ScanError::TooLong.into());
+    }
     let inspected = inspect_transaction(tx)?;
-    if inspected.has_witness { return Err(P2shAuditError::UnsupportedSegwitSpend); }
+    if inspected.has_witness {
+        return Err(P2shAuditError::UnsupportedSegwitSpend);
+    }
     let mut cursor = Cursor::new(tx);
     cursor.take(4)?; // version
     let n_inputs = cursor.count()?;
     let vin = usize::try_from(target).map_err(|_| ScanError::TooLong)?;
-    if vin >= n_inputs { return Err(P2shAuditError::SpendingVinOutOfRange); }
+    if vin >= n_inputs {
+        return Err(P2shAuditError::SpendingVinOutOfRange);
+    }
     let mut chosen = None;
     for i in 0..n_inputs {
         let prevout = cursor.take(36)?.try_into().expect("36-byte outpoint");
         let script_sig = cursor.data()?;
         cursor.take(4)?; // sequence
-        if i == vin { chosen = Some(SpendingInput { prevout, script_sig }); }
+        if i == vin {
+            chosen = Some(SpendingInput {
+                prevout,
+                script_sig,
+            });
+        }
     }
     Ok(chosen.expect("vin within checked input count"))
 }
@@ -178,7 +217,10 @@ pub fn audit_legacy_p2sh_two_of_two_unverified(
     spending_vin: u32,
     claimed_pubkeys: ClaimedTwoOfTwoPubkeys,
 ) -> Result<UnverifiedP2shTwoOfTwoSpend, P2shAuditError> {
-    if !matches!(network, TradeLayerMainnet::Bitcoin | TradeLayerMainnet::Litecoin) {
+    if !matches!(
+        network,
+        TradeLayerMainnet::Bitcoin | TradeLayerMainnet::Litecoin
+    ) {
         return Err(P2shAuditError::UnsupportedNetwork);
     }
     let fund = inspect_transaction(funding_tx)?;
@@ -188,10 +230,7 @@ pub fn audit_legacy_p2sh_two_of_two_unverified(
         return Err(P2shAuditError::InvalidOutputAmount);
     }
     let spk = selected_fund.script;
-    if spk.len() != P2SH_SCRIPT_PUBKEY_LENGTH
-        || spk[0] != 0xa9
-        || spk[1] != 0x14
-        || spk[22] != 0x87
+    if spk.len() != P2SH_SCRIPT_PUBKEY_LENGTH || spk[0] != 0xa9 || spk[1] != 0x14 || spk[22] != 0x87
     {
         return Err(P2shAuditError::NotP2shFunding);
     }
@@ -202,8 +241,7 @@ pub fn audit_legacy_p2sh_two_of_two_unverified(
     if selected_spend.prevout != expected {
         return Err(P2shAuditError::WrongPrevout);
     }
-    let (_sig_a, _sig_b, redeem) =
-        parse_two_signatures_and_redeem(selected_spend.script_sig)?;
+    let (_sig_a, _sig_b, redeem) = parse_two_signatures_and_redeem(selected_spend.script_sig)?;
     check_script(redeem, claimed_pubkeys).map_err(P2shAuditError::RedeemScript)?;
     let digest = hash160(redeem);
     if digest != spk[2..22] {
