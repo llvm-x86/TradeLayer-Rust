@@ -125,7 +125,9 @@ pub fn inspect_raw_funding_evidence(
             .push(entry);
     }
 
-    if raw_funding_transactions.len() > expected.len() {
+    if raw_funding_transactions.len()
+        > crate::parent_utxo_snapshot::MAX_CANDIDATE_SNAPSHOT_ENTRIES
+    {
         return Err(FundingEvidenceError::EvidenceTooLarge);
     }
     let mut encountered = BTreeSet::new();
@@ -172,7 +174,7 @@ pub fn inspect_raw_funding_evidence(
             if amount != entry.amount_sat {
                 return Err(FundingEvidenceError::ClaimedAmountDiffers { index, vout });
             }
-            if script != entry.script_pubkey {
+            if script != entry.script_pubkey.as_slice() {
                 return Err(FundingEvidenceError::ClaimedScriptDiffers { index, vout });
             }
             matched += 1;
