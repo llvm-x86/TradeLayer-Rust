@@ -83,9 +83,23 @@ pub fn source_last_char_column(address: &str, n: usize) -> Side {
     let ch = address.as_bytes()[address.len() - n].to_ascii_uppercase();
     if matches!(
         ch,
-        b'A' | b'C' | b'E' | b'G' | b'I' | b'K' | b'M' | b'O'
-            | b'Q' | b'S' | b'U' | b'W' | b'Y'
-            | b'1' | b'3' | b'5' | b'7' | b'9'
+        b'A' | b'C'
+            | b'E'
+            | b'G'
+            | b'I'
+            | b'K'
+            | b'M'
+            | b'O'
+            | b'Q'
+            | b'S'
+            | b'U'
+            | b'W'
+            | b'Y'
+            | b'1'
+            | b'3'
+            | b'5'
+            | b'7'
+            | b'9'
     ) {
         Side::A
     } else {
@@ -218,7 +232,10 @@ impl UnverifiedLegacyChannel {
         &self.participants[side.index()]
     }
     pub fn balance_atoms(&self, side: Side, property_id: u32) -> u128 {
-        self.balances[side.index()].get(&property_id).copied().unwrap_or(0)
+        self.balances[side.index()]
+            .get(&property_id)
+            .copied()
+            .unwrap_or(0)
     }
     pub fn clear_lists(&self, side: Side) -> &[u32] {
         &self.clear_lists[side.index()]
@@ -276,8 +293,16 @@ impl UnverifiedLegacyChannel {
     }
     fn bump(&mut self, force_a: &str, force_b: &str, height: u64) {
         let before = self.participants.clone();
-        let next_a = if force_a.is_empty() { before[0].clone() } else { force_a.to_owned() };
-        let mut next_b = if force_b.is_empty() { before[1].clone() } else { force_b.to_owned() };
+        let next_a = if force_a.is_empty() {
+            before[0].clone()
+        } else {
+            force_a.to_owned()
+        };
+        let mut next_b = if force_b.is_empty() {
+            before[1].clone()
+        } else {
+            force_b.to_owned()
+        };
         if !next_a.is_empty() && next_a == next_b {
             if !before[0].is_empty() && before[0] != next_a {
                 next_b = before[0].clone();
@@ -304,7 +329,8 @@ impl UnverifiedLegacyChannel {
             // Unsafe source behavior: overwrite owner labels while retaining
             // balances on those column indices, even if occupied.
             for (i, next) in [next_a.as_str(), next_b.as_str()].iter().enumerate() {
-                if !before[i].is_empty() && before[i] != *next
+                if !before[i].is_empty()
+                    && before[i] != *next
                     && self.balances[i].values().any(|v| *v > 0)
                 {
                     self.possible_crowded_displacement = true;
@@ -331,23 +357,43 @@ impl UnverifiedLegacyChannel {
         } else if self.source_resolve_column(sender).is_some() {
             // Already committed, keep its column.
         } else if self.participant(column).is_empty() && self.participant(column) != cp {
-            self.record_change(column, sender, height, "Assigned via open slot (no conflict)");
+            self.record_change(
+                column,
+                sender,
+                height,
+                "Assigned via open slot (no conflict)",
+            );
         } else if self.participant(column) == cp
             || (!self.participant(column).is_empty() && self.participant(column) != sender)
         {
-            let tie = source_tie_break(sender, cp, column)
-                .expect("validated caller strings");
+            let tie = source_tie_break(sender, cp, column).expect("validated caller strings");
             let old_a = self.participants[0].clone();
             let old_b = self.participants[1].clone();
-            let force_a = if column == Side::A { &tie.winner } else { &tie.loser };
-            let force_b = if column == Side::B { &tie.winner } else { &tie.loser };
-            let new_a = if force_a.is_empty() { old_a.as_str() } else { force_a };
+            let force_a = if column == Side::A {
+                &tie.winner
+            } else {
+                &tie.loser
+            };
+            let force_b = if column == Side::B {
+                &tie.winner
+            } else {
+                &tie.loser
+            };
+            let new_a = if force_a.is_empty() {
+                old_a.as_str()
+            } else {
+                force_a
+            };
             let fallback = if !old_a.is_empty() && old_a != new_a {
                 old_a.as_str()
             } else {
                 old_b.as_str()
             };
-            let new_b = if force_b.is_empty() { fallback } else { force_b };
+            let new_b = if force_b.is_empty() {
+                fallback
+            } else {
+                force_b
+            };
             self.bump(new_a, new_b, height);
         }
     }
@@ -407,10 +453,12 @@ impl UnverifiedLegacyChannel {
                 next.possible_crowded_displacement = true;
             }
         }
-        let side = next.source_resolve_column(claim.sender)
+        let side = next
+            .source_resolve_column(claim.sender)
             .ok_or(ChannelSourceError::ColumnUnresolved)?;
         let i = side.index();
-        let total = next.balance_atoms(side, claim.property_id)
+        let total = next
+            .balance_atoms(side, claim.property_id)
             .checked_add(claim.token_atoms)
             .filter(|v| *v <= MAX_EXACT_ATOMS)
             .ok_or(ChannelSourceError::Overflow)?;
@@ -447,20 +495,25 @@ impl UnverifiedLegacyChannel {
         if needle.is_empty() {
             return vec![];
         }
-        let last_mine = self.commits.iter().rev().find(|record| {
-            record.sender.to_ascii_lowercase() == needle
-        });
+        let last_mine = self
+            .commits
+            .iter()
+            .rev()
+            .find(|record| record.sender.to_ascii_lowercase() == needle);
         let side = if !self.participants[0].is_empty()
-            && self.participants[0].to_ascii_lowercase() == needle {
+            && self.participants[0].to_ascii_lowercase() == needle
+        {
             Some(Side::A)
         } else if !self.participants[1].is_empty()
-            && self.participants[1].to_ascii_lowercase() == needle {
+            && self.participants[1].to_ascii_lowercase() == needle
+        {
             Some(Side::B)
         } else {
             last_mine.map(|record| record.column)
         };
         let Some(side) = side else { return vec![] };
-        self.balances[side.index()].iter()
+        self.balances[side.index()]
+            .iter()
             .filter(|(property, amount)| **amount > 0 && filter.is_none_or(|pid| pid == **property))
             .map(|(property, amount)| SourceBalanceRow {
                 column: side,
@@ -503,8 +556,10 @@ pub struct UnverifiedWithdrawalKeys {
 }
 impl UnverifiedWithdrawalKeys {
     /// Pinned savePendingWithdrawalToDB key omits channel and property.
-    pub fn source_save(&mut self, row: UnverifiedQueuedWithdrawal)
-        -> Result<Option<UnverifiedQueuedWithdrawal>, ChannelSourceError> {
+    pub fn source_save(
+        &mut self,
+        row: UnverifiedQueuedWithdrawal,
+    ) -> Result<Option<UnverifiedQueuedWithdrawal>, ChannelSourceError> {
         if !actor(&row.sender) || !actor(&row.channel) {
             return Err(ChannelSourceError::BadSender);
         }
@@ -524,7 +579,10 @@ impl UnverifiedWithdrawalKeys {
     }
     pub fn source_delay_elapsed(&self, block: u64, sender: &str, now: u64) -> bool {
         self.source_lookup(block, sender).is_some_and(|record| {
-            record.block_height.checked_add(7).is_some_and(|due| now >= due)
+            record
+                .block_height
+                .checked_add(7)
+                .is_some_and(|due| now >= due)
         })
     }
     pub const fn require_verified_withdrawal(&self) -> Result<(), ChannelSourceError> {
