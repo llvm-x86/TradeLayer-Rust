@@ -5,9 +5,7 @@ use std::collections::BTreeMap;
 use tradelayer_core::channel_bip143_audit::{
     audit_native_p2wsh_bip143_sighash_all_unverified, UnverifiedP2wshBip143Digest,
 };
-use tradelayer_core::channel_witness_audit::{
-    ClaimedTwoOfTwoPubkeys, StructuralChannelError,
-};
+use tradelayer_core::channel_witness_audit::{ClaimedTwoOfTwoPubkeys, StructuralChannelError};
 use tradelayer_core::network_profile::TradeLayerMainnet;
 use tradelayer_core::read_only::{decode_hex, inspect_transaction};
 
@@ -46,9 +44,11 @@ fn witness_fixture() -> (Vec<u8>, Vec<u8>, ClaimedTwoOfTwoPubkeys) {
     )
 }
 
-fn checked(funding: &[u8], spending: &[u8], keys: ClaimedTwoOfTwoPubkeys)
-    -> Result<UnverifiedP2wshBip143Digest, StructuralChannelError>
-{
+fn checked(
+    funding: &[u8],
+    spending: &[u8],
+    keys: ClaimedTwoOfTwoPubkeys,
+) -> Result<UnverifiedP2wshBip143Digest, StructuralChannelError> {
     audit_native_p2wsh_bip143_sighash_all_unverified(
         TradeLayerMainnet::Litecoin,
         funding,
@@ -68,9 +68,18 @@ fn genuine_synthetic_ecdsa_fixture_agrees_with_rust_bip143_but_remains_unverifie
     assert_eq!(report.hash_prevouts_raw(), exact32(f["expected_prevouts"]));
     assert_eq!(report.hash_sequence_raw(), exact32(f["expected_sequence"]));
     assert_eq!(report.hash_outputs_raw(), exact32(f["expected_outputs"]));
-    assert_eq!(inspect_transaction(&funding).unwrap().txid, exact32(f["funding_txid_raw"]));
-    assert_eq!(inspect_transaction(&spending).unwrap().txid, exact32(f["spending_txid_raw"]));
-    assert_eq!(inspect_transaction(&spending).unwrap().wtxid, exact32(f["spending_wtxid_raw"]));
+    assert_eq!(
+        inspect_transaction(&funding).unwrap().txid,
+        exact32(f["funding_txid_raw"])
+    );
+    assert_eq!(
+        inspect_transaction(&spending).unwrap().txid,
+        exact32(f["spending_txid_raw"])
+    );
+    assert_eq!(
+        inspect_transaction(&spending).unwrap().wtxid,
+        exact32(f["spending_wtxid_raw"])
+    );
     assert_eq!(report.structural().funding_satoshis(), 20_000);
     assert_eq!(
         report.require_verified_channel_signatures(),
