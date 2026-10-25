@@ -18,9 +18,12 @@ fn compact(dst: &mut Vec<u8>, n: usize) {
         dst.extend_from_slice(&(n as u16).to_le_bytes());
     }
 }
-fn synthetic_tx(position: usize, pad: usize) -> Vec<u8> {
+fn synthetic_tx(position: usize, pad: usize, segwit: bool) -> Vec<u8> {
     let mut raw = Vec::with_capacity(pad + 120);
     raw.extend_from_slice(&2u32.to_le_bytes());
+    if segwit {
+        raw.extend_from_slice(&[0x00, 0x01]); // SegWit marker and flag
+    }
     raw.push(1);
     let mut parent = [0u8; 32];
     parent[..8].copy_from_slice(&(position as u64).to_le_bytes());
@@ -41,6 +44,9 @@ fn synthetic_tx(position: usize, pad: usize) -> Vec<u8> {
     };
     compact(&mut raw, script.len());
     raw.extend_from_slice(script);
+    if segwit {
+        raw.extend_from_slice(&[1, 2, 0x30, 0x01]); // one nonempty witness item
+    }
     raw.extend_from_slice(&0u32.to_le_bytes());
     raw
 }
@@ -50,7 +56,7 @@ fn median(mut values: Vec<Duration>) -> Duration {
 }
 fn usage() -> ! {
     eprintln!(
-        "usage: tradelayer-index-bench [transactions:1..20000] [scriptSig_bytes:0..2048] [workers:1..16] [window:1..512] [repeats:1..10]"
+        "usage: tradelayer-index-bench [transactions:1..20000] [scriptSig_bytes:0..2048] [workers:1..16] [window:1..512] [repeats:1..10] [segwit_percent:0..100]"
     );
     process::exit(2)
 }
@@ -63,7 +69,7 @@ fn argument<T: std::str::FromStr>(args: &[String], index: usize, default: T) -> 
 
 fn main() {
     let args: Vec<_> = env::args().collect();
-    if args.len() > 6 {
+    if args.len() > 7 {
         usage();
     }
     let count: usize = argument(&args, 1, 2500);
@@ -71,10 +77,12 @@ fn main() {
     let workers: usize = argument(&args, 3, ParallelIndexConfig::default().workers);
     let window: usize = argument(&args, 4, 256);
     let repeats: usize = argument(&args, 5, 3);
+    let segwit_percent: usize = argument(&args, 6, 0);
     if !(1..=20_000).contains(&count)
         || pad > 2048
         || !(1..=10).contains(&repeats)
         || !(1..=MAX_PARALLEL_WORKERS).contains(&workers)
+        || segwit_percent > 100
     {
         usage();
     }
@@ -85,7 +93,9 @@ fn main() {
     if config.validate().is_err() {
         usage();
     }
-    let raws: Vec<_> = (0..count).map(|i| synthetic_tx(i, pad + i % 7)).collect();
+    let raws: Vec<_> = (0..count)
+        .map(|i| synthetic_tx(i, pad + i % 7, (i * 37) % 100 < segwit_percent))
+        .collect();
     let total_bytes: usize = raws.iter().map(Vec::len).sum();
     if total_bytes > MAX_BLOCK_INPUT_BYTES {
         usage();
@@ -115,6 +125,8 @@ fn main() {
     let parallel = median(parallel_times).as_secs_f64().max(1e-9);
     println!("benchmark=UNVERIFIED_SYNTHETIC_TXID_SCAN");
     println!("transaction_count={count}");
+    println!("segwit_percent={segwit_percent}");
+    println!("witness_transactions={}", baseline.ordered().iter().filter(|tx| tx.observation.has_witness).count());
     println!("raw_bytes={total_bytes}");
     println!("candidate_count={}", baseline.candidate_positions().len());
     println!("workers={workers}");

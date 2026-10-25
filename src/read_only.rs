@@ -7,7 +7,7 @@
 //! Historical Litecoin/Dogecoin features beyond this common serialization are
 //! not covered by the fixture suite.
 
-use crate::hash256::double_sha256;
+use crate::hash256::{double_sha256, double_sha256_parts};
 use crate::{wire, wire_v1};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
@@ -343,18 +343,20 @@ pub fn inspect_transaction(raw: &[u8]) -> Result<TransactionObservation, ScanErr
     if reader.offset != raw.len() {
         return Err(ScanError::TrailingBytes);
     }
+    // For non-SegWit serialization, BIP141 defines txid == wtxid.
+    // Hash exactly once. The previous version hashed the same raw bytes
+    // TWICE for each legacy transaction, wasting a hot CPU preindex pass.
+    let wtxid = double_sha256(raw);
     let txid = if has_witness {
-        let mut stripped = Vec::with_capacity(raw.len());
-        stripped.extend_from_slice(version);
-        stripped.extend_from_slice(&raw[inputs_start..outputs_end]);
-        stripped.extend_from_slice(locktime);
-        double_sha256(&stripped)
+        // SegWit txid excludes marker, flag and all witness stacks. Hash
+        // the three stripped segments in place, with no temporary Vec.
+        double_sha256_parts(&[version, &raw[inputs_start..outputs_end], locktime])
     } else {
-        double_sha256(raw)
+        wtxid
     };
     Ok(TransactionObservation {
         txid,
-        wtxid: double_sha256(raw),
+        wtxid,
         has_witness,
         input_count: u32::try_from(inputs).map_err(|_| ScanError::TooLong)?,
         output_count: u32::try_from(outputs).map_err(|_| ScanError::TooLong)?,
