@@ -93,10 +93,13 @@ fn main() {
     assert_eq!(old, *new.ordered_preindex());
     let one_team = view.inspect_parallel_one_team(config).unwrap();
     assert_eq!(one_team, new);
+    let weighted_shards = view.inspect_parallel_weighted_shards(config).unwrap();
+    assert_eq!(weighted_shards, new);
     let mut owned_times = Vec::new();
     let mut full_owned_times = Vec::new();
     let mut prepared_times = Vec::new();
     let mut one_team_times = Vec::new();
+    let mut weighted_shard_times = Vec::new();
     let mut bulk_times = Vec::new();
     for _ in 0..repeats {
         let start = Instant::now();
@@ -144,6 +147,11 @@ fn main() {
         assert_eq!(*pooled.ordered_preindex(), serial_by_slot);
         black_box(pooled);
         let start = Instant::now();
+        let weighted = view.inspect_parallel_weighted_shards(config).unwrap();
+        weighted_shard_times.push(start.elapsed());
+        assert_eq!(*weighted.ordered_preindex(), serial_by_slot);
+        black_box(weighted);
+        let start = Instant::now();
         let observed =
             fetch_and_inspect_unverified_block(view.header_hash_raw(), config, |_| Ok(raw.clone()))
                 .unwrap();
@@ -155,6 +163,7 @@ fn main() {
     let full_owned_ms = median(full_owned_times).as_secs_f64() * 1000.0;
     let prepared_ms = median(prepared_times).as_secs_f64() * 1000.0;
     let one_team_ms = median(one_team_times).as_secs_f64() * 1000.0;
+    let weighted_shard_ms = median(weighted_shard_times).as_secs_f64() * 1000.0;
     let bulk_ms = median(bulk_times).as_secs_f64() * 1000.0;
     let bulk_seconds = (bulk_ms / 1000.0).max(1e-9);
     println!("benchmark=UNVERIFIED_SYNTHETIC_BULK_BLOCK_INGEST");
@@ -171,6 +180,15 @@ fn main() {
     println!("full_owned_block_pipeline_median_ms={full_owned_ms:.3}");
     println!("fused_prepared_only_median_ms={prepared_ms:.3}");
     println!("one_team_prepared_only_median_ms={one_team_ms:.3}");
+    println!("weighted_shards_prepared_only_median_ms={weighted_shard_ms:.3}");
+    println!(
+        "weighted_shards_vs_one_team_ratio={:.3}",
+        one_team_ms / weighted_shard_ms.max(1e-9)
+    );
+    println!(
+        "weighted_shards_vs_windowed_ratio={:.3}",
+        prepared_ms / weighted_shard_ms.max(1e-9)
+    );
     println!(
         "one_team_vs_windowed_ratio={:.3}",
         prepared_ms / one_team_ms.max(1e-9)
