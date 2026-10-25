@@ -11,6 +11,7 @@ pub mod bitcoin_forks; // Bounded greatest-work selection among observed header 
 pub mod bitcoin_inclusion; // Bitcoin SHA256d header and tx Merkle checks; no full consensus.
 pub mod chain; // Trust-boundary and reversible block progression, prototype only.
 pub mod channel_admission_audit; // Stage25M claimed as-of type4/type19 direct clearlist evidence, never authorization.
+pub mod channel_type9_inclusion_audit; // Stage25N raw type9 event/Bitcoin relative Merkle evidence, no admission.
 pub mod channel_bip143_audit; // Stage 25I exact SegWit-v0 SIGHASH_ALL digest; no signature verification.
 pub mod channel_inclusion_audit; // Stage25L relative Bitcoin Merkle/witness non-authority.
 pub mod channel_p2sh_audit; // Stage 25K legacy P2SH HASH160 outpoint and redeem script, not ECDSA.
