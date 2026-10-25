@@ -16,10 +16,10 @@
 
 use crate::hash256::double_sha256;
 use crate::parallel_txindex::{
-    inspect_unverified_block_slices_parallel, inspect_unverified_block_slices_serial,
-    ParallelIndexConfig, ParallelIndexError, UnverifiedOrderedBlockIndex,
+    inspect_prepared_block_parallel, ParallelIndexConfig, ParallelIndexError,
+    PreparedRawTransaction, UnverifiedOrderedBlockIndex,
 };
-use crate::read_only::{compact_size_prefix, transaction_prefix_lengths, ScanError};
+use crate::read_only::{compact_size_prefix, prepare_transaction_prefix, ScanError, TransactionLayout};
 use std::ops::Range;
 
 pub const MAX_UNVERIFIED_RAW_BLOCK_BYTES: usize = 4_000_000;
@@ -59,6 +59,7 @@ pub struct UnverifiedRawBlockView<'a> {
     header_hash_raw: [u8; 32],
     header_merkle_root_raw: [u8; 32],
     transaction_ranges: Vec<Range<usize>>,
+    layouts: Vec<TransactionLayout>,
     stripped_block_bytes: usize,
     block_weight: u64,
 }
@@ -90,6 +91,7 @@ impl<'a> UnverifiedRawBlockView<'a> {
             return Err(RawBlockIngestError::TooManyTransactions);
         }
         let mut offsets = Vec::with_capacity(count as usize);
+        let mut layouts = Vec::with_capacity(count as usize);
         let mut offset = 80 + size_of_count;
         let mut stripped_size = offset;
         for index in 0..count as usize {
@@ -100,8 +102,10 @@ impl<'a> UnverifiedRawBlockView<'a> {
                         index,
                         source: ScanError::Truncated,
                     })?;
-            let (length, base_length) = transaction_prefix_lengths(remaining)
+            let layout = prepare_transaction_prefix(remaining)
                 .map_err(|source| RawBlockIngestError::TransactionBoundary { index, source })?;
+            let length = layout.total_bytes();
+            let base_length = layout.stripped_bytes();
             let end =
                 offset
                     .checked_add(length)
@@ -110,6 +114,7 @@ impl<'a> UnverifiedRawBlockView<'a> {
                         source: ScanError::TooLong,
                     })?;
             offsets.push(offset..end);
+            layouts.push(layout);
             offset = end;
             stripped_size = stripped_size
                 .checked_add(base_length)
@@ -131,6 +136,7 @@ impl<'a> UnverifiedRawBlockView<'a> {
             header_hash_raw: header_hash,
             header_merkle_root_raw,
             transaction_ranges: offsets,
+            layouts,
             stripped_block_bytes: stripped_size,
             block_weight,
         })
@@ -168,16 +174,14 @@ impl<'a> UnverifiedRawBlockView<'a> {
         config: ParallelIndexConfig,
         parallel: bool,
     ) -> Result<UnverifiedRawBlockIndex, RawBlockIngestError> {
-        let slices: Vec<&[u8]> = self
-            .transaction_ranges
-            .iter()
-            .map(|range| &self.block_bytes[range.clone()])
-            .collect();
-        let report = if parallel {
-            inspect_unverified_block_slices_parallel(&slices, config)
-        } else {
-            inspect_unverified_block_slices_serial(&slices)
-        }
+        let prepared = self.transaction_ranges.iter().zip(&self.layouts)
+            .map(|(range, layout)| PreparedRawTransaction {
+                raw: &self.block_bytes[range.clone()], layout,
+            })
+            .collect::<Vec<_>>();
+        let report = inspect_prepared_block_parallel(
+            &prepared, if parallel { config } else { ParallelIndexConfig::serial() },
+        )
         .map_err(RawBlockIngestError::TransactionPreindex)?;
         let txids = report
             .ordered()
