@@ -134,9 +134,10 @@ fn compute_bip143_sighash_all_unverified(
     let script = witness_script.ok_or(StructuralChannelError::InvalidWitnessShape)?;
     // The Stage25H parser requires this fixed 2-of-2 script with no
     // CODESEPARATOR. Refuse future changes that alter scriptCode semantics.
-    if script.len() != crate::channel_witness_audit::CANONICAL_COMPRESSED_2_OF_2_SCRIPT_SIZE
-        || script.contains(&0xab)
-    {
+    // A 0xab byte INSIDE a pushed compressed public key is data, not an
+    // executed OP_CODESEPARATOR. Stage25H has already validated every
+    // opcode of the fixed 2-of-2 script template.
+    if script.len() != crate::channel_witness_audit::CANONICAL_COMPRESSED_2_OF_2_SCRIPT_SIZE {
         return Err(StructuralChannelError::InvalidWitnessScript);
     }
     let script_len = u8::try_from(script.len())
