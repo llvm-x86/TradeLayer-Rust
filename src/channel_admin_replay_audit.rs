@@ -170,33 +170,6 @@ impl UnverifiedProjectedAdminHistory {
     pub const fn type8_lookup_ambiguity_count(&self) -> usize {
         self.type8_lookup_ambiguity_count
     }
-    fn direct_view(&self) -> Result<ClaimedHistoricalDirectView<'_>, ProjectedAdminError> {
-        let events: Vec<_> = self
-            .direct_events
-            .iter()
-            .map(|event| ClaimedDirectAttestation {
-                network: TradeLayerMainnet::Bitcoin,
-                at: event.at,
-                txid_raw: event.txid_raw,
-                clearlist_id: event.list_id,
-                address: event.address.as_str(),
-                action: event.action,
-            })
-            .collect();
-        // All extracted source-matching event fields are still synthetic
-        // first-input sender claims. The borrowed view is used below within
-        // one call and cannot escape or become an authorization capability.
-        let view = ClaimedHistoricalDirectView::audit(
-            TradeLayerMainnet::Bitcoin,
-            self.target_position,
-            &events,
-        )?;
-        // This local method cannot return a view borrowing the ephemeral Vec.
-        // Direct query methods construct and consume it in the same scope.
-        let _ = view;
-        Err(ProjectedAdminError::HistoricalSourceAuthorityUnavailable)
-    }
-
     pub fn type4_projected_direct_subset(
         &self,
         claim: Type4CommitListClaim<'_>,
