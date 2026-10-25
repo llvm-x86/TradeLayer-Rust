@@ -38,6 +38,7 @@ pub mod legacy_channel_audit; // Pinned channels.js direct A/B commit projection
 pub mod legacy_clearlist_audit; // Pinned clearlist.js read-only NeDB/root source behavior; authorization denied.
 pub mod legacy_txdecoder_audit; // Pinned txDecoder.js typed body observations, never consensus.
 pub mod legacy_txencoder_audit; // Source-exact txEncoder.js strings, never spend-ready consensus.
+pub mod legacy_txindex_audit; // Pinned JavaScript TxIndex source quirks; no historical index authority.
 pub mod legacy_types_audit; // Exact pinned types.js 36-route source dispatch; never trusted admission.
 pub mod legacy_validity_audit; // Pinned validity.js source Type0/7/8/9 predicates, never admission authority.
 pub mod liquidation_audit; // Stage 25E1 read-only maintenance, bankruptcy and insurance-deficit preflight.
@@ -52,6 +53,7 @@ pub mod root_reconciliation; // Read-only TLPT and zkTL metadata consistency.
 pub mod spot; // Stage 19 isolated type-5/6 rational matching experiment; unverified.
 pub mod spot_chain; // Stage 20 typed unverified spot block replay and complete TLSP/TLSC checkpoints.
 pub mod state_commitment; // Experimental domain-separated state and transition metadata; no proof verifier.
+pub mod txindex_parallel; // Bounded std-thread TXID/carrier scanning; source ordering preserved, no execution.
 pub mod unified_chain; // Offline reversible registry+ledger block projection; adapter external.
 pub mod wire; // Read-only legacy ASCII format analysis; never auto-fallback.
 pub mod wire_v1;
