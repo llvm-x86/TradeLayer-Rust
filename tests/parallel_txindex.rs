@@ -280,7 +280,7 @@ fn configuration_and_raw_byte_limits_fail_before_any_ledger_effect() {
         inspect_unverified_block_parallel(&oversized, config(4, 2)),
         Err(ParallelIndexError::OversizedRawTransaction { index: 0 })
     );
-    let large: Vec<_> = (0..34).map(|i| synthetic_tx(i, false, 970_000)).collect();
+    let large: Vec<_> = (0..35).map(|i| synthetic_tx(i, false, 970_000)).collect();
     assert!(large.iter().map(Vec::len).sum::<usize>() > MAX_BLOCK_INPUT_BYTES);
     assert_eq!(
         inspect_unverified_block_parallel(&large, config(4, 128)),
