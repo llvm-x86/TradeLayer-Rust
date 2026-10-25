@@ -130,22 +130,13 @@ pub enum LegacyActivationError {
     TrustedProtocolActivationUnavailable,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct UnverifiedActivationSlot {
     active: bool,
     activation_block: Option<u64>,
     code_hash: Option<String>,
 }
 
-impl Default for UnverifiedActivationSlot {
-    fn default() -> Self {
-        Self {
-            active: false,
-            activation_block: None,
-            code_hash: None,
-        }
-    }
-}
 impl UnverifiedActivationSlot {
     pub const fn active(&self) -> bool {
         self.active
