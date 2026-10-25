@@ -5,9 +5,9 @@
 
 #![forbid(unsafe_code)]
 
+pub mod bankruptcy_source_audit; // Stage25F pure source-level bankruptcy algebra, no market authority.
 pub mod bitcoin_chainwork; // Bitcoin mainnet nBits/MTP/chainwork from explicit checkpoints; not full consensus.
 pub mod bitcoin_forks; // Bounded greatest-work selection among observed header forks; no active-chain trust.
-pub mod bankruptcy_source_audit; // Stage25F pure source-level bankruptcy algebra, no market authority.
 pub mod bitcoin_inclusion; // Bitcoin SHA256d header and tx Merkle checks; no full consensus.
 pub mod chain; // Trust-boundary and reversible block progression, prototype only.
 pub mod clearing_cadence; // Stage 24C read-only JS clearing callback and funding schedule observations.
