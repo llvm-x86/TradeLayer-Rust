@@ -479,6 +479,13 @@ fn merkle_root_inplace_nodes(nodes: &mut [[u8; 32]]) -> Result<[u8; 32], RawBloc
 pub fn merkle_root_unverified_inplace(
     txids_raw: &[[u8; 32]],
 ) -> Result<[u8; 32], RawBlockIngestError> {
+    // Apply resource limits before allocating even the single working copy.
+    if txids_raw.is_empty() {
+        return Err(RawBlockIngestError::ZeroTransactions);
+    }
+    if txids_raw.len() > crate::parallel_txindex::MAX_BLOCK_TRANSACTIONS {
+        return Err(RawBlockIngestError::TooManyTransactions);
+    }
     merkle_root_inplace_nodes(&mut txids_raw.to_vec())
 }
 
