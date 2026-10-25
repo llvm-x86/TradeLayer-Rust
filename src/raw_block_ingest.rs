@@ -78,8 +78,9 @@ impl<'a> UnverifiedRawBlockView<'a> {
         if expected_header_hash_raw.is_some_and(|wanted| wanted != header_hash) {
             return Err(RawBlockIngestError::RequestedHeaderHashMismatch);
         }
-        let header_merkle_root_raw: [u8; 32] =
-            raw_block[36..68].try_into().expect("80-byte header checked");
+        let header_merkle_root_raw: [u8; 32] = raw_block[36..68]
+            .try_into()
+            .expect("80-byte header checked");
         let (count, size_of_count) = compact_size_prefix(&raw_block[80..])
             .map_err(RawBlockIngestError::MissingCompactSize)?;
         if count == 0 {
@@ -92,20 +93,22 @@ impl<'a> UnverifiedRawBlockView<'a> {
         let mut offset = 80 + size_of_count;
         let mut stripped_size = offset;
         for index in 0..count as usize {
-            let remaining = raw_block.get(offset..).ok_or(
-                RawBlockIngestError::TransactionBoundary {
-                    index,
-                    source: ScanError::Truncated,
-                },
-            )?;
+            let remaining =
+                raw_block
+                    .get(offset..)
+                    .ok_or(RawBlockIngestError::TransactionBoundary {
+                        index,
+                        source: ScanError::Truncated,
+                    })?;
             let (length, base_length) = transaction_prefix_lengths(remaining)
                 .map_err(|source| RawBlockIngestError::TransactionBoundary { index, source })?;
-            let end = offset.checked_add(length).ok_or(
-                RawBlockIngestError::TransactionBoundary {
-                    index,
-                    source: ScanError::TooLong,
-                },
-            )?;
+            let end =
+                offset
+                    .checked_add(length)
+                    .ok_or(RawBlockIngestError::TransactionBoundary {
+                        index,
+                        source: ScanError::TooLong,
+                    })?;
             offsets.push(offset..end);
             offset = end;
             stripped_size = stripped_size
@@ -165,7 +168,9 @@ impl<'a> UnverifiedRawBlockView<'a> {
         config: ParallelIndexConfig,
         parallel: bool,
     ) -> Result<UnverifiedRawBlockIndex, RawBlockIngestError> {
-        let slices: Vec<&[u8]> = self.transaction_ranges.iter()
+        let slices: Vec<&[u8]> = self
+            .transaction_ranges
+            .iter()
             .map(|range| &self.block_bytes[range.clone()])
             .collect();
         let report = if parallel {
@@ -174,8 +179,11 @@ impl<'a> UnverifiedRawBlockView<'a> {
             inspect_unverified_block_slices_serial(&slices)
         }
         .map_err(RawBlockIngestError::TransactionPreindex)?;
-        let txids = report.ordered().iter()
-            .map(|item| item.observation.txid).collect::<Vec<_>>();
+        let txids = report
+            .ordered()
+            .iter()
+            .map(|item| item.observation.txid)
+            .collect::<Vec<_>>();
         let root = merkle_root_unverified(&txids)?;
         if root != self.header_merkle_root_raw {
             return Err(RawBlockIngestError::HeaderMerkleRootMismatch);
@@ -209,9 +217,7 @@ impl<'a> UnverifiedRawBlockView<'a> {
 /// At an odd level, Bitcoin repeats the final node only for calculation.
 /// The helper is intentionally available to synthetic fixture generators;
 /// matching a merkle root is not verification of PoW, coinbase or UTXO.
-pub fn merkle_root_unverified(
-    txids_raw: &[[u8; 32]],
-) -> Result<[u8; 32], RawBlockIngestError> {
+pub fn merkle_root_unverified(txids_raw: &[[u8; 32]]) -> Result<[u8; 32], RawBlockIngestError> {
     if txids_raw.is_empty() {
         return Err(RawBlockIngestError::ZeroTransactions);
     }
@@ -282,8 +288,8 @@ pub fn fetch_and_inspect_unverified_block<F>(
 where
     F: FnOnce([u8; 32]) -> Result<Vec<u8>, String>,
 {
-    let raw = fetch_raw_block(expected_header_hash_raw)
-        .map_err(RawBlockIngestError::FetchFailed)?;
+    let raw =
+        fetch_raw_block(expected_header_hash_raw).map_err(RawBlockIngestError::FetchFailed)?;
     let view = UnverifiedRawBlockView::parse(&raw, Some(expected_header_hash_raw))?;
     view.inspect_parallel(config)
 }

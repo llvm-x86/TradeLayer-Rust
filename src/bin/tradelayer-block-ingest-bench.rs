@@ -4,9 +4,7 @@
 use std::env;
 use std::hint::black_box;
 use std::time::{Duration, Instant};
-use tradelayer_core::parallel_txindex::{
-    inspect_unverified_block_parallel, ParallelIndexConfig,
-};
+use tradelayer_core::parallel_txindex::{inspect_unverified_block_parallel, ParallelIndexConfig};
 use tradelayer_core::raw_block_ingest::{
     fetch_and_inspect_unverified_block, merkle_root_unverified, UnverifiedRawBlockView,
 };
@@ -45,8 +43,10 @@ fn make_block(count: usize, witness_percent: usize) -> Vec<u8> {
         tx[prevout..prevout + 8].copy_from_slice(&(i as u64).to_le_bytes());
         transactions.push(tx);
     }
-    let txids = transactions.iter()
-        .map(|raw| inspect_transaction(raw).unwrap().txid).collect::<Vec<_>>();
+    let txids = transactions
+        .iter()
+        .map(|raw| inspect_transaction(raw).unwrap().txid)
+        .collect::<Vec<_>>();
     let mut block = raw[..80].to_vec();
     block[36..68].copy_from_slice(&merkle_root_unverified(&txids).unwrap());
     compact(&mut block, count);
@@ -65,7 +65,9 @@ fn main() {
         panic!("usage: tradelayer-block-ingest-bench [tx_count:1..10000] [workers:1..16] [witness_percent:0..100] [repeats:1..5]");
     }
     let parse = |i: usize, default: usize| -> usize {
-        args.get(i).map_or(default, |text| text.parse().expect("valid integer argument"))
+        args.get(i).map_or(default, |text| {
+            text.parse().expect("valid integer argument")
+        })
     };
     let count = parse(1, 4000);
     let workers = parse(2, 4);
@@ -75,11 +77,17 @@ fn main() {
     assert!((1..=16).contains(&workers));
     assert!(witness_percent <= 100);
     assert!((1..=5).contains(&repeats));
-    let config = ParallelIndexConfig { workers, window_transactions: 512 };
+    let config = ParallelIndexConfig {
+        workers,
+        window_transactions: 512,
+    };
     let raw = make_block(count, witness_percent);
     let view = UnverifiedRawBlockView::parse(&raw, None).expect("bounded raw block");
-    let old_vec = view.transaction_ranges().iter()
-        .map(|span| raw[span.clone()].to_vec()).collect::<Vec<_>>();
+    let old_vec = view
+        .transaction_ranges()
+        .iter()
+        .map(|span| raw[span.clone()].to_vec())
+        .collect::<Vec<_>>();
     let old = inspect_unverified_block_parallel(&old_vec, config).unwrap();
     let new = view.inspect_parallel(config).unwrap();
     assert_eq!(old, *new.ordered_preindex());
@@ -87,15 +95,18 @@ fn main() {
     let mut bulk_times = Vec::new();
     for _ in 0..repeats {
         let start = Instant::now();
-        let owned: Vec<_> = view.transaction_ranges().iter()
-            .map(|r| raw[r.clone()].to_vec()).collect();
+        let owned: Vec<_> = view
+            .transaction_ranges()
+            .iter()
+            .map(|r| raw[r.clone()].to_vec())
+            .collect();
         let serial_by_slot = inspect_unverified_block_parallel(&owned, config).unwrap();
         owned_times.push(start.elapsed());
         black_box(&serial_by_slot);
         let start = Instant::now();
-        let observed = fetch_and_inspect_unverified_block(
-            view.header_hash_raw(), config, |_| Ok(raw.clone())
-        ).unwrap();
+        let observed =
+            fetch_and_inspect_unverified_block(view.header_hash_raw(), config, |_| Ok(raw.clone()))
+                .unwrap();
         bulk_times.push(start.elapsed());
         assert_eq!(*observed.ordered_preindex(), serial_by_slot);
         black_box(observed);
@@ -116,7 +127,10 @@ fn main() {
     println!("owned_vector_parallel_median_ms={baseline_ms:.3}");
     println!("bulk_borrowed_parallel_median_ms={bulk_ms:.3}");
     println!("measured_ratio={:.3}", baseline_ms / bulk_ms.max(1e-9));
-    println!("bulk_preindex_txs_per_sec={:.0}", count as f64 / bulk_seconds);
+    println!(
+        "bulk_preindex_txs_per_sec={:.0}",
+        count as f64 / bulk_seconds
+    );
     println!("ordered_equivalence=PASS");
     println!("txid_merkle=LOCAL_CHECK_ONLY");
     println!("full_block_consensus=UNVERIFIED");

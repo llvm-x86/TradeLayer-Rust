@@ -2,8 +2,8 @@
 //! deterministic bounded parallel preindex. No accepted Bitcoin consensus.
 use std::sync::atomic::{AtomicUsize, Ordering};
 use tradelayer_core::parallel_txindex::{
-    inspect_unverified_block_parallel, inspect_unverified_block_slices_serial,
-    ParallelIndexConfig, ParallelIndexError,
+    inspect_unverified_block_parallel, inspect_unverified_block_slices_serial, ParallelIndexConfig,
+    ParallelIndexError,
 };
 use tradelayer_core::raw_block_ingest::{
     fetch_and_inspect_unverified_block, merkle_root_unverified, RawBlockIngestError,
@@ -74,8 +74,7 @@ fn synthetic_block(count: usize) -> Vec<u8> {
 #[test]
 fn independent_four_transaction_hashes_merkle_weight_and_borrowed_pointers() {
     let raw = fixture();
-    let expected_hash =
-        raw_id("09667b766e1bccf918412b65f62966d7a2803613592fed34ba9d27ac608eb0c0");
+    let expected_hash = raw_id("09667b766e1bccf918412b65f62966d7a2803613592fed34ba9d27ac608eb0c0");
     let expected_merkle =
         raw_id("760e6d8636fd5304a65989b461a27a88f48545bc1cc6e2b4c2016a638d2e8a9c");
     let view = UnverifiedRawBlockView::parse(&raw, Some(expected_hash)).unwrap();
@@ -104,20 +103,34 @@ fn independent_four_transaction_hashes_merkle_weight_and_borrowed_pointers() {
     assert_eq!(serial.txid_merkle_root_raw(), expected_merkle);
     assert_eq!(serial.ordered_preindex().transaction_count(), 4);
     assert_eq!(serial.ordered_preindex().candidate_positions(), &[1, 2]);
-    assert_eq!(serial.ordered_preindex().ordered()[0].observation.txid,
-        raw_id("8647c745029df431acac0ff4f8a91ff00d6194ef87a705946f784af9f213bffa"));
-    assert_eq!(serial.ordered_preindex().ordered()[2].observation.txid,
-        raw_id("f878d360c2a1b812ef5aa5b2706f0f56aa34dba00b4f40fe07000571f00208b1"));
-    assert_eq!(serial.ordered_preindex().ordered()[2].observation.wtxid,
-        raw_id("087f19b8125e0a640993f6add2ee73bf2f2189edb5e2f6f4d9a64e36b4f553df"));
-    assert_eq!(view.require_full_bitcoin_consensus(),
-        Err(RawBlockTrustError::ActiveChainAndFullConsensusUnverified));
-    assert_eq!(serial.require_authenticated_block(),
-        Err(RawBlockTrustError::ActiveChainAndFullConsensusUnverified));
-    assert_eq!(serial.require_script_and_utxo_consensus(),
-        Err(RawBlockTrustError::ScriptAndUtxoStateUnverified));
-    assert_eq!(serial.require_tradelayer_state_transition(),
-        Err(RawBlockTrustError::TradeLayerStateAndSignedRevisionUnverified));
+    assert_eq!(
+        serial.ordered_preindex().ordered()[0].observation.txid,
+        raw_id("8647c745029df431acac0ff4f8a91ff00d6194ef87a705946f784af9f213bffa")
+    );
+    assert_eq!(
+        serial.ordered_preindex().ordered()[2].observation.txid,
+        raw_id("f878d360c2a1b812ef5aa5b2706f0f56aa34dba00b4f40fe07000571f00208b1")
+    );
+    assert_eq!(
+        serial.ordered_preindex().ordered()[2].observation.wtxid,
+        raw_id("087f19b8125e0a640993f6add2ee73bf2f2189edb5e2f6f4d9a64e36b4f553df")
+    );
+    assert_eq!(
+        view.require_full_bitcoin_consensus(),
+        Err(RawBlockTrustError::ActiveChainAndFullConsensusUnverified)
+    );
+    assert_eq!(
+        serial.require_authenticated_block(),
+        Err(RawBlockTrustError::ActiveChainAndFullConsensusUnverified)
+    );
+    assert_eq!(
+        serial.require_script_and_utxo_consensus(),
+        Err(RawBlockTrustError::ScriptAndUtxoStateUnverified)
+    );
+    assert_eq!(
+        serial.require_tradelayer_state_transition(),
+        Err(RawBlockTrustError::TradeLayerStateAndSignedRevisionUnverified)
+    );
 }
 
 #[test]
@@ -129,20 +142,28 @@ fn one_mock_bulk_rpc_request_is_enough_for_entire_four_transaction_preindex() {
         assert_eq!(hash, expected);
         calls.fetch_add(1, Ordering::SeqCst);
         Ok(raw.clone())
-    }).unwrap();
+    })
+    .unwrap();
     assert_eq!(calls.load(Ordering::SeqCst), 1);
     assert_eq!(output.ordered_preindex().transaction_count(), 4);
-    assert_eq!(output.require_authenticated_block(),
-        Err(RawBlockTrustError::ActiveChainAndFullConsensusUnverified));
+    assert_eq!(
+        output.require_authenticated_block(),
+        Err(RawBlockTrustError::ActiveChainAndFullConsensusUnverified)
+    );
     let wrong = fetch_and_inspect_unverified_block([3; 32], cfg(2, 64), |_| {
         calls.fetch_add(1, Ordering::SeqCst);
         Ok(raw.clone())
     });
     assert_eq!(wrong, Err(RawBlockIngestError::RequestedHeaderHashMismatch));
     assert_eq!(calls.load(Ordering::SeqCst), 2);
-    assert_eq!(fetch_and_inspect_unverified_block(expected, cfg(2, 64),
-        |_| Err("offline fake RPC refused".into())),
-        Err(RawBlockIngestError::FetchFailed("offline fake RPC refused".into())));
+    assert_eq!(
+        fetch_and_inspect_unverified_block(expected, cfg(2, 64), |_| Err(
+            "offline fake RPC refused".into()
+        )),
+        Err(RawBlockIngestError::FetchFailed(
+            "offline fake RPC refused".into()
+        ))
+    );
 }
 
 #[test]
@@ -152,40 +173,57 @@ fn canonical_count_boundary_errors_are_explicit_and_transaction_indexed() {
         UnverifiedRawBlockView::parse(&raw[..40], None),
         Err(RawBlockIngestError::TruncatedBlockHeader)
     ));
-    assert_eq!(UnverifiedRawBlockView::parse(&raw[..80], None).err(),
-        Some(RawBlockIngestError::MissingCompactSize(ScanError::Truncated)));
+    assert_eq!(
+        UnverifiedRawBlockView::parse(&raw[..80], None).err(),
+        Some(RawBlockIngestError::MissingCompactSize(
+            ScanError::Truncated
+        ))
+    );
     let mut zero = raw.clone();
     zero[80] = 0;
-    assert_eq!(UnverifiedRawBlockView::parse(&zero, None).err(),
-        Some(RawBlockIngestError::ZeroTransactions));
+    assert_eq!(
+        UnverifiedRawBlockView::parse(&zero, None).err(),
+        Some(RawBlockIngestError::ZeroTransactions)
+    );
     let mut excessive = raw.clone();
     excessive.splice(80..81, [0xfe, 0x41, 0x0d, 0x03, 0x00]); // 200001
-    assert_eq!(UnverifiedRawBlockView::parse(&excessive, None).err(),
-        Some(RawBlockIngestError::TooManyTransactions));
+    assert_eq!(
+        UnverifiedRawBlockView::parse(&excessive, None).err(),
+        Some(RawBlockIngestError::TooManyTransactions)
+    );
     let mut noncanonical = raw.clone();
     noncanonical.splice(80..81, [0xfd, 0x04, 0x00]);
-    assert_eq!(UnverifiedRawBlockView::parse(&noncanonical, None).err(),
+    assert_eq!(
+        UnverifiedRawBlockView::parse(&noncanonical, None).err(),
         Some(RawBlockIngestError::MissingCompactSize(
-            ScanError::NonCanonicalCompactSize)));
+            ScanError::NonCanonicalCompactSize
+        ))
+    );
     let mut short_count = raw.clone();
     short_count[80] = 3;
-    assert_eq!(UnverifiedRawBlockView::parse(&short_count, None).err(),
-        Some(RawBlockIngestError::TrailingRawBlockData));
+    assert_eq!(
+        UnverifiedRawBlockView::parse(&short_count, None).err(),
+        Some(RawBlockIngestError::TrailingRawBlockData)
+    );
     let mut long_count = raw.clone();
     long_count[80] = 5;
-    assert_eq!(UnverifiedRawBlockView::parse(&long_count, None).err(),
+    assert_eq!(
+        UnverifiedRawBlockView::parse(&long_count, None).err(),
         Some(RawBlockIngestError::TransactionBoundary {
             index: 4,
             source: ScanError::Truncated,
-        }));
+        })
+    );
     let spans = UnverifiedRawBlockView::parse(&raw, None).unwrap();
     let mut truncated = raw[..spans.transaction_ranges()[2].start + 15].to_vec();
     truncated[80] = 3;
-    assert_eq!(UnverifiedRawBlockView::parse(&truncated, None).err(),
+    assert_eq!(
+        UnverifiedRawBlockView::parse(&truncated, None).err(),
         Some(RawBlockIngestError::TransactionBoundary {
             index: 2,
             source: ScanError::Truncated,
-        }));
+        })
+    );
     let mut wrong_segwit = raw.clone();
     wrong_segwit[spans.transaction_ranges()[2].start + 5] = 0x02;
     assert!(matches!(
@@ -195,15 +233,19 @@ fn canonical_count_boundary_errors_are_explicit_and_transaction_indexed() {
     let mut bad_scriptsig = raw.clone();
     let input_count_position = spans.transaction_ranges()[1].start + 4;
     bad_scriptsig.splice(input_count_position..input_count_position + 1, [0xfd, 1, 0]);
-    assert_eq!(UnverifiedRawBlockView::parse(&bad_scriptsig, None).err(),
+    assert_eq!(
+        UnverifiedRawBlockView::parse(&bad_scriptsig, None).err(),
         Some(RawBlockIngestError::TransactionBoundary {
             index: 1,
             source: ScanError::NonCanonicalCompactSize,
-        }));
+        })
+    );
     let mut too_large = raw;
     too_large.resize(MAX_UNVERIFIED_RAW_BLOCK_BYTES + 1, 0);
-    assert_eq!(UnverifiedRawBlockView::parse(&too_large, None).err(),
-        Some(RawBlockIngestError::OversizedRawBlock));
+    assert_eq!(
+        UnverifiedRawBlockView::parse(&too_large, None).err(),
+        Some(RawBlockIngestError::OversizedRawBlock)
+    );
 }
 
 #[test]
@@ -212,11 +254,15 @@ fn header_hash_merkle_mutation_and_duplicate_txids_fail_closed() {
     let expected = raw_id("09667b766e1bccf918412b65f62966d7a2803613592fed34ba9d27ac608eb0c0");
     let mut corrupt = raw.clone();
     corrupt[36] ^= 1; // Merkle root in header no longer matches actual TXIDs
-    assert_eq!(UnverifiedRawBlockView::parse(&corrupt, Some(expected)).err(),
-        Some(RawBlockIngestError::RequestedHeaderHashMismatch));
+    assert_eq!(
+        UnverifiedRawBlockView::parse(&corrupt, Some(expected)).err(),
+        Some(RawBlockIngestError::RequestedHeaderHashMismatch)
+    );
     let view = UnverifiedRawBlockView::parse(&corrupt, None).unwrap();
-    assert_eq!(view.inspect_parallel(cfg(4, 4)),
-        Err(RawBlockIngestError::HeaderMerkleRootMismatch));
+    assert_eq!(
+        view.inspect_parallel(cfg(4, 4)),
+        Err(RawBlockIngestError::HeaderMerkleRootMismatch)
+    );
     let original = UnverifiedRawBlockView::parse(&raw, None).unwrap();
     let tx0 = original.raw_transaction(0).unwrap().to_vec();
     let tx1 = original.raw_transaction(1).unwrap().to_vec();
@@ -230,13 +276,19 @@ fn header_hash_merkle_mutation_and_duplicate_txids_fail_closed() {
     };
     assert_eq!(
         UnverifiedRawBlockView::parse(&duplicate, None)
-            .unwrap().inspect_parallel(cfg(4, 64)),
+            .unwrap()
+            .inspect_parallel(cfg(4, 64)),
         Err(RawBlockIngestError::TransactionPreindex(
-            ParallelIndexError::DuplicateTxid { first: 1, second: 2 }
+            ParallelIndexError::DuplicateTxid {
+                first: 1,
+                second: 2
+            }
         ))
     );
-    assert_eq!(merkle_root_unverified(&[[1; 32], [1; 32]]),
-        Err(RawBlockIngestError::InvalidTxidMerkleTree));
+    assert_eq!(
+        merkle_root_unverified(&[[1; 32], [1; 32]]),
+        Err(RawBlockIngestError::InvalidTxidMerkleTree)
+    );
 }
 
 fn oversized_weight_transaction(index: u32) -> Vec<u8> {
@@ -266,8 +318,10 @@ fn block_weight_caps_base_bytes_not_only_serialized_bytes() {
         block.extend_from_slice(&oversized_weight_transaction(i));
     }
     assert!(block.len() < MAX_UNVERIFIED_RAW_BLOCK_BYTES);
-    assert_eq!(UnverifiedRawBlockView::parse(&block, None).err(),
-        Some(RawBlockIngestError::BlockWeightExceeded));
+    assert_eq!(
+        UnverifiedRawBlockView::parse(&block, None).err(),
+        Some(RawBlockIngestError::BlockWeightExceeded)
+    );
 }
 
 #[test]
@@ -276,7 +330,10 @@ fn ten_thousand_mixed_transactions_exactly_match_old_owned_vec_parallel_path() {
     let view = UnverifiedRawBlockView::parse(&raw, None).unwrap();
     assert_eq!(view.transaction_count(), 10_000);
     assert!(view.block_weight() <= 4_000_000);
-    let borrowed = view.transaction_ranges().iter().map(|r| &raw[r.clone()])
+    let borrowed = view
+        .transaction_ranges()
+        .iter()
+        .map(|r| &raw[r.clone()])
         .collect::<Vec<_>>();
     let owned = borrowed.iter().map(|t| t.to_vec()).collect::<Vec<_>>();
     let old = inspect_unverified_block_parallel(&owned, cfg(4, 256)).unwrap();
@@ -286,8 +343,13 @@ fn ten_thousand_mixed_transactions_exactly_match_old_owned_vec_parallel_path() {
     for (workers, window) in [(1, 1), (2, 64), (4, 256), (8, 512), (16, 512)] {
         let new_result = view.inspect_parallel(cfg(workers, window)).unwrap();
         assert_eq!(*new_result.ordered_preindex(), old);
-        assert_eq!(new_result.txid_merkle_root_raw(), view.header_merkle_root_raw());
-        assert_eq!(new_result.require_tradelayer_state_transition(),
-            Err(RawBlockTrustError::TradeLayerStateAndSignedRevisionUnverified));
+        assert_eq!(
+            new_result.txid_merkle_root_raw(),
+            view.header_merkle_root_raw()
+        );
+        assert_eq!(
+            new_result.require_tradelayer_state_transition(),
+            Err(RawBlockTrustError::TradeLayerStateAndSignedRevisionUnverified)
+        );
     }
 }

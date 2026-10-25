@@ -161,7 +161,9 @@ pub(crate) fn transaction_prefix_lengths(raw: &[u8]) -> Result<(usize, usize), S
             }
         }
         if !nonempty {
-            return Err(ScanError::Invalid("superfluous SegWit witness marker".into()));
+            return Err(ScanError::Invalid(
+                "superfluous SegWit witness marker".into(),
+            ));
         }
     }
     reader.read(4)?; // locktime
