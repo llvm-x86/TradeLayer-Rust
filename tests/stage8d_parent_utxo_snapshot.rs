@@ -410,6 +410,53 @@ fn valid_snapshot_still_denies_wave_probe_failure() {
     );
 }
 
+
+#[test]
+fn pinned_independent_python_candidate_fingerprint_vector() {
+    // Separately encoded in scripts/audit_stage8d4_candidate_fingerprint.py.
+    // This tests ordering/endianness, never authenticated Bitcoin UTXOs.
+    let mut snapshot = CandidateParentSnapshot {
+        parent_block_hash_raw: decode_hex(&"0123456789abcdef".repeat(4))
+            .unwrap()
+            .try_into()
+            .unwrap(),
+        parent_height: 903_000,
+        entries: vec![
+            CandidateParentUtxo {
+                outpoint: CandidateOutpoint {
+                    txid_raw: [0x11; 32],
+                    vout: 2,
+                },
+                amount_sat: 12_345_678,
+                script_pubkey: decode_hex(&format!("0014{}", "aa".repeat(20))).unwrap(),
+                created_height: 902_500,
+                is_coinbase: false,
+            },
+            CandidateParentUtxo {
+                outpoint: CandidateOutpoint {
+                    txid_raw: [0x22; 32],
+                    vout: 0,
+                },
+                amount_sat: 5_000_000_000,
+                script_pubkey: vec![0x51],
+                created_height: 902_000,
+                is_coinbase: true,
+            },
+        ],
+        expected_fingerprint: [0u8; 32],
+    };
+    let expected: [u8; 32] = decode_hex(
+        "6b8b85dde893bbc5adf6c3e50e3cae6d11984038d25bc3d329e6dc76ea4fe198"
+    )
+    .unwrap()
+    .try_into()
+    .unwrap();
+    assert_eq!(candidate_snapshot_fingerprint(&snapshot).unwrap(), expected);
+    snapshot.expected_fingerprint = expected;
+    snapshot.entries[0].amount_sat += 1;
+    assert_ne!(candidate_snapshot_fingerprint(&snapshot).unwrap(), expected);
+}
+
 #[test]
 fn exact_same_header_cannot_reuse_preindex_for_changed_witness_bytes() {
     let raw = fixture();
