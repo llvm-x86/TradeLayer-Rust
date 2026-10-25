@@ -1,0 +1,38 @@
+# Pinned tradelayer.js@dca0888b src/activation.js initializeTxRegistry labels
+# Names are source metadata, not consensus dispatch IDs. Indexed from zero.
+0	Activate TradeLayer
+1	Token Issue
+2	Send
+3	Trade Token for UTXO
+4	Commit Token
+5	On-chain Token for Token
+6	cancelOrder
+7	Create Whitelist
+8	Update Admin
+9	Issue or Revoke Attestation
+10	AMM
+11	Grant Managed Token
+12	Redeem Managed Token
+13	Create Oracle
+14	Publish Oracle Data
+15	Close Oracle
+16	Create Future Contract Series
+17	Exercise Derivative
+18	Trade Contract On-chain
+19	Trade Contract Channel
+20	Trade Tokens Channel
+21	Withdrawal
+22	Transfer
+23	Settle Channel PNL
+24	Mint Synthetic
+25	Redeem Synthetic
+26	Pay to Tokens
+27	Create Option Chain
+28	Trade Bai Urbun
+29	Trade Murabaha
+30	Oracle Stake/Fraud/Relay
+31	Batch Move Zk Rollup
+32	Publish New Tx
+33	Colored Coin
+34	Cross Layer Bridge
+35	Smart Contract Bind
