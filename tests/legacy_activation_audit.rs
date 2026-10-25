@@ -109,7 +109,7 @@ fn initially_all_36_types_inactive_even_if_type_known() {
         assert_eq!(registry.source_get_activation_block(ty), None);
         assert_eq!(registry.source_check_activation_block(ty), None);
         assert_eq!(registry.source_code_hash(ty), None);
-        assert_eq!(registry.slot(ty).unwrap().active(), false);
+        assert!(!registry.slot(ty).unwrap().active());
     }
     assert_eq!(registry.slot(36), None);
     assert_eq!(registry.source_check_activation_block(36), None);
