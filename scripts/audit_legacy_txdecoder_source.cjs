@@ -138,7 +138,7 @@ for(const row of lines){
  accepted++;
 }
 assert.equal(accepted,14);
-assert.equal(malformed,3);
+assert.equal(malformed,4);
 
 // Exactly two declarations of the same object property; JS uses the LAST.
 // base256 mock throws if the original first method were invoked.
