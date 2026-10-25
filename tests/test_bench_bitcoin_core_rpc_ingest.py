@@ -230,7 +230,7 @@ class CoreRpcBenchmarkTests(unittest.TestCase):
     def test_merkle_mutation_and_source_input_bounds(self):
         with self.assertRaisesRegex(bench.IngestBenchmarkError, "equal real siblings"):
             bench.merkle_root([KNOWN_TXIDS[0], KNOWN_TXIDS[0]])
-        with self.assertRaisesRegex(bench.IngestBenchmarkError, "Merkle leaf"):
+        with self.assertRaisesRegex(bench.IngestBenchmarkError, "Merkle txid"):
             bench.merkle_root(["not a txid"])
         with self.assertRaisesRegex(bench.IngestBenchmarkError, "truncated"):
             bench.read_tx(bench.Reader(bytes.fromhex("01000000")))
