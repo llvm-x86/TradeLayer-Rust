@@ -1,8 +1,11 @@
 //! Performance-critical per-block transaction pre-scan, without consensus.
-use tradelayer_core::chain::MAX_TRANSACTIONS_PER_BLOCK;
+use tradelayer_core::chain::{
+    BlockHeader, BlockId, CandidateBlock, ChainId, MAX_TRANSACTIONS_PER_BLOCK,
+};
 use tradelayer_core::read_only::{id_hex, ScanError, MAX_RAW_TRANSACTION};
 use tradelayer_core::txindex_parallel::{
-    scan_transactions_auto_unverified, scan_transactions_parallel_unverified,
+    scan_candidate_block_parallel_unverified, scan_transactions_auto_unverified,
+    scan_transactions_parallel_unverified,
     ParallelIndexError, ParallelScanConfig, AUTO_PARALLEL_THRESHOLD,
     MAX_PARALLEL_BLOCK_BYTES, MAX_PARALLEL_CHUNK, MAX_PARALLEL_WORKERS,
 };
@@ -205,4 +208,23 @@ fn ordered_causal_projection_is_not_commutative_even_after_parallel_hashing() {
     assert!(reversed_balance<0);
     // No public method here converts a thread-completion order into a
     // trusted chain adapter or authorizes settlement.
+}
+
+#[test]
+fn existing_candidate_block_shape_can_be_prescanned_without_trusting_header() {
+    let txs=synthetic_block(256);
+    let candidate=CandidateBlock {
+        chain:ChainId([0x11;32]),
+        header:BlockHeader {
+            height:101,id:BlockId([0xa1;32]),parent:BlockId([0xa0;32]),
+        },
+        raw_transactions:txs.clone(),
+    };
+    let output=scan_candidate_block_parallel_unverified(&candidate,cfg(4,16)).unwrap();
+    let direct=scan_transactions_parallel_unverified(&txs,cfg(1,16)).unwrap();
+    assert_eq!(output.ordered(),direct.ordered());
+    assert_eq!(output.statistics().workers_used,4);
+    assert_eq!(output.require_authenticated_chain_and_utxo(),
+        Err(ParallelIndexError::HistoricalBlockAndUtxoUnverified));
+    // The claimed chain header and fake parent are NOT accepted consensus.
 }
