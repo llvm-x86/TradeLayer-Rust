@@ -317,7 +317,7 @@ pub enum ClaimedReference<'a> {
     },
     UnsupportedPrimitive,
 }
-pub fn source_resolve_reference_address(reference: ClaimedReference<'_>) -> &str {
+pub fn source_resolve_reference_address<'a>(reference: ClaimedReference<'a>) -> &'a str {
     match reference {
         ClaimedReference::String(s) => s,
         ClaimedReference::Array(rows) => rows.iter().flatten().copied().find(|s| !s.is_empty()).unwrap_or(""),
