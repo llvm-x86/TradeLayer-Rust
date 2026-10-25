@@ -326,7 +326,10 @@ fn ten_thousand_transaction_microbatch_scan_preserves_canonical_positions() {
     assert!(positions.windows(2).all(|pair| pair[0] < pair[1]));
     for (workers, window) in [(2, 32), (4, 64), (8, 256), (16, 512)] {
         let parallel = inspect_unverified_block_parallel(&rows, config(workers, window)).unwrap();
-        assert_eq!(parallel, serial, "{workers} workers and {window} index window");
+        assert_eq!(
+            parallel, serial,
+            "{workers} workers and {window} index window"
+        );
         assert_eq!(parallel.candidate_positions(), positions.as_slice());
         assert_eq!(
             parallel.require_authenticated_transaction_state(),
