@@ -123,7 +123,9 @@ fn main() {
     let one_team = view.inspect_parallel_one_team(config).unwrap();
     assert_eq!(one_team, new);
     let hash_seen = view.inspect_parallel_one_team_hash_seen(config).unwrap();
-    let inplace_merkle = view.inspect_parallel_one_team_inplace_merkle(config).unwrap();
+    let inplace_merkle = view
+        .inspect_parallel_one_team_inplace_merkle(config)
+        .unwrap();
     let fast_reduce = view.inspect_parallel_one_team_fast_reduce(config).unwrap();
     assert_eq!(hash_seen, one_team);
     assert_eq!(inplace_merkle, one_team);
@@ -203,7 +205,9 @@ fn main() {
         assert_eq!(*hash_only.ordered_preindex(), serial_by_slot);
         black_box(hash_only);
         let start = Instant::now();
-        let merkle_only = view.inspect_parallel_one_team_inplace_merkle(config).unwrap();
+        let merkle_only = view
+            .inspect_parallel_one_team_inplace_merkle(config)
+            .unwrap();
         inplace_merkle_times.push(start.elapsed());
         assert_eq!(*merkle_only.ordered_preindex(), serial_by_slot);
         black_box(merkle_only);
