@@ -16,8 +16,8 @@
 
 use crate::hash256::double_sha256;
 use crate::parallel_txindex::{
-    inspect_prepared_block_parallel, ParallelIndexConfig, ParallelIndexError,
-    PreparedRawTransaction, UnverifiedOrderedBlockIndex,
+    inspect_prepared_block_one_team, inspect_prepared_block_parallel, ParallelIndexConfig,
+    ParallelIndexError, PreparedRawTransaction, UnverifiedOrderedBlockIndex,
 };
 use crate::read_only::{
     compact_size_prefix, prepare_transaction_prefix, source_prevouts_from_layout, RawOutpoint,
@@ -177,6 +177,7 @@ impl<'a> UnverifiedRawBlockView<'a> {
         &self,
         config: ParallelIndexConfig,
         parallel: bool,
+        one_team: bool,
     ) -> Result<UnverifiedRawBlockIndex, RawBlockIngestError> {
         let prepared = self
             .transaction_ranges
@@ -187,14 +188,18 @@ impl<'a> UnverifiedRawBlockView<'a> {
                 layout,
             })
             .collect::<Vec<_>>();
-        let report = inspect_prepared_block_parallel(
-            &prepared,
-            if parallel {
-                config
-            } else {
-                ParallelIndexConfig::serial()
-            },
-        )
+        let report = if one_team {
+            inspect_prepared_block_one_team(&prepared, config)
+        } else {
+            inspect_prepared_block_parallel(
+                &prepared,
+                if parallel {
+                    config
+                } else {
+                    ParallelIndexConfig::serial()
+                },
+            )
+        }
         .map_err(RawBlockIngestError::TransactionPreindex)?;
         let txids = report
             .ordered()
@@ -218,10 +223,22 @@ impl<'a> UnverifiedRawBlockView<'a> {
         &self,
         config: ParallelIndexConfig,
     ) -> Result<UnverifiedRawBlockIndex, RawBlockIngestError> {
-        self.index(config, true)
+        self.index(config, true, false)
     }
+    /// Experimental CPU-only scanner that spawns ONE scoped worker team
+    /// per block instead of recreating workers for every bounded window.
+    /// Scratch memory is one result slot per transaction (bounded by the
+    /// existing 200k-TX and 32MiB input limits), not 512 slots. No stateful
+    /// consensus or economic transition is granted by this method.
+    pub fn inspect_parallel_one_team(
+        &self,
+        config: ParallelIndexConfig,
+    ) -> Result<UnverifiedRawBlockIndex, RawBlockIngestError> {
+        self.index(config, true, true)
+    }
+
     pub fn inspect_serial(&self) -> Result<UnverifiedRawBlockIndex, RawBlockIngestError> {
-        self.index(ParallelIndexConfig::serial(), false)
+        self.index(ParallelIndexConfig::serial(), false, false)
     }
 
     pub const fn require_full_bitcoin_consensus(&self) -> Result<(), RawBlockTrustError> {
