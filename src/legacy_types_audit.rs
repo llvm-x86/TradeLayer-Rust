@@ -40,43 +40,330 @@ pub struct LegacyTypeRoute {
 /// Actual method identifiers used by pinned types.js, and their *presence*
 /// in pinned txEncoder/txDecoder. Metadata is NEVER a protocol activation.
 pub const LEGACY_TYPE_ROUTES: [LegacyTypeRoute; LEGACY_SOURCE_TYPE_COUNT] = [
-    LegacyTypeRoute { type_id: 0, encoder: "encodeActivateTradeLayer", encoder_exported: true, decoder: "decodeActivateTradeLayer", decoder_exported: true, validator: Some("validateActivateTradeLayer"), validator_invoked_by_source: true },
-    LegacyTypeRoute { type_id: 1, encoder: "encodeTokenIssue", encoder_exported: true, decoder: "decodeTokenIssue", decoder_exported: true, validator: Some("validateTokenIssue"), validator_invoked_by_source: true },
-    LegacyTypeRoute { type_id: 2, encoder: "encodeSend", encoder_exported: true, decoder: "decodeSend", decoder_exported: true, validator: Some("validateSend"), validator_invoked_by_source: true },
-    LegacyTypeRoute { type_id: 3, encoder: "encodeTradeTokenForUTXO", encoder_exported: true, decoder: "decodeTradeTokenForUTXO", decoder_exported: true, validator: Some("validateTradeTokenForUTXO"), validator_invoked_by_source: true },
-    LegacyTypeRoute { type_id: 4, encoder: "encodeCommitToken", encoder_exported: false, decoder: "decodeCommitToken", decoder_exported: true, validator: Some("validateCommit"), validator_invoked_by_source: true },
-    LegacyTypeRoute { type_id: 5, encoder: "encodeOnChainTokenForToken", encoder_exported: true, decoder: "decodeOnChainTokenForToken", decoder_exported: true, validator: Some("validateOnChainTokenForToken"), validator_invoked_by_source: true },
-    LegacyTypeRoute { type_id: 6, encoder: "encodeCancelOrder", encoder_exported: true, decoder: "decodeCancelOrder", decoder_exported: true, validator: Some("validateCancelOrder"), validator_invoked_by_source: true },
-    LegacyTypeRoute { type_id: 7, encoder: "encodeCreateWhitelist", encoder_exported: true, decoder: "decodeCreateWhitelist", decoder_exported: true, validator: Some("validateCreateWhitelist"), validator_invoked_by_source: true },
-    LegacyTypeRoute { type_id: 8, encoder: "encodeUpdateAdmin", encoder_exported: true, decoder: "decodeUpdateAdmin", decoder_exported: true, validator: Some("validateUpdateAdmin"), validator_invoked_by_source: true },
-    LegacyTypeRoute { type_id: 9, encoder: "encodeIssueOrRevokeAttestation", encoder_exported: true, decoder: "decodeIssueOrRevokeAttestation", decoder_exported: true, validator: Some("validateIssueOrRevokeAttestation"), validator_invoked_by_source: true },
-    LegacyTypeRoute { type_id: 10, encoder: "encodeAMMPool", encoder_exported: true, decoder: "decodeAMMPool", decoder_exported: true, validator: Some("validateAMMPool"), validator_invoked_by_source: true },
-    LegacyTypeRoute { type_id: 11, encoder: "encodeGrantManagedToken", encoder_exported: true, decoder: "decodeGrantManagedToken", decoder_exported: true, validator: Some("validateGrantManagedToken"), validator_invoked_by_source: true },
-    LegacyTypeRoute { type_id: 12, encoder: "encodeRedeemManagedToken", encoder_exported: true, decoder: "decodeRedeemManagedToken", decoder_exported: true, validator: Some("validateRedeemManagedToken"), validator_invoked_by_source: true },
-    LegacyTypeRoute { type_id: 13, encoder: "encodeCreateOracle", encoder_exported: true, decoder: "decodeCreateOracle", decoder_exported: true, validator: Some("validateCreateOracle"), validator_invoked_by_source: true },
-    LegacyTypeRoute { type_id: 14, encoder: "encodePublishOracleData", encoder_exported: true, decoder: "decodePublishOracleData", decoder_exported: true, validator: Some("validatePublishOracleData"), validator_invoked_by_source: true },
-    LegacyTypeRoute { type_id: 15, encoder: "encodeCloseOracle", encoder_exported: true, decoder: "decodeCloseOracle", decoder_exported: true, validator: Some("validatePublishOracleData"), validator_invoked_by_source: true },
-    LegacyTypeRoute { type_id: 16, encoder: "encodeCreateFutureContractSeries", encoder_exported: true, decoder: "decodeCreateFutureContractSeries", decoder_exported: true, validator: Some("validateCreateContractSeries"), validator_invoked_by_source: true },
-    LegacyTypeRoute { type_id: 17, encoder: "encodeExerciseDerivative", encoder_exported: true, decoder: "decodeExerciseDerivative", decoder_exported: true, validator: Some("validateExerciseDerivative"), validator_invoked_by_source: true },
-    LegacyTypeRoute { type_id: 18, encoder: "encodeTradeContractOnchain", encoder_exported: true, decoder: "decodeTradeContractOnchain", decoder_exported: true, validator: Some("validateTradeContractOnchain"), validator_invoked_by_source: true },
-    LegacyTypeRoute { type_id: 19, encoder: "encodeTradeContractChannel", encoder_exported: true, decoder: "decodeTradeContractChannel", decoder_exported: true, validator: Some("validateTradeContractChannel"), validator_invoked_by_source: true },
-    LegacyTypeRoute { type_id: 20, encoder: "encodeTradeTokensChannel", encoder_exported: true, decoder: "decodeTradeTokensChannel", decoder_exported: true, validator: Some("validateTradeTokensChannel"), validator_invoked_by_source: true },
-    LegacyTypeRoute { type_id: 21, encoder: "encodeWithdrawal", encoder_exported: true, decoder: "decodeWithdrawal", decoder_exported: true, validator: Some("validateWithdrawal"), validator_invoked_by_source: true },
-    LegacyTypeRoute { type_id: 22, encoder: "encodeTransfer", encoder_exported: true, decoder: "decodeTransfer", decoder_exported: true, validator: Some("validateTransfer"), validator_invoked_by_source: true },
-    LegacyTypeRoute { type_id: 23, encoder: "encodeSettleChannelPNL", encoder_exported: true, decoder: "decodeSettleChannelPNL", decoder_exported: true, validator: Some("validateSettleChannelPNL"), validator_invoked_by_source: true },
-    LegacyTypeRoute { type_id: 24, encoder: "encodeMintSynthetic", encoder_exported: true, decoder: "decodeMintSynthetic", decoder_exported: true, validator: Some("validateMintSynthetic"), validator_invoked_by_source: true },
-    LegacyTypeRoute { type_id: 25, encoder: "encodeRedeemSynthetic", encoder_exported: true, decoder: "decodeRedeemSynthetic", decoder_exported: true, validator: Some("validateRedeemSynthetic"), validator_invoked_by_source: true },
-    LegacyTypeRoute { type_id: 26, encoder: "encodePayToTokens", encoder_exported: true, decoder: "decodePayToTokens", decoder_exported: true, validator: Some("validatePayToTokens"), validator_invoked_by_source: true },
-    LegacyTypeRoute { type_id: 27, encoder: "encodeOptionTrade", encoder_exported: true, decoder: "decodeOptionTrade", decoder_exported: true, validator: Some("validateOptionTrade"), validator_invoked_by_source: true },
-    LegacyTypeRoute { type_id: 28, encoder: "encodeTradeBaiUrbun", encoder_exported: true, decoder: "decodeTradeBaiUrbun", decoder_exported: false, validator: Some("validateTradeBaiUrbun"), validator_invoked_by_source: true },
-    LegacyTypeRoute { type_id: 29, encoder: "encodeTradeMurabaha", encoder_exported: true, decoder: "decodeTradeMurabaha", decoder_exported: false, validator: Some("validateTradeMurabaha"), validator_invoked_by_source: true },
-    LegacyTypeRoute { type_id: 30, encoder: "encodeStakeFraudProof", encoder_exported: true, decoder: "decodeStakeFraudProof", decoder_exported: true, validator: Some("validateStakeFraudProof"), validator_invoked_by_source: true },
-    LegacyTypeRoute { type_id: 31, encoder: "encodeKingSettle", encoder_exported: true, decoder: "decodeKingSettle", decoder_exported: true, validator: Some("validateKingSettle"), validator_invoked_by_source: true },
-    LegacyTypeRoute { type_id: 32, encoder: "encodeBatchMoveZkRollup", encoder_exported: true, decoder: "decodeBatchMoveZkRollup", decoder_exported: true, validator: None, validator_invoked_by_source: false },
-    LegacyTypeRoute { type_id: 33, encoder: "encodeColoredCoin", encoder_exported: true, decoder: "decodeColoredCoin", decoder_exported: true, validator: None, validator_invoked_by_source: false },
-    LegacyTypeRoute { type_id: 34, encoder: "encodeAbstractionBridge", encoder_exported: true, decoder: "decodeCrossLayerBridge", decoder_exported: false, validator: None, validator_invoked_by_source: false },
-    LegacyTypeRoute { type_id: 35, encoder: "encodeBindSmartContract", encoder_exported: true, decoder: "decodeSmartContractBind", decoder_exported: false, validator: None, validator_invoked_by_source: false },
-
+    LegacyTypeRoute {
+        type_id: 0,
+        encoder: "encodeActivateTradeLayer",
+        encoder_exported: true,
+        decoder: "decodeActivateTradeLayer",
+        decoder_exported: true,
+        validator: Some("validateActivateTradeLayer"),
+        validator_invoked_by_source: true,
+    },
+    LegacyTypeRoute {
+        type_id: 1,
+        encoder: "encodeTokenIssue",
+        encoder_exported: true,
+        decoder: "decodeTokenIssue",
+        decoder_exported: true,
+        validator: Some("validateTokenIssue"),
+        validator_invoked_by_source: true,
+    },
+    LegacyTypeRoute {
+        type_id: 2,
+        encoder: "encodeSend",
+        encoder_exported: true,
+        decoder: "decodeSend",
+        decoder_exported: true,
+        validator: Some("validateSend"),
+        validator_invoked_by_source: true,
+    },
+    LegacyTypeRoute {
+        type_id: 3,
+        encoder: "encodeTradeTokenForUTXO",
+        encoder_exported: true,
+        decoder: "decodeTradeTokenForUTXO",
+        decoder_exported: true,
+        validator: Some("validateTradeTokenForUTXO"),
+        validator_invoked_by_source: true,
+    },
+    LegacyTypeRoute {
+        type_id: 4,
+        encoder: "encodeCommitToken",
+        encoder_exported: false,
+        decoder: "decodeCommitToken",
+        decoder_exported: true,
+        validator: Some("validateCommit"),
+        validator_invoked_by_source: true,
+    },
+    LegacyTypeRoute {
+        type_id: 5,
+        encoder: "encodeOnChainTokenForToken",
+        encoder_exported: true,
+        decoder: "decodeOnChainTokenForToken",
+        decoder_exported: true,
+        validator: Some("validateOnChainTokenForToken"),
+        validator_invoked_by_source: true,
+    },
+    LegacyTypeRoute {
+        type_id: 6,
+        encoder: "encodeCancelOrder",
+        encoder_exported: true,
+        decoder: "decodeCancelOrder",
+        decoder_exported: true,
+        validator: Some("validateCancelOrder"),
+        validator_invoked_by_source: true,
+    },
+    LegacyTypeRoute {
+        type_id: 7,
+        encoder: "encodeCreateWhitelist",
+        encoder_exported: true,
+        decoder: "decodeCreateWhitelist",
+        decoder_exported: true,
+        validator: Some("validateCreateWhitelist"),
+        validator_invoked_by_source: true,
+    },
+    LegacyTypeRoute {
+        type_id: 8,
+        encoder: "encodeUpdateAdmin",
+        encoder_exported: true,
+        decoder: "decodeUpdateAdmin",
+        decoder_exported: true,
+        validator: Some("validateUpdateAdmin"),
+        validator_invoked_by_source: true,
+    },
+    LegacyTypeRoute {
+        type_id: 9,
+        encoder: "encodeIssueOrRevokeAttestation",
+        encoder_exported: true,
+        decoder: "decodeIssueOrRevokeAttestation",
+        decoder_exported: true,
+        validator: Some("validateIssueOrRevokeAttestation"),
+        validator_invoked_by_source: true,
+    },
+    LegacyTypeRoute {
+        type_id: 10,
+        encoder: "encodeAMMPool",
+        encoder_exported: true,
+        decoder: "decodeAMMPool",
+        decoder_exported: true,
+        validator: Some("validateAMMPool"),
+        validator_invoked_by_source: true,
+    },
+    LegacyTypeRoute {
+        type_id: 11,
+        encoder: "encodeGrantManagedToken",
+        encoder_exported: true,
+        decoder: "decodeGrantManagedToken",
+        decoder_exported: true,
+        validator: Some("validateGrantManagedToken"),
+        validator_invoked_by_source: true,
+    },
+    LegacyTypeRoute {
+        type_id: 12,
+        encoder: "encodeRedeemManagedToken",
+        encoder_exported: true,
+        decoder: "decodeRedeemManagedToken",
+        decoder_exported: true,
+        validator: Some("validateRedeemManagedToken"),
+        validator_invoked_by_source: true,
+    },
+    LegacyTypeRoute {
+        type_id: 13,
+        encoder: "encodeCreateOracle",
+        encoder_exported: true,
+        decoder: "decodeCreateOracle",
+        decoder_exported: true,
+        validator: Some("validateCreateOracle"),
+        validator_invoked_by_source: true,
+    },
+    LegacyTypeRoute {
+        type_id: 14,
+        encoder: "encodePublishOracleData",
+        encoder_exported: true,
+        decoder: "decodePublishOracleData",
+        decoder_exported: true,
+        validator: Some("validatePublishOracleData"),
+        validator_invoked_by_source: true,
+    },
+    LegacyTypeRoute {
+        type_id: 15,
+        encoder: "encodeCloseOracle",
+        encoder_exported: true,
+        decoder: "decodeCloseOracle",
+        decoder_exported: true,
+        validator: Some("validatePublishOracleData"),
+        validator_invoked_by_source: true,
+    },
+    LegacyTypeRoute {
+        type_id: 16,
+        encoder: "encodeCreateFutureContractSeries",
+        encoder_exported: true,
+        decoder: "decodeCreateFutureContractSeries",
+        decoder_exported: true,
+        validator: Some("validateCreateContractSeries"),
+        validator_invoked_by_source: true,
+    },
+    LegacyTypeRoute {
+        type_id: 17,
+        encoder: "encodeExerciseDerivative",
+        encoder_exported: true,
+        decoder: "decodeExerciseDerivative",
+        decoder_exported: true,
+        validator: Some("validateExerciseDerivative"),
+        validator_invoked_by_source: true,
+    },
+    LegacyTypeRoute {
+        type_id: 18,
+        encoder: "encodeTradeContractOnchain",
+        encoder_exported: true,
+        decoder: "decodeTradeContractOnchain",
+        decoder_exported: true,
+        validator: Some("validateTradeContractOnchain"),
+        validator_invoked_by_source: true,
+    },
+    LegacyTypeRoute {
+        type_id: 19,
+        encoder: "encodeTradeContractChannel",
+        encoder_exported: true,
+        decoder: "decodeTradeContractChannel",
+        decoder_exported: true,
+        validator: Some("validateTradeContractChannel"),
+        validator_invoked_by_source: true,
+    },
+    LegacyTypeRoute {
+        type_id: 20,
+        encoder: "encodeTradeTokensChannel",
+        encoder_exported: true,
+        decoder: "decodeTradeTokensChannel",
+        decoder_exported: true,
+        validator: Some("validateTradeTokensChannel"),
+        validator_invoked_by_source: true,
+    },
+    LegacyTypeRoute {
+        type_id: 21,
+        encoder: "encodeWithdrawal",
+        encoder_exported: true,
+        decoder: "decodeWithdrawal",
+        decoder_exported: true,
+        validator: Some("validateWithdrawal"),
+        validator_invoked_by_source: true,
+    },
+    LegacyTypeRoute {
+        type_id: 22,
+        encoder: "encodeTransfer",
+        encoder_exported: true,
+        decoder: "decodeTransfer",
+        decoder_exported: true,
+        validator: Some("validateTransfer"),
+        validator_invoked_by_source: true,
+    },
+    LegacyTypeRoute {
+        type_id: 23,
+        encoder: "encodeSettleChannelPNL",
+        encoder_exported: true,
+        decoder: "decodeSettleChannelPNL",
+        decoder_exported: true,
+        validator: Some("validateSettleChannelPNL"),
+        validator_invoked_by_source: true,
+    },
+    LegacyTypeRoute {
+        type_id: 24,
+        encoder: "encodeMintSynthetic",
+        encoder_exported: true,
+        decoder: "decodeMintSynthetic",
+        decoder_exported: true,
+        validator: Some("validateMintSynthetic"),
+        validator_invoked_by_source: true,
+    },
+    LegacyTypeRoute {
+        type_id: 25,
+        encoder: "encodeRedeemSynthetic",
+        encoder_exported: true,
+        decoder: "decodeRedeemSynthetic",
+        decoder_exported: true,
+        validator: Some("validateRedeemSynthetic"),
+        validator_invoked_by_source: true,
+    },
+    LegacyTypeRoute {
+        type_id: 26,
+        encoder: "encodePayToTokens",
+        encoder_exported: true,
+        decoder: "decodePayToTokens",
+        decoder_exported: true,
+        validator: Some("validatePayToTokens"),
+        validator_invoked_by_source: true,
+    },
+    LegacyTypeRoute {
+        type_id: 27,
+        encoder: "encodeOptionTrade",
+        encoder_exported: true,
+        decoder: "decodeOptionTrade",
+        decoder_exported: true,
+        validator: Some("validateOptionTrade"),
+        validator_invoked_by_source: true,
+    },
+    LegacyTypeRoute {
+        type_id: 28,
+        encoder: "encodeTradeBaiUrbun",
+        encoder_exported: true,
+        decoder: "decodeTradeBaiUrbun",
+        decoder_exported: false,
+        validator: Some("validateTradeBaiUrbun"),
+        validator_invoked_by_source: true,
+    },
+    LegacyTypeRoute {
+        type_id: 29,
+        encoder: "encodeTradeMurabaha",
+        encoder_exported: true,
+        decoder: "decodeTradeMurabaha",
+        decoder_exported: false,
+        validator: Some("validateTradeMurabaha"),
+        validator_invoked_by_source: true,
+    },
+    LegacyTypeRoute {
+        type_id: 30,
+        encoder: "encodeStakeFraudProof",
+        encoder_exported: true,
+        decoder: "decodeStakeFraudProof",
+        decoder_exported: true,
+        validator: Some("validateStakeFraudProof"),
+        validator_invoked_by_source: true,
+    },
+    LegacyTypeRoute {
+        type_id: 31,
+        encoder: "encodeKingSettle",
+        encoder_exported: true,
+        decoder: "decodeKingSettle",
+        decoder_exported: true,
+        validator: Some("validateKingSettle"),
+        validator_invoked_by_source: true,
+    },
+    LegacyTypeRoute {
+        type_id: 32,
+        encoder: "encodeBatchMoveZkRollup",
+        encoder_exported: true,
+        decoder: "decodeBatchMoveZkRollup",
+        decoder_exported: true,
+        validator: None,
+        validator_invoked_by_source: false,
+    },
+    LegacyTypeRoute {
+        type_id: 33,
+        encoder: "encodeColoredCoin",
+        encoder_exported: true,
+        decoder: "decodeColoredCoin",
+        decoder_exported: true,
+        validator: None,
+        validator_invoked_by_source: false,
+    },
+    LegacyTypeRoute {
+        type_id: 34,
+        encoder: "encodeAbstractionBridge",
+        encoder_exported: true,
+        decoder: "decodeCrossLayerBridge",
+        decoder_exported: false,
+        validator: None,
+        validator_invoked_by_source: false,
+    },
+    LegacyTypeRoute {
+        type_id: 35,
+        encoder: "encodeBindSmartContract",
+        encoder_exported: true,
+        decoder: "decodeSmartContractBind",
+        decoder_exported: false,
+        validator: None,
+        validator_invoked_by_source: false,
+    },
 ];
 
 pub fn source_route(type_id: u8) -> Option<&'static LegacyTypeRoute> {
@@ -149,7 +436,9 @@ pub fn source_generic_concat_unverified(
         return Err(LegacyTypesError::ClaimedPayloadTooLarge);
     }
     if !caller_claimed_inner.is_ascii()
-        || !caller_claimed_inner.bytes().all(|c| (0x20..=0x7e).contains(&c))
+        || !caller_claimed_inner
+            .bytes()
+            .all(|c| (0x20..=0x7e).contains(&c))
     {
         return Err(LegacyTypesError::ClaimNotPrintableAscii);
     }
@@ -249,7 +538,9 @@ pub fn source_inspect_decode_invocation(
     call: SourceDecoderInvocation<'_>,
 ) -> UnverifiedTypesDispatch {
     match call {
-        SourceDecoderInvocation::TxIndexThreeArguments { payload_after_marker } => {
+        SourceDecoderInvocation::TxIndexThreeArguments {
+            payload_after_marker,
+        } => {
             let outcome = if payload_after_marker == "tl" {
                 SourceDecodeOutcome::ReturnedErrorObjectUnknownType
             } else {
@@ -277,7 +568,8 @@ pub fn source_inspect_decode_invocation(
                     SourceDecodeOutcome::Type3UnvalidatedReturnMissingReferences
                 } else if type_id == 15 {
                     caveats.push(SourceDecodeCaveat::Type15PublishOracleValidatorInsteadOfClose);
-                    caveats.push(SourceDecodeCaveat::Type15DecoderReturnsNumberAndBlockAssignmentLost);
+                    caveats
+                        .push(SourceDecodeCaveat::Type15DecoderReturnsNumberAndBlockAssignmentLost);
                     SourceDecodeOutcome::Type15CallsWrongValidatorWithNumber
                 } else if !route.validator_invoked_by_source {
                     caveats.push(SourceDecodeCaveat::Type32To35ValidatorCallsCommentedOut);
@@ -320,12 +612,19 @@ pub enum ClaimedReference<'a> {
 pub fn source_resolve_reference_address<'a>(reference: ClaimedReference<'a>) -> &'a str {
     match reference {
         ClaimedReference::String(s) => s,
-        ClaimedReference::Array(rows) => rows.iter().flatten().copied().find(|s| !s.is_empty()).unwrap_or(""),
-        ClaimedReference::Object { address, sender_address } => {
-            address.filter(|s| !s.is_empty())
-                .or_else(|| sender_address.filter(|s| !s.is_empty()))
-                .unwrap_or("")
-        }
+        ClaimedReference::Array(rows) => rows
+            .iter()
+            .flatten()
+            .copied()
+            .find(|s| !s.is_empty())
+            .unwrap_or(""),
+        ClaimedReference::Object {
+            address,
+            sender_address,
+        } => address
+            .filter(|s| !s.is_empty())
+            .or_else(|| sender_address.filter(|s| !s.is_empty()))
+            .unwrap_or(""),
         ClaimedReference::Missing | ClaimedReference::UnsupportedPrimitive => "",
     }
 }
