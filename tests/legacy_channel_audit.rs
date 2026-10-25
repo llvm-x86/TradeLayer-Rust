@@ -3,7 +3,7 @@
 use tradelayer_core::legacy_channel_audit::{
     source_last_char_column, source_tie_break, ChannelSourceError, ClaimedCommit,
     ClaimedPubkeyPreflight, Side, UnverifiedLegacyChannel, UnverifiedQueuedWithdrawal,
-    UnverifiedWithdrawalKeys, MAX_EXACT_ATOMS, MAX_CLEARLIST_IDS,
+    UnverifiedWithdrawalKeys, MAX_CLEARLIST_IDS, MAX_EXACT_ATOMS,
 };
 
 fn claim<'a>(
@@ -58,11 +58,17 @@ fn last_character_and_tie_breaker_preserve_pinned_ascii_rule() {
 #[test]
 fn independent_direct_commits_fill_a_and_b_even_though_both_parties_helper_is_dead() {
     let mut s = empty();
-    assert_eq!(s.apply_claimed_commit(claim("Alice1", 200_000_000, true, &[7], 100)), Ok(Side::A));
+    assert_eq!(
+        s.apply_claimed_commit(claim("Alice1", 200_000_000, true, &[7], 100)),
+        Ok(Side::A)
+    );
     assert_eq!(s.participant(Side::A), "Alice1");
     assert_eq!(s.participant(Side::B), "");
     assert_eq!(s.last_used_column(), Some(Side::A));
-    assert_eq!(s.apply_claimed_commit(claim("Bob2", 300_000_000, false, &[11], 101)), Ok(Side::B));
+    assert_eq!(
+        s.apply_claimed_commit(claim("Bob2", 300_000_000, false, &[11], 101)),
+        Ok(Side::B)
+    );
     assert_eq!(s.participant(Side::A), "Alice1");
     assert_eq!(s.participant(Side::B), "Bob2");
     assert!(!s.source_both_parties_committed_helper());
@@ -79,8 +85,10 @@ fn independent_direct_commits_fill_a_and_b_even_though_both_parties_helper_is_de
 #[test]
 fn duplicate_sender_commits_append_and_never_clear_policy_on_false_or_empty_lists() {
     let mut s = empty();
-    s.apply_claimed_commit(claim("Alice1", 100_000_000, true, &[7, 9], 101)).unwrap();
-    s.apply_claimed_commit(claim("Alice1", 250_000_000, false, &[], 102)).unwrap();
+    s.apply_claimed_commit(claim("Alice1", 100_000_000, true, &[7, 9], 101))
+        .unwrap();
+    s.apply_claimed_commit(claim("Alice1", 250_000_000, false, &[], 102))
+        .unwrap();
     assert_eq!(s.balance_atoms(Side::A, 7), 350_000_000);
     assert_eq!(s.commits().len(), 2);
     assert_eq!(s.commits()[1].sender, "Alice1");
@@ -100,16 +108,27 @@ fn duplicate_sender_commits_append_and_never_clear_policy_on_false_or_empty_list
     assert!(rows[0].sender_ever_pay_enabled);
     assert!(s.source_balance_rows("stranger", None).is_empty());
     assert!(s.source_balance_rows("Alice1", Some(8)).is_empty());
-    assert_eq!(s.require_authenticated_spend(), Err(ChannelSourceError::ChannelSpendUnverified));
-    assert_eq!(s.require_canonical_signed_revision(), Err(ChannelSourceError::CanonicalRevisionUnspecified));
-    assert_eq!(s.require_trusted_settlement(), Err(ChannelSourceError::TrustedSettlementUnavailable));
+    assert_eq!(
+        s.require_authenticated_spend(),
+        Err(ChannelSourceError::ChannelSpendUnverified)
+    );
+    assert_eq!(
+        s.require_canonical_signed_revision(),
+        Err(ChannelSourceError::CanonicalRevisionUnspecified)
+    );
+    assert_eq!(
+        s.require_trusted_settlement(),
+        Err(ChannelSourceError::TrustedSettlementUnavailable)
+    );
 }
 
 #[test]
 fn crowded_newcomer_can_replace_previous_b_owner_and_keep_b_deposit() {
     let mut s = empty();
-    s.apply_claimed_commit(claim("Alice1", 200_000_000, true, &[7], 100)).unwrap();
-    s.apply_claimed_commit(claim("Bob2", 300_000_000, false, &[11], 101)).unwrap();
+    s.apply_claimed_commit(claim("Alice1", 200_000_000, true, &[7], 100))
+        .unwrap();
+    s.apply_claimed_commit(claim("Bob2", 300_000_000, false, &[11], 101))
+        .unwrap();
     let outcome = s.apply_claimed_commit(claim("Eve3", 50_000_000, false, &[], 102));
     assert_eq!(outcome, Ok(Side::B));
     assert_eq!(s.participant(Side::A), "Alice1");
@@ -124,15 +143,23 @@ fn crowded_newcomer_can_replace_previous_b_owner_and_keep_b_deposit() {
     let newer = s.source_balance_rows("Eve3", None);
     assert_eq!(former[0].amount_atoms, newer[0].amount_atoms);
     assert_eq!(newer[0].counterparty, "Alice1");
-    assert_eq!(s.require_trusted_settlement(), Err(ChannelSourceError::TrustedSettlementUnavailable));
+    assert_eq!(
+        s.require_trusted_settlement(),
+        Err(ChannelSourceError::TrustedSettlementUnavailable)
+    );
 }
 
 #[test]
 fn one_sided_swap_moves_token_balances_but_not_policy_lists_or_pay_flags() {
     let mut s = empty();
-    s.apply_claimed_commit(claim("Alice1", 100_000_000, true, &[7], 100)).unwrap();
-    s.apply_claimed_commit(claim("Bob2", 500_000_000, false, &[11], 101)).unwrap();
-    assert_eq!(s.apply_claimed_commit(claim("Mike3", 200_000_000, false, &[], 102)), Ok(Side::A));
+    s.apply_claimed_commit(claim("Alice1", 100_000_000, true, &[7], 100))
+        .unwrap();
+    s.apply_claimed_commit(claim("Bob2", 500_000_000, false, &[11], 101))
+        .unwrap();
+    assert_eq!(
+        s.apply_claimed_commit(claim("Mike3", 200_000_000, false, &[], 102)),
+        Ok(Side::A)
+    );
     assert_eq!(s.participant(Side::A), "Mike3");
     assert_eq!(s.participant(Side::B), "Alice1");
     assert_eq!(s.balance_atoms(Side::A, 7), 700_000_000);
@@ -146,7 +173,10 @@ fn one_sided_swap_moves_token_balances_but_not_policy_lists_or_pay_flags() {
     assert_eq!(s.commits()[0].column, Side::A);
     assert_eq!(s.commits()[1].column, Side::B);
     assert!(s.possible_crowded_displacement());
-    assert_eq!(s.require_canonical_signed_revision(), Err(ChannelSourceError::CanonicalRevisionUnspecified));
+    assert_eq!(
+        s.require_canonical_signed_revision(),
+        Err(ChannelSourceError::CanonicalRevisionUnspecified)
+    );
 }
 
 #[test]
@@ -155,24 +185,52 @@ fn invalid_claimer_amount_or_multisig_claim_must_not_partially_mutate_projection
     let original = s.clone();
     let mut bad = claim("Alice1", 1, false, &[], 100);
     bad.alleged_pubkey_result = ClaimedPubkeyPreflight::ClaimedMismatch;
-    assert_eq!(s.apply_claimed_commit(bad), Err(ChannelSourceError::ClaimedPubkeyMismatch));
+    assert_eq!(
+        s.apply_claimed_commit(bad),
+        Err(ChannelSourceError::ClaimedPubkeyMismatch)
+    );
     assert_eq!(s, original);
-    assert_eq!(s.apply_claimed_commit(claim("", 100, false, &[], 100)), Err(ChannelSourceError::BadSender));
-    assert_eq!(s.apply_claimed_commit(claim("Alice1", 0, false, &[], 100)), Err(ChannelSourceError::InvalidAmount));
-    assert_eq!(s.apply_claimed_commit(claim("Alice1", MAX_EXACT_ATOMS+1, false, &[], 100)), Err(ChannelSourceError::InvalidAmount));
-    assert_eq!(s.apply_claimed_commit(claim("Alice1", 1, false, &[], 0)), Err(ChannelSourceError::MissingHeight));
+    assert_eq!(
+        s.apply_claimed_commit(claim("", 100, false, &[], 100)),
+        Err(ChannelSourceError::BadSender)
+    );
+    assert_eq!(
+        s.apply_claimed_commit(claim("Alice1", 0, false, &[], 100)),
+        Err(ChannelSourceError::InvalidAmount)
+    );
+    assert_eq!(
+        s.apply_claimed_commit(claim("Alice1", MAX_EXACT_ATOMS + 1, false, &[], 100)),
+        Err(ChannelSourceError::InvalidAmount)
+    );
+    assert_eq!(
+        s.apply_claimed_commit(claim("Alice1", 1, false, &[], 0)),
+        Err(ChannelSourceError::MissingHeight)
+    );
     let too_many = vec![7; MAX_CLEARLIST_IDS + 1];
-    assert_eq!(s.apply_claimed_commit(claim("Alice1", 1, false, &too_many, 100)), Err(ChannelSourceError::TooManyLists));
+    assert_eq!(
+        s.apply_claimed_commit(claim("Alice1", 1, false, &too_many, 100)),
+        Err(ChannelSourceError::TooManyLists)
+    );
     let mut wrong_channel = claim("Alice1", 1, false, &[], 100);
     wrong_channel.channel = "wrong";
-    assert_eq!(s.apply_claimed_commit(wrong_channel), Err(ChannelSourceError::BadChannel));
+    assert_eq!(
+        s.apply_claimed_commit(wrong_channel),
+        Err(ChannelSourceError::BadChannel)
+    );
     let mut bad_property = claim("Alice1", 1, false, &[], 100);
     bad_property.property_id = 0;
-    assert_eq!(s.apply_claimed_commit(bad_property), Err(ChannelSourceError::InvalidProperty));
+    assert_eq!(
+        s.apply_claimed_commit(bad_property),
+        Err(ChannelSourceError::InvalidProperty)
+    );
     assert_eq!(s, original);
-    s.apply_claimed_commit(claim("Alice1", MAX_EXACT_ATOMS, false, &[], 100)).unwrap();
+    s.apply_claimed_commit(claim("Alice1", MAX_EXACT_ATOMS, false, &[], 100))
+        .unwrap();
     let before = s.clone();
-    assert_eq!(s.apply_claimed_commit(claim("Alice1", 1, false, &[], 101)), Err(ChannelSourceError::Overflow));
+    assert_eq!(
+        s.apply_claimed_commit(claim("Alice1", 1, false, &[], 101)),
+        Err(ChannelSourceError::Overflow)
+    );
     assert_eq!(s, before);
 }
 
@@ -197,5 +255,8 @@ fn withdrawal_storage_key_collides_across_channels_same_sender_and_height() {
     assert_eq!(db.source_lookup(400, "Alice1"), Some(&second));
     assert!(!db.source_delay_elapsed(400, "Alice1", 406));
     assert!(db.source_delay_elapsed(400, "Alice1", 407));
-    assert_eq!(db.require_verified_withdrawal(), Err(ChannelSourceError::TrustedSettlementUnavailable));
+    assert_eq!(
+        db.require_verified_withdrawal(),
+        Err(ChannelSourceError::TrustedSettlementUnavailable)
+    );
 }
