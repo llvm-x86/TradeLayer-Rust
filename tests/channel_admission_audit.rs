@@ -1,10 +1,9 @@
 //! Stage25M: historical DIRECT clearlist claims with point-in-time refusal.
 //! These are synthetic time-ordered claims, never chain-authenticated events.
 use tradelayer_core::channel_admission_audit::{
-    AdmissionAuditError, ClaimedDirectAction, ClaimedDirectAttestation,
-    ClaimedEventPosition, ClaimedHistoricalDirectView, DirectMatchSide,
-    HistoricalAdmissionKind, PropertyWhitelist, Type19ChannelListClaim,
-    Type4CommitListClaim, MAX_CLAIMED_ATTESTATIONS,
+    AdmissionAuditError, ClaimedDirectAction, ClaimedDirectAttestation, ClaimedEventPosition,
+    ClaimedHistoricalDirectView, DirectMatchSide, HistoricalAdmissionKind, PropertyWhitelist,
+    Type19ChannelListClaim, Type4CommitListClaim, MAX_CLAIMED_ATTESTATIONS,
 };
 use tradelayer_core::network_profile::TradeLayerMainnet;
 
@@ -79,7 +78,13 @@ fn direct_type4_property_sender_and_optional_commit_list_are_distinct() {
         att(40, 3, 7, "bob", ClaimedDirectAction::Attest),
     ];
     let v = view(at(41, 1), &events).unwrap();
-    let result = v.type4_commit_lists(type4("alice", PropertyWhitelist::AnyDirectList(&[7]), Some(9))).unwrap();
+    let result = v
+        .type4_commit_lists(type4(
+            "alice",
+            PropertyWhitelist::AnyDirectList(&[7]),
+            Some(9),
+        ))
+        .unwrap();
     assert_eq!(result.kind(), HistoricalAdmissionKind::Type4Commit);
     assert_eq!(result.matched_list_id(), Some(9));
     assert_eq!(result.matched_side(), Some(DirectMatchSide::CommitSender));
@@ -94,7 +99,11 @@ fn direct_type4_property_sender_and_optional_commit_list_are_distinct() {
         Err(AdmissionAuditError::CanonicalChannelRevisionUnspecified)
     );
     assert_eq!(
-        v.type4_commit_lists(type4("bob", PropertyWhitelist::AnyDirectList(&[7]), Some(9))),
+        v.type4_commit_lists(type4(
+            "bob",
+            PropertyWhitelist::AnyDirectList(&[7]),
+            Some(9)
+        )),
         Err(AdmissionAuditError::NoDirectCommitClearlistWitness)
     );
     assert_eq!(
@@ -114,7 +123,11 @@ fn type4_scalar_zero_and_commit_zero_do_not_construct_authority() {
         Err(AdmissionAuditError::IndependentAdmissionProofUnavailable)
     );
     assert_eq!(
-        v.type4_commit_lists(type4("alice", PropertyWhitelist::UnrestrictedScalarZero, Some(7))),
+        v.type4_commit_lists(type4(
+            "alice",
+            PropertyWhitelist::UnrestrictedScalarZero,
+            Some(7)
+        )),
         Err(AdmissionAuditError::NoDirectCommitClearlistWitness)
     );
     assert_eq!(
@@ -126,14 +139,24 @@ fn type4_scalar_zero_and_commit_zero_do_not_construct_authority() {
         Err(AdmissionAuditError::AmbiguousPropertyWhitelist)
     );
     assert_eq!(
-        v.type4_commit_lists(type4("alice", PropertyWhitelist::AnyDirectList(&[0, 7]), None)),
+        v.type4_commit_lists(type4(
+            "alice",
+            PropertyWhitelist::AnyDirectList(&[0, 7]),
+            None
+        )),
         Err(AdmissionAuditError::AmbiguousPropertyWhitelist)
     );
     let mut claim = type4("alice", PropertyWhitelist::UnrestrictedScalarZero, None);
     claim.property_id = 2;
-    assert_eq!(v.type4_commit_lists(claim), Err(AdmissionAuditError::ForbiddenVestingProperty));
+    assert_eq!(
+        v.type4_commit_lists(claim),
+        Err(AdmissionAuditError::ForbiddenVestingProperty)
+    );
     claim.property_id = 3;
-    assert_eq!(v.type4_commit_lists(claim), Err(AdmissionAuditError::ForbiddenVestingProperty));
+    assert_eq!(
+        v.type4_commit_lists(claim),
+        Err(AdmissionAuditError::ForbiddenVestingProperty)
+    );
 }
 
 #[test]
@@ -143,7 +166,9 @@ fn type19_either_side_union_matches_a_direct_member_and_stays_unverified() {
         att(40, 2, 11, "bob", ClaimedDirectAction::Attest),
     ];
     let v = view(at(41, 2), &events).unwrap();
-    let first = v.type19_channel_lists(type19("alice", "bob", &[17], &[11], 41)).unwrap();
+    let first = v
+        .type19_channel_lists(type19("alice", "bob", &[17], &[11], 41))
+        .unwrap();
     assert_eq!(first.matched_list_id(), Some(11));
     assert_eq!(first.matched_side(), Some(DirectMatchSide::ChannelB));
     assert_eq!(
@@ -154,7 +179,9 @@ fn type19_either_side_union_matches_a_direct_member_and_stays_unverified() {
         first.require_authenticated_channel_admission(),
         Err(AdmissionAuditError::IndependentAdmissionProofUnavailable)
     );
-    let second = v.type19_channel_lists(type19("alice", "bob", &[7], &[17], 41)).unwrap();
+    let second = v
+        .type19_channel_lists(type19("alice", "bob", &[7], &[17], 41))
+        .unwrap();
     assert_eq!(second.matched_side(), Some(DirectMatchSide::ChannelA));
     assert_eq!(
         v.type19_channel_lists(type19("alice", "bob", &[8], &[10], 41)),
@@ -165,7 +192,9 @@ fn type19_either_side_union_matches_a_direct_member_and_stays_unverified() {
 #[test]
 fn type19_empty_lists_do_not_imply_any_valid_channel_revision() {
     let v = view(at(60, 1), &[]).unwrap();
-    let result = v.type19_channel_lists(type19("alice", "bob", &[], &[], 60)).unwrap();
+    let result = v
+        .type19_channel_lists(type19("alice", "bob", &[], &[], 60))
+        .unwrap();
     assert_eq!(result.matched_list_id(), None);
     assert_eq!(result.matched_side(), None);
     assert_eq!(
@@ -200,10 +229,16 @@ fn revoke_at_prior_index_removes_only_the_revoked_membership() {
         att(41, 2, 7, "bob", ClaimedDirectAction::Attest),
     ];
     let before = view(at(41, 1), &events[..1]).unwrap();
-    assert!(before.type4_commit_lists(type4("alice", PropertyWhitelist::AnyDirectList(&[7]), None)).is_ok());
+    assert!(before
+        .type4_commit_lists(type4("alice", PropertyWhitelist::AnyDirectList(&[7]), None))
+        .is_ok());
     let after_revoke = view(at(41, 2), &events[..2]).unwrap();
     assert_eq!(
-        after_revoke.type4_commit_lists(type4("alice", PropertyWhitelist::AnyDirectList(&[7]), None)),
+        after_revoke.type4_commit_lists(type4(
+            "alice",
+            PropertyWhitelist::AnyDirectList(&[7]),
+            None
+        )),
         Err(AdmissionAuditError::NoDirectPropertyWitness)
     );
     assert_eq!(
@@ -211,7 +246,9 @@ fn revoke_at_prior_index_removes_only_the_revoked_membership() {
         Err(AdmissionAuditError::NoDirectChannelWitness)
     );
     let after_bob = view(at(41, 3), &events).unwrap();
-    let member = after_bob.type19_channel_lists(type19("alice", "bob", &[7], &[], 41)).unwrap();
+    let member = after_bob
+        .type19_channel_lists(type19("alice", "bob", &[7], &[], 41))
+        .unwrap();
     assert_eq!(member.matched_side(), Some(DirectMatchSide::ChannelB));
     assert_eq!(
         after_bob.type4_commit_lists(type4("alice", PropertyWhitelist::AnyDirectList(&[7]), None)),
@@ -236,7 +273,9 @@ fn future_and_same_transaction_memberships_are_rejected_even_if_approved() {
     ));
     let events = [grant];
     let v = view(at(41, 6), &events).unwrap();
-    assert!(v.type4_commit_lists(type4("alice", PropertyWhitelist::AnyDirectList(&[7]), None)).is_ok());
+    assert!(v
+        .type4_commit_lists(type4("alice", PropertyWhitelist::AnyDirectList(&[7]), None))
+        .is_ok());
 }
 
 #[test]
@@ -290,7 +329,13 @@ fn malformed_positions_and_too_many_events_refuse() {
         Err(AdmissionAuditError::BadEventPosition)
     ));
     assert!(matches!(
-        view(ClaimedEventPosition { block_hash: [0; 32], ..at(41, 1) }, &[]),
+        view(
+            ClaimedEventPosition {
+                block_hash: [0; 32],
+                ..at(41, 1)
+            },
+            &[]
+        ),
         Err(AdmissionAuditError::BadEventPosition)
     ));
     bad = att(40, 1, 7, "alice", ClaimedDirectAction::Attest);
@@ -299,7 +344,8 @@ fn malformed_positions_and_too_many_events_refuse() {
         view(at(41, 1), &[bad]),
         Err(AdmissionAuditError::BadSubject)
     ));
-    let oversized = vec![att(40, 1, 7, "alice", ClaimedDirectAction::Attest); MAX_CLAIMED_ATTESTATIONS + 1];
+    let oversized =
+        vec![att(40, 1, 7, "alice", ClaimedDirectAction::Attest); MAX_CLAIMED_ATTESTATIONS + 1];
     assert!(matches!(
         view(at(41, 1), &oversized),
         Err(AdmissionAuditError::TooManyObservations)
@@ -318,7 +364,11 @@ fn derived_only_claims_do_not_fabricate_a_direct_member_or_consensus_veto() {
         Err(AdmissionAuditError::NoDirectChannelWitness)
     );
     assert_eq!(
-        v.type4_commit_lists(type4("derived_child", PropertyWhitelist::UnrestrictedScalarZero, Some(9))),
+        v.type4_commit_lists(type4(
+            "derived_child",
+            PropertyWhitelist::UnrestrictedScalarZero,
+            Some(9)
+        )),
         Err(AdmissionAuditError::NoDirectCommitClearlistWitness)
     );
 }
