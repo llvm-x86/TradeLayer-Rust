@@ -464,9 +464,13 @@ pub(crate) fn inspect_prepared_block_weighted_shards(
     // The input byte cap bounds this estimate to at most twice the cap.
     let work = |row: &PreparedRawTransaction<'_>| {
         let stripped = row.layout.stripped_bytes();
-        row.raw.len() + if stripped < row.raw.len() { stripped } else { 0 }
+        if stripped < row.raw.len() {
+            row.raw.len() + stripped
+        } else {
+            row.raw.len()
+        }
     };
-    let mut remaining_work: usize = transactions.iter().map(work).sum();
+    let mut remaining_work: usize = transactions.iter().map(|row| work(row)).sum();
     let mut ranges = Vec::<Range<usize>>::with_capacity(worker_count);
     let mut start = 0;
     for shard in 0..worker_count {
@@ -497,7 +501,7 @@ pub(crate) fn inspect_prepared_block_weighted_shards(
             .map(|range| {
                 scope.spawn(move || {
                     let mut local = Vec::with_capacity(range.len());
-                    for index in range.clone() {
+                    for index in range.start..range.end {
                         let row = &transactions[index];
                         let result = inspect_prepared_transaction(row.raw, row.layout)
                             .map_err(|source| ParallelIndexError::RawScan { index, source });
