@@ -1,12 +1,14 @@
 //! Stage8C: synthetic raw-block preindex benchmark, NO Bitcoin consensus.
 //! One complete raw block is scanned using borrowed slices; reference path
 //! constructs one owned Vec per transaction and uses the same CPU workers.
+use std::collections::{BTreeMap, HashMap};
 use std::env;
 use std::hint::black_box;
 use std::time::{Duration, Instant};
 use tradelayer_core::parallel_txindex::{inspect_unverified_block_parallel, ParallelIndexConfig};
 use tradelayer_core::raw_block_ingest::{
-    fetch_and_inspect_unverified_block, merkle_root_unverified, UnverifiedRawBlockView,
+    fetch_and_inspect_unverified_block, merkle_root_unverified, merkle_root_unverified_inplace,
+    UnverifiedRawBlockView,
 };
 use tradelayer_core::read_only::{decode_hex, inspect_transaction};
 
@@ -59,6 +61,33 @@ fn median(mut durations: Vec<Duration>) -> Duration {
     durations.sort_unstable();
     durations[durations.len() / 2]
 }
+/// Measure the same source-order first/second duplicate rule without hashing.
+fn duplicate_tree(ids: &[[u8; 32]]) -> Result<(), (usize, usize)> {
+    let mut seen = BTreeMap::new();
+    for (index, &txid) in ids.iter().enumerate() {
+        if let Some(&first) = seen.get(&txid) {
+            return Err((first, index));
+        }
+        seen.insert(txid, index);
+    }
+    Ok(())
+}
+
+fn duplicate_hash(ids: &[[u8; 32]]) -> Result<(), (usize, usize)> {
+    let mut seen = HashMap::with_capacity(ids.len());
+    for (index, &txid) in ids.iter().enumerate() {
+        match seen.entry(txid) {
+            std::collections::hash_map::Entry::Occupied(found) => {
+                return Err((*found.get(), index));
+            }
+            std::collections::hash_map::Entry::Vacant(vacant) => {
+                vacant.insert(index);
+            }
+        }
+    }
+    Ok(())
+}
+
 fn main() {
     let args: Vec<_> = env::args().collect();
     if args.len() > 5 {
@@ -93,10 +122,35 @@ fn main() {
     assert_eq!(old, *new.ordered_preindex());
     let one_team = view.inspect_parallel_one_team(config).unwrap();
     assert_eq!(one_team, new);
+    let hash_seen = view.inspect_parallel_one_team_hash_seen(config).unwrap();
+    let inplace_merkle = view.inspect_parallel_one_team_inplace_merkle(config).unwrap();
+    let fast_reduce = view.inspect_parallel_one_team_fast_reduce(config).unwrap();
+    assert_eq!(hash_seen, one_team);
+    assert_eq!(inplace_merkle, one_team);
+    assert_eq!(fast_reduce, one_team);
+    let observed_txids = one_team
+        .ordered_preindex()
+        .ordered()
+        .iter()
+        .map(|row| row.observation.txid)
+        .collect::<Vec<_>>();
+    assert_eq!(duplicate_tree(&observed_txids), Ok(()));
+    assert_eq!(duplicate_hash(&observed_txids), Ok(()));
+    assert_eq!(
+        merkle_root_unverified(&observed_txids),
+        merkle_root_unverified_inplace(&observed_txids)
+    );
     let mut owned_times = Vec::new();
     let mut full_owned_times = Vec::new();
     let mut prepared_times = Vec::new();
     let mut one_team_times = Vec::new();
+    let mut hash_seen_times = Vec::new();
+    let mut inplace_merkle_times = Vec::new();
+    let mut fast_reduce_times = Vec::new();
+    let mut tree_index_times = Vec::new();
+    let mut hash_index_times = Vec::new();
+    let mut merkle_reference_times = Vec::new();
+    let mut merkle_inplace_times = Vec::new();
     let mut bulk_times = Vec::new();
     for _ in 0..repeats {
         let start = Instant::now();
