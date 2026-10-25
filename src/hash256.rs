@@ -101,7 +101,6 @@ fn sha256_parts(parts: &[&[u8]]) -> [u8; 32] {
                 continue;
             }
             compress(&mut state, &pending);
-            filled = 0;
         }
         let mut blocks = remaining.chunks_exact(64);
         for block in &mut blocks {
