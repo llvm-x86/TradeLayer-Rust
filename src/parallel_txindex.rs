@@ -696,6 +696,7 @@ pub(crate) fn inspect_prepared_block_pooled_barrier(
     let start_barrier = Barrier::new(workers + 1);
     let done_barrier = Barrier::new(workers + 1);
     let stop = std::sync::atomic::AtomicBool::new(false);
+    let shared_fault = std::sync::atomic::AtomicBool::new(false);
     let mut report = blank_index(transactions.len());
     let mut seen = BTreeMap::new();
 
@@ -706,17 +707,22 @@ pub(crate) fn inspect_prepared_block_pooled_barrier(
             let start = &start_barrier;
             let done = &done_barrier;
             let stopping = &stop;
+            let failed = &shared_fault;
             handles.push(scope.spawn(move || loop {
                 start.wait();
                 if stopping.load(Ordering::Acquire) {
                     break;
                 }
-                let window = match current.lock() {
-                    Ok(guard) => guard
-                        .as_ref()
-                        .expect("coordinator published window before barrier")
-                        .clone(),
-                    Err(_) => break,
+                // A poisoned publication lock or missing window must not
+                // strand the coordinator at the completion barrier.
+                let next = match current.lock() {
+                    Ok(guard) => guard.clone(),
+                    Err(poisoned) => poisoned.into_inner().clone(),
+                };
+                let Some(window) = next else {
+                    failed.store(true, Ordering::Release);
+                    done.wait();
+                    continue;
                 };
                 let worked = catch_unwind(AssertUnwindSafe(|| loop {
                     let index = window.next_claim.fetch_add(1, Ordering::Relaxed);
@@ -773,7 +779,9 @@ pub(crate) fn inspect_prepared_block_pooled_barrier(
                     .map_err(|_| ParallelIndexError::WorkerPanicked)? = None;
                 let completed = Arc::try_unwrap(window)
                     .map_err(|_| ParallelIndexError::WorkerPanicked)?;
-                if completed.panicked.load(Ordering::Acquire) {
+                if shared_fault.load(Ordering::Acquire)
+                    || completed.panicked.load(Ordering::Acquire)
+                {
                     return Err(ParallelIndexError::WorkerPanicked);
                 }
                 for (offset, cell) in completed.slots.into_iter().enumerate() {
