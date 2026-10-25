@@ -275,7 +275,9 @@ pub fn select_unverified_transaction_output(
     }
     let count = reader.limited_count()?;
     if count != layout.output_count as usize {
-        return Err(ScanError::Invalid("output count differs from layout".into()));
+        return Err(ScanError::Invalid(
+            "output count differs from layout".into(),
+        ));
     }
     let mut amount_total = 0u64;
     let mut selected = None;
