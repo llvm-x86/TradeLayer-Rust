@@ -73,6 +73,7 @@ fn pinned_source_equal_for_all_worker_and_window_settings() {
             assert_eq!(pooled, serial, "pool workers={workers} window={window}");
             assert_eq!(pooled, view.inspect_parallel_one_team(cfg).unwrap());
             assert_eq!(pooled, view.inspect_parallel(cfg).unwrap());
+            assert_eq!(view.inspect_parallel_pooled_barrier(cfg).unwrap(), serial);
         }
     }
     let pooled = view.inspect_parallel_pooled_weighted(config(4, 2)).unwrap();
@@ -86,6 +87,15 @@ fn pinned_source_equal_for_all_worker_and_window_settings() {
     );
     assert_eq!(
         pooled.require_tradelayer_state_transition(),
+        Err(RawBlockTrustError::TradeLayerStateAndSignedRevisionUnverified)
+    );
+    let barrier = view.inspect_parallel_pooled_barrier(config(4, 2)).unwrap();
+    assert_eq!(
+        barrier.require_script_and_utxo_consensus(),
+        Err(RawBlockTrustError::ScriptAndUtxoStateUnverified)
+    );
+    assert_eq!(
+        barrier.require_tradelayer_state_transition(),
         Err(RawBlockTrustError::TradeLayerStateAndSignedRevisionUnverified)
     );
 }
@@ -108,6 +118,11 @@ fn bounded_window_crossings_keep_all_source_observations() {
                     observed.txid_merkle_root_raw(),
                     view.header_merkle_root_raw()
                 );
+                let barrier = view.inspect_parallel_pooled_barrier(cfg).unwrap();
+                assert_eq!(
+                    barrier, expected,
+                    "barrier witness={witness_percent}, workers={workers}, window={window}"
+                );
             }
         }
     }
@@ -124,6 +139,10 @@ fn stress_ten_thousand_transactions_across_many_windows() {
             .unwrap();
         assert_eq!(observed, expected, "workers={workers} window={window}");
         assert_eq!(observed.ordered_preindex().transaction_count(), 10_000);
+        let barrier = view
+            .inspect_parallel_pooled_barrier(config(workers, window))
+            .unwrap();
+        assert_eq!(barrier, expected, "barrier workers={workers} window={window}");
     }
 }
 
@@ -147,6 +166,11 @@ fn repeated_txid_in_another_window_preserves_first_failure_index() {
                 Err(expected.clone()),
                 "workers={workers} window={window}"
             );
+            assert_eq!(
+                block.inspect_parallel_pooled_barrier(config(workers, window)),
+                Err(expected.clone()),
+                "barrier workers={workers} window={window}"
+            );
         }
     }
 }
@@ -158,6 +182,12 @@ fn input_validation_and_transaction_count_are_unchanged() {
     for cfg in [config(0, 64), config(17, 64), config(4, 0), config(4, 513)] {
         assert_eq!(
             view.inspect_parallel_pooled_weighted(cfg),
+            Err(RawBlockIngestError::TransactionPreindex(
+                ParallelIndexError::InvalidConfig
+            ))
+        );
+        assert_eq!(
+            view.inspect_parallel_pooled_barrier(cfg),
             Err(RawBlockIngestError::TransactionPreindex(
                 ParallelIndexError::InvalidConfig
             ))
