@@ -60,9 +60,9 @@ fn segment(header_hex: &[u8]) -> CheckedHeaderSegment {
     )
     .unwrap()
 }
-fn check<'a>(
+fn check(
     block: &CheckedHeaderSegment,
-    txs: &[&'a [u8]],
+    txs: &[&[u8]],
     selected_index: usize,
 ) -> Result<tradelayer_core::bitcoin_witness_commitment::UnverifiedBitcoinWitnessBlock, WitnessBlockError> {
     audit_bitcoin_bip141_witness_block_unverified(
