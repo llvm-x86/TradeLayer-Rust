@@ -75,9 +75,7 @@ fn pinned_source_equal_for_all_worker_and_window_settings() {
             assert_eq!(pooled, view.inspect_parallel(cfg).unwrap());
         }
     }
-    let pooled = view
-        .inspect_parallel_pooled_weighted(config(4, 2))
-        .unwrap();
+    let pooled = view.inspect_parallel_pooled_weighted(config(4, 2)).unwrap();
     assert_eq!(
         pooled.require_authenticated_block(),
         Err(RawBlockTrustError::ActiveChainAndFullConsensusUnverified)
