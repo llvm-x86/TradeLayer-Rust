@@ -494,6 +494,40 @@ mod kani_proofs {
         );
     }
 
+    /// Verify that the actual (PropertyId, AccountId) tuple Ord uses the
+    /// full nonzero u32 property identifier as the primary sort key.
+    /// Deliberately choose account labels ordered oppositely ("~" > "!")
+    /// so the proof distinguishes property precedence from account order.
+    #[kani::proof]
+    #[kani::unwind(24)]
+    fn native_property_u32_tuple_order_dominates_account_bytes() {
+        use crate::ledger::{AccountId, PropertyId};
+        use core::cmp::Ordering;
+
+        let left_id: u32 = kani::any();
+        let right_id: u32 = kani::any();
+        kani::assume(left_id != 0 && right_id != 0);
+
+        let left = (
+            PropertyId::try_from(left_id).unwrap(),
+            AccountId::try_from("~").unwrap(),
+        );
+        let right = (
+            PropertyId::try_from(right_id).unwrap(),
+            AccountId::try_from("!").unwrap(),
+        );
+
+        let expected = if left_id < right_id {
+            Ordering::Less
+        } else {
+            // On equal properties, "~" sorts strictly after "!".
+            Ordering::Greater
+        };
+        assert_eq!(left.cmp(&right), expected);
+        assert_eq!(right.cmp(&left), expected.reverse());
+        assert_ne!(left, right);
+    }
+
     /// Isolate the real AccountId(String) derived comparator from Vec
     /// allocation and element shifting. For an arbitrary printable u8
     /// query against one fixed ASCII account, the Rust Ord result must be
