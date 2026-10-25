@@ -74,6 +74,10 @@ jobs:
         run: python3 scripts/audit_channel_ecdsa_openssl.py --check
       - name: Stage 25J public-only signed 2-of-2 fixture Rust parity and always-deny
         run: cargo test --frozen --test channel_signed_evidence
+      - name: Stage 25K independent RIPEMD160 HASH160 Python provider reference
+        run: python3 scripts/audit_p2sh_hash160.py
+      - name: Stage 25K legacy P2SH two-of-two script and outpoint, no ECDSA
+        run: cargo test --frozen --test channel_p2sh_audit
       - name: Stage 25F source-only exact rational bankruptcy threshold
         run: cargo test --frozen --test bankruptcy_source_audit
       - name: Verify Stage 25A isolated margin and funding atomicity
