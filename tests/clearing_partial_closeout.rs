@@ -231,7 +231,7 @@ fn exactly_one_real_margin_transfer_reduces_equal_opposite_lots() {
     assert_eq!(result.contracts_reduced, 1);
     assert_eq!(result.payer, Some(a("bob")));
     assert_eq!(result.receiver, Some(a("alice")));
-    assert_eq!(result.realized_transfer_atoms, u128::from(ONE));
+    assert_eq!(result.mark_reference_transfer_atoms, u128::from(ONE));
     assert_eq!(result.transfer_legs, 1);
     assert_eq!(s.positions()[&a("alice")], 2);
     assert_eq!(s.positions()[&a("bob")], -2);
@@ -264,7 +264,7 @@ fn inverse_price_move_debits_exact_opposite_owner_and_never_insurer() {
         .unwrap();
     assert_eq!(receipt.payer, Some(a("alice")));
     assert_eq!(receipt.receiver, Some(a("bob")));
-    assert_eq!(receipt.realized_transfer_atoms, u128::from(ONE));
+    assert_eq!(receipt.mark_reference_transfer_atoms, u128::from(ONE));
     assert_eq!(s.margin_atoms(&a("alice")), 4 * u128::from(ONE));
     assert_eq!(s.margin_atoms(&a("bob")), 6 * u128::from(ONE));
     assert_eq!(
@@ -348,7 +348,7 @@ fn no_leg_close_consumes_replay_but_keeps_escrow_and_mark_unchanged() {
         .reduce_bilateral_positions_unverified(tx(50), 101, &bilateral(1, 100 * ONE))
         .unwrap();
     assert_eq!(result.transfer_legs, 0);
-    assert_eq!(result.realized_transfer_atoms, 0);
+    assert_eq!(result.mark_reference_transfer_atoms, 0);
     assert_eq!(result.payer, None);
     assert_eq!(result.receiver, None);
     assert_eq!(
