@@ -61,6 +61,8 @@ pub enum ClearingError {
     PendingSpotOrders,
     PnlRoundingImbalance(i128),
     NoDistress,
+    MissingOppositePosition,
+    NotStrictPartial,
     InsufficientInsurance {
         required_atoms: u128,
         available_atoms: u128,
@@ -1163,3 +1165,6 @@ include!("clearing_snapshot_impl.rs");
 
 // Stage25E2B: private full-book insured closeout under one atomic ledger.
 include!("clearing_distress_impl.rs");
+
+// Stage25F: strict synthetic bilateral reduction, not whole-book liquidation.
+include!("clearing_partial_impl.rs");
