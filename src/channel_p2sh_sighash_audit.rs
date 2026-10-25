@@ -89,9 +89,8 @@ fn legacy_sighash_all_unverified(
 
     // Stage25K structurally validated this exact scriptSig. Reuse its strict
     // parser to obtain the actual redeemScript; never trust caller scriptCode.
-    let redeem = parse_two_signatures_and_redeem(
-        selected_script.ok_or(P2shAuditError::InvalidScriptSig)?,
-    )?;
+    let redeem =
+        parse_two_signatures_and_redeem(selected_script.ok_or(P2shAuditError::InvalidScriptSig)?)?;
     // Fixed OP_2/PUSH33/PUSH33/OP_2/CHECKMULTISIG has no executable
     // OP_CODESEPARATOR or signature push to remove from legacy scriptCode.
     if redeem.len() != 71 {
