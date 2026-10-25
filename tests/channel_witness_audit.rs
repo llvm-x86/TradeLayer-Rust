@@ -2,25 +2,25 @@
 //! Syntactically DER-looking fake signatures deliberately pass inspection,
 //! but the caller can NEVER infer actual ECDSA validity or authorization.
 use tradelayer_core::channel_witness_audit::{
-    audit_native_p2wsh_outpoint_unverified, ClaimedTwoOfTwoPubkeys,
-    StructuralChannelError, CANONICAL_COMPRESSED_2_OF_2_SCRIPT_SIZE,
+    audit_native_p2wsh_outpoint_unverified, ClaimedTwoOfTwoPubkeys, StructuralChannelError,
+    CANONICAL_COMPRESSED_2_OF_2_SCRIPT_SIZE,
 };
 use tradelayer_core::network_profile::TradeLayerMainnet;
 use tradelayer_core::read_only::{decode_hex, inspect_transaction, ScanError};
 
 const PROGRAM: [u8; 32] = [
-    0xc8, 0xe2, 0x0d, 0x4b, 0x82, 0xf2, 0xef, 0x13,
-    0x27, 0x35, 0xe3, 0xdb, 0x61, 0x53, 0x93, 0xc5,
-    0xc8, 0xa1, 0xa9, 0x56, 0x44, 0x05, 0xfd, 0x96,
-    0x08, 0x46, 0x6a, 0x89, 0x3f, 0xca, 0xb6, 0x8f,
+    0xc8, 0xe2, 0x0d, 0x4b, 0x82, 0xf2, 0xef, 0x13, 0x27, 0x35, 0xe3, 0xdb, 0x61, 0x53, 0x93, 0xc5,
+    0xc8, 0xa1, 0xa9, 0x56, 0x44, 0x05, 0xfd, 0x96, 0x08, 0x46, 0x6a, 0x89, 0x3f, 0xca, 0xb6, 0x8f,
 ];
 
 fn keys() -> ClaimedTwoOfTwoPubkeys {
     // Two distinct compressed secp256k1 generator encodings (G and -G).
     // Encoding is not a proof of private-key possession.
-    let x: [u8; 32] = decode_hex(
-        "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
-    ).unwrap().try_into().unwrap();
+    let x: [u8; 32] =
+        decode_hex("79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798")
+            .unwrap()
+            .try_into()
+            .unwrap();
     let mut a = [0u8; 33];
     a[0] = 0x02;
     a[1..].copy_from_slice(&x);
@@ -130,7 +130,10 @@ fn checked(
     funding_bytes: &[u8],
     spend_bytes: &[u8],
     signers: ClaimedTwoOfTwoPubkeys,
-) -> Result<tradelayer_core::channel_witness_audit::UnverifiedP2wshOutpointSpend, StructuralChannelError> {
+) -> Result<
+    tradelayer_core::channel_witness_audit::UnverifiedP2wshOutpointSpend,
+    StructuralChannelError,
+> {
     audit_native_p2wsh_outpoint_unverified(
         TradeLayerMainnet::Litecoin,
         funding_bytes,
@@ -198,7 +201,11 @@ fn rejects_wrong_prevout_even_if_script_and_claimed_signers_are_correct() {
 fn rejects_p2sh_unsupported_output_wrong_witness_program_and_empty_value() {
     let (fund, spend) = pair();
     assert_eq!(
-        checked(&funding(&[0xa9, 0x14, 2, 3, 4, 0x87], 10_000), &spend, keys()),
+        checked(
+            &funding(&[0xa9, 0x14, 2, 3, 4, 0x87], 10_000),
+            &spend,
+            keys()
+        ),
         Err(StructuralChannelError::UnsupportedFundingScript)
     );
     // Same raw funding txid changes when a program changes, so spend must
@@ -206,14 +213,25 @@ fn rejects_p2sh_unsupported_output_wrong_witness_program_and_empty_value() {
     let mut wrong_spk = script_pubkey();
     wrong_spk[2] ^= 1;
     let bad_fund = funding(&wrong_spk, 10_000);
-    let witness = spending(inspect_transaction(&bad_fund).unwrap().txid, 0, &[], &good_stack(), true);
+    let witness = spending(
+        inspect_transaction(&bad_fund).unwrap().txid,
+        0,
+        &[],
+        &good_stack(),
+        true,
+    );
     assert_eq!(
         checked(&bad_fund, &witness, keys()),
         Err(StructuralChannelError::WitnessCommitmentMismatch)
     );
     let zero_fund = funding(&script_pubkey(), 0);
-    let zero_spend =
-        spending(inspect_transaction(&zero_fund).unwrap().txid, 0, &[], &good_stack(), true);
+    let zero_spend = spending(
+        inspect_transaction(&zero_fund).unwrap().txid,
+        0,
+        &[],
+        &good_stack(),
+        true,
+    );
     assert_eq!(
         checked(&zero_fund, &zero_spend, keys()),
         Err(StructuralChannelError::InvalidOutputValue)
@@ -243,7 +261,13 @@ fn distinct_signers_and_exact_2of2_checkmultisig_redeem_script_required() {
     );
     let mut stack = good_stack();
     stack[3][0] = 0x51; // not OP_2
-    let mutated = spending(inspect_transaction(&fund).unwrap().txid, 0, &[], &stack, true);
+    let mutated = spending(
+        inspect_transaction(&fund).unwrap().txid,
+        0,
+        &[],
+        &stack,
+        true,
+    );
     assert_eq!(
         checked(&fund, &mutated, keys()),
         Err(StructuralChannelError::InvalidWitnessScript)
@@ -323,7 +347,12 @@ fn nested_or_legacy_spend_and_dogecoin_are_explicitly_unsupported() {
     let canonical = spending(id, 0, &[], &good_stack(), true);
     assert_eq!(
         audit_native_p2wsh_outpoint_unverified(
-            TradeLayerMainnet::Dogecoin, &fund, 0, &canonical, 1, keys()
+            TradeLayerMainnet::Dogecoin,
+            &fund,
+            0,
+            &canonical,
+            1,
+            keys()
         ),
         Err(StructuralChannelError::UnsupportedNetwork)
     );
@@ -334,13 +363,23 @@ fn invalid_indices_and_canonical_compactsize_bounds_fail_closed() {
     let (fund, spend) = pair();
     assert_eq!(
         audit_native_p2wsh_outpoint_unverified(
-            TradeLayerMainnet::Litecoin, &fund, 1, &spend, 1, keys()
+            TradeLayerMainnet::Litecoin,
+            &fund,
+            1,
+            &spend,
+            1,
+            keys()
         ),
         Err(StructuralChannelError::InvalidOutputIndex)
     );
     assert_eq!(
         audit_native_p2wsh_outpoint_unverified(
-            TradeLayerMainnet::Litecoin, &fund, 0, &spend, 2, keys()
+            TradeLayerMainnet::Litecoin,
+            &fund,
+            0,
+            &spend,
+            2,
+            keys()
         ),
         Err(StructuralChannelError::InvalidInputIndex)
     );
@@ -348,7 +387,9 @@ fn invalid_indices_and_canonical_compactsize_bounds_fail_closed() {
     nonminimal.splice(4..5, [0xfd, 0x01, 0x00]); // input count 1 non-minimal
     assert!(matches!(
         checked(&nonminimal, &spend, keys()),
-        Err(StructuralChannelError::RawTransaction(ScanError::NonCanonicalCompactSize))
+        Err(StructuralChannelError::RawTransaction(
+            ScanError::NonCanonicalCompactSize
+        ))
     ));
     let mut truncated = spend.clone();
     truncated.pop();
@@ -360,7 +401,9 @@ fn invalid_indices_and_canonical_compactsize_bounds_fail_closed() {
     trailing.push(0);
     assert_eq!(
         checked(&fund, &trailing, keys()),
-        Err(StructuralChannelError::RawTransaction(ScanError::TrailingBytes))
+        Err(StructuralChannelError::RawTransaction(
+            ScanError::TrailingBytes
+        ))
     );
 }
 
