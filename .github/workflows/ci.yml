@@ -301,6 +301,8 @@ jobs:
           grep -q '^one_team_vs_windowed_ratio=' /tmp/txindex-8d-large.log
           grep -q '^pooled_weighted_prepared_only_median_ms=' /tmp/txindex-8d-large.log
           grep -q '^pooled_weighted_vs_one_team_ratio=' /tmp/txindex-8d-large.log
+          grep -q '^pooled_barrier_prepared_only_median_ms=' /tmp/txindex-8d-large.log
+          grep -q '^pooled_barrier_vs_one_team_ratio=' /tmp/txindex-8d-large.log
           grep -Fxq 'pooled_weighted_window_result_cap=512' /tmp/txindex-8d-large.log
           grep -Fxq 'one_team_extra_result_slots=10000' /tmp/txindex-8d-large.log
 
