@@ -60,6 +60,8 @@ jobs:
         run: cargo test --frozen --test insured_distressed_closeout
       - name: Stage 25F bounded synthetic bilateral closeout and TLCC rollback
         run: cargo test --frozen --test clearing_partial_closeout
+      - name: Stage 25F pinned AMM priority and weighted-average accounting diagnostics
+        run: cargo test --frozen --test liquidation_source_characterization
       - name: Stage 25E1 liquidation risk preflight and no-spend source budgets
         run: cargo test --frozen --test liquidation_preflight
       - name: Verify Stage 25A isolated margin and funding atomicity
