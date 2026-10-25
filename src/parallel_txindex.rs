@@ -218,7 +218,10 @@ where
     }
     slots
         .into_iter()
-        .map(|slot| slot.into_inner().ok_or(ParallelIndexError::MissingWorkerResult))
+        .map(|slot| {
+            slot.into_inner()
+                .ok_or(ParallelIndexError::MissingWorkerResult)
+        })
         .collect()
 }
 
@@ -287,9 +290,8 @@ pub fn inspect_unverified_block_parallel(
     {
         let start = window_index * config.window_transactions;
         let completed = work_window(start, window.len(), config.workers, &|index| {
-            inspect_transaction(&raw_transactions[index]).map_err(|source| {
-                ParallelIndexError::RawScan { index, source }
-            })
+            inspect_transaction(&raw_transactions[index])
+                .map_err(|source| ParallelIndexError::RawScan { index, source })
         })?;
         for (offset, result) in completed.into_iter().enumerate() {
             let index = start + offset;
