@@ -16,8 +16,9 @@
 
 use crate::hash256::double_sha256;
 use crate::parallel_txindex::{
-    inspect_prepared_block_one_team, inspect_prepared_block_parallel, ParallelIndexConfig,
-    ParallelIndexError, PreparedRawTransaction, UnverifiedOrderedBlockIndex,
+    inspect_prepared_block_one_team, inspect_prepared_block_parallel,
+    inspect_prepared_block_pooled_weighted, ParallelIndexConfig, ParallelIndexError,
+    PreparedRawTransaction, UnverifiedOrderedBlockIndex,
 };
 use crate::read_only::{
     compact_size_prefix, prepare_transaction_prefix, source_prevouts_from_layout, RawOutpoint,
@@ -66,6 +67,14 @@ pub struct UnverifiedRawBlockView<'a> {
     layouts: Vec<TransactionLayout>,
     stripped_block_bytes: usize,
     block_weight: u64,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum PreindexSchedule {
+    Serial,
+    Windowed,
+    OneTeam,
+    PooledWeighted,
 }
 
 impl<'a> UnverifiedRawBlockView<'a> {
@@ -176,8 +185,7 @@ impl<'a> UnverifiedRawBlockView<'a> {
     fn index(
         &self,
         config: ParallelIndexConfig,
-        parallel: bool,
-        one_team: bool,
+        schedule: PreindexSchedule,
     ) -> Result<UnverifiedRawBlockIndex, RawBlockIngestError> {
         let prepared = self
             .transaction_ranges
@@ -188,17 +196,15 @@ impl<'a> UnverifiedRawBlockView<'a> {
                 layout,
             })
             .collect::<Vec<_>>();
-        let report = if one_team {
-            inspect_prepared_block_one_team(&prepared, config)
-        } else {
-            inspect_prepared_block_parallel(
-                &prepared,
-                if parallel {
-                    config
-                } else {
-                    ParallelIndexConfig::serial()
-                },
-            )
+        let report = match schedule {
+            PreindexSchedule::Serial => {
+                inspect_prepared_block_parallel(&prepared, ParallelIndexConfig::serial())
+            }
+            PreindexSchedule::Windowed => inspect_prepared_block_parallel(&prepared, config),
+            PreindexSchedule::OneTeam => inspect_prepared_block_one_team(&prepared, config),
+            PreindexSchedule::PooledWeighted => {
+                inspect_prepared_block_pooled_weighted(&prepared, config)
+            }
         }
         .map_err(RawBlockIngestError::TransactionPreindex)?;
         let txids = report
@@ -223,7 +229,7 @@ impl<'a> UnverifiedRawBlockView<'a> {
         &self,
         config: ParallelIndexConfig,
     ) -> Result<UnverifiedRawBlockIndex, RawBlockIngestError> {
-        self.index(config, true, false)
+        self.index(config, PreindexSchedule::Windowed)
     }
     /// Experimental CPU-only scanner that spawns ONE scoped worker team
     /// per block instead of recreating workers for every bounded window.
@@ -234,11 +240,21 @@ impl<'a> UnverifiedRawBlockView<'a> {
         &self,
         config: ParallelIndexConfig,
     ) -> Result<UnverifiedRawBlockIndex, RawBlockIngestError> {
-        self.index(config, true, true)
+        self.index(config, PreindexSchedule::OneTeam)
+    }
+
+    /// Experimental persistent CPU team across <=512-slot windows, with
+    /// dynamic claims sized by estimated SHA256d bytes. Source ordered,
+    /// allocation bounded and strictly read-only.
+    pub fn inspect_parallel_pooled_weighted(
+        &self,
+        config: ParallelIndexConfig,
+    ) -> Result<UnverifiedRawBlockIndex, RawBlockIngestError> {
+        self.index(config, PreindexSchedule::PooledWeighted)
     }
 
     pub fn inspect_serial(&self) -> Result<UnverifiedRawBlockIndex, RawBlockIngestError> {
-        self.index(ParallelIndexConfig::serial(), false, false)
+        self.index(ParallelIndexConfig::serial(), PreindexSchedule::Serial)
     }
 
     pub const fn require_full_bitcoin_consensus(&self) -> Result<(), RawBlockTrustError> {
