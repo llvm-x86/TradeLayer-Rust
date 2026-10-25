@@ -134,11 +134,11 @@ mod tests {
             assert_eq!(hex(&ripemd160(data.as_bytes())), expected);
         }
         assert_eq!(
-            hex(&ripemd160(&vec![b'a'; 55])),
+            hex(&ripemd160(&[b'a'; 55])),
             "0d8a8c9063a48576a7c97e9f95253a6e53ff6765"
         );
         assert_eq!(
-            hex(&ripemd160(&vec![b'a'; 56])),
+            hex(&ripemd160(&[b'a'; 56])),
             "e72334b46c83cc70bef979e15453706c95b888be"
         );
         assert_eq!(
