@@ -136,6 +136,12 @@ jobs:
         run: node scripts/audit_legacy_txencoder_source.cjs
       - name: Legacy txEncoder.js Rust 14-family 256-bit/hash/amount and permanent-authority denials
         run: cargo test --frozen --test legacy_txencoder_audit
+      - name: Stage 26 txIndex exact pinned 506-line JS source VM, mock-only ingress
+        run: node scripts/audit_legacy_txindex_source.cjs
+      - name: Stage 26 bounded 10k-TX std-thread parallel SHA256d index determinism
+        run: cargo test --frozen --test txindex_parallel
+      - name: Stage 26 pinned source marker/vout/3-argument indexing diagnostics
+        run: cargo test --frozen --test legacy_txindex_audit
       - name: Stage 25F source-only exact rational bankruptcy threshold
         run: cargo test --frozen --test bankruptcy_source_audit
       - name: Verify Stage 25A isolated margin and funding atomicity
@@ -236,6 +242,12 @@ jobs:
         run: python3 scripts/check_rust_supply_chain.py
       - name: Release build without network or lockfile changes
         run: cargo build --all-targets --release --frozen
+      - name: Stage 26 synthetic TXID CPU throughput benchmark, no speedup assertion
+        run: |
+          target/release/tradelayer-txindex-bench 2048 4 > /tmp/tradelayer-txindex-bench.txt
+          cat /tmp/tradelayer-txindex-bench.txt
+          grep -Fxq 'consensus_admission=UNVERIFIED' /tmp/tradelayer-txindex-bench.txt
+          grep -Fxq 'state_application=NOT_PERFORMED' /tmp/tradelayer-txindex-bench.txt
 
   # Preserve the preexisting required "check" job name, but make it an
   # explicit AND over both independent jobs. A test or release failure,
