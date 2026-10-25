@@ -93,12 +93,15 @@ fn main() {
     assert_eq!(old, *new.ordered_preindex());
     let one_team = view.inspect_parallel_one_team(config).unwrap();
     assert_eq!(one_team, new);
+    let one_team_tree = view.inspect_parallel_one_team_tree_reference(config).unwrap();
+    assert_eq!(one_team_tree, new);
     let mut owned_times = Vec::new();
     let mut full_owned_times = Vec::new();
     let mut prepared_times = Vec::new();
     let mut one_team_times = Vec::new();
+    let mut one_team_tree_times = Vec::new();
     let mut bulk_times = Vec::new();
-    for _ in 0..repeats {
+    for repetition in 0..repeats {
         let start = Instant::now();
         let owned: Vec<_> = view
             .transaction_ranges()
@@ -138,11 +141,24 @@ fn main() {
         prepared_times.push(start.elapsed());
         assert_eq!(*prepared_only.ordered_preindex(), serial_by_slot);
         black_box(prepared_only);
-        let start = Instant::now();
-        let pooled = view.inspect_parallel_one_team(config).unwrap();
-        one_team_times.push(start.elapsed());
-        assert_eq!(*pooled.ordered_preindex(), serial_by_slot);
-        black_box(pooled);
+        // Alternate variant order to balance hot caches and CPU frequency.
+        for hash_first in [repetition % 2 == 0, repetition % 2 != 0] {
+            let start = Instant::now();
+            let indexed = if hash_first {
+                view.inspect_parallel_one_team(config)
+            } else {
+                view.inspect_parallel_one_team_tree_reference(config)
+            }
+            .unwrap();
+            let elapsed = start.elapsed();
+            assert_eq!(*indexed.ordered_preindex(), serial_by_slot);
+            black_box(indexed);
+            if hash_first {
+                one_team_times.push(elapsed);
+            } else {
+                one_team_tree_times.push(elapsed);
+            }
+        }
         let start = Instant::now();
         let observed =
             fetch_and_inspect_unverified_block(view.header_hash_raw(), config, |_| Ok(raw.clone()))
@@ -155,6 +171,7 @@ fn main() {
     let full_owned_ms = median(full_owned_times).as_secs_f64() * 1000.0;
     let prepared_ms = median(prepared_times).as_secs_f64() * 1000.0;
     let one_team_ms = median(one_team_times).as_secs_f64() * 1000.0;
+    let one_team_tree_ms = median(one_team_tree_times).as_secs_f64() * 1000.0;
     let bulk_ms = median(bulk_times).as_secs_f64() * 1000.0;
     let bulk_seconds = (bulk_ms / 1000.0).max(1e-9);
     println!("benchmark=UNVERIFIED_SYNTHETIC_BULK_BLOCK_INGEST");
@@ -171,6 +188,12 @@ fn main() {
     println!("full_owned_block_pipeline_median_ms={full_owned_ms:.3}");
     println!("fused_prepared_only_median_ms={prepared_ms:.3}");
     println!("one_team_prepared_only_median_ms={one_team_ms:.3}");
+    println!("one_team_tree_reference_prepared_only_median_ms={one_team_tree_ms:.3}");
+    println!(
+        "one_team_hashmap_vs_tree_ratio={:.3}",
+        one_team_tree_ms / one_team_ms.max(1e-9)
+    );
+    println!("one_team_variant_order=COUNTERBALANCED");
     println!(
         "one_team_vs_windowed_ratio={:.3}",
         prepared_ms / one_team_ms.max(1e-9)

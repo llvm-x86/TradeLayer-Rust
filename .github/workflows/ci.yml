@@ -152,6 +152,8 @@ jobs:
         run: cargo test --frozen --test stage8d_fused_dependency
       - name: Stage 8D1b one scoped TX worker team and serial-equivalent 10k TX proof
         run: cargo test --frozen --test stage8d_one_team
+      - name: Stage 8D6 randomized duplicate-TXID index parity and historical block-1 fixture
+        run: cargo test --frozen --test stage8d6_hashmap_promotion
       - name: Legacy txIndex.js exact pinned source Node VM with fake RPC/DB and three-argument decoder
         run: node scripts/audit_legacy_txindex_source.cjs
       - name: Legacy txIndex.js Rust source marker offsets, vout-loss and permanent denial
@@ -290,14 +292,29 @@ jobs:
           grep -Fxq 'full_block_consensus=UNVERIFIED' /tmp/txindex-8d-small.log
       - name: Stage 8D fused benchmark at 10000 TX eight workers, 95 percent SegWit
         run: |
-          target/release/tradelayer-block-ingest-bench 10000 8 95 2 > /tmp/txindex-8d-large.log
+          target/release/tradelayer-block-ingest-bench 10000 8 95 4 > /tmp/txindex-8d-large.log
           cat /tmp/txindex-8d-large.log
           grep -Fxq 'ordered_equivalence=PASS' /tmp/txindex-8d-large.log
           grep -q '^full_pipeline_speed_ratio=' /tmp/txindex-8d-large.log
           grep -Fxq 'full_block_consensus=UNVERIFIED' /tmp/txindex-8d-large.log
           grep -q '^one_team_prepared_only_median_ms=' /tmp/txindex-8d-large.log
           grep -q '^one_team_vs_windowed_ratio=' /tmp/txindex-8d-large.log
+          grep -q '^one_team_tree_reference_prepared_only_median_ms=' /tmp/txindex-8d-large.log
+          grep -q '^one_team_hashmap_vs_tree_ratio=' /tmp/txindex-8d-large.log
+          grep -Fxq 'one_team_variant_order=COUNTERBALANCED' /tmp/txindex-8d-large.log
           grep -Fxq 'one_team_extra_result_slots=10000' /tmp/txindex-8d-large.log
+      - name: Stage 8D6 published Bitcoin mainnet block-1 raw hex and separate-process RSS smoke
+        run: |
+          python3 scripts/make_stage8d6_mainnet_block1.py /tmp/stage8d6-block1.hex > /tmp/stage8d6-vector.log
+          grep -Fxq 'mainnet_block1_merkle=LOCAL_CHECK_ONLY' /tmp/stage8d6-vector.log
+          target/release/tradelayer-real-block-reduce-bench /tmp/stage8d6-block1.hex 2 3 tree > /tmp/stage8d6-tree.log
+          target/release/tradelayer-real-block-reduce-bench /tmp/stage8d6-block1.hex 2 3 hash > /tmp/stage8d6-hash.log
+          grep -Fxq 'transaction_count=1' /tmp/stage8d6-tree.log
+          grep -Fxq 'transaction_count=1' /tmp/stage8d6-hash.log
+          grep -Fxq 'full_bitcoin_consensus=UNVERIFIED' /tmp/stage8d6-hash.log
+          grep -q '^process_peak_rss_kib=' /tmp/stage8d6-hash.log
+          python3 scripts/bench_stage8d6_real_blocks.py --workers 2 --repeats 2 --trials 2 /tmp/stage8d6-block1.hex > /tmp/stage8d6-rss.jsonl
+          python3 -c 'import json; row=json.load(open("/tmp/stage8d6-rss.jsonl")); assert row["transaction_count"] == 1; assert row["source_trust"] == "LOCAL_MERKLE_ONLY"'
 
   # Preserve the preexisting required "check" job name, but make it an
   # explicit AND over both independent jobs. A test or release failure,
