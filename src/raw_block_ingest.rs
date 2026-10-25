@@ -16,8 +16,9 @@
 
 use crate::hash256::double_sha256;
 use crate::parallel_txindex::{
-    inspect_prepared_block_one_team, inspect_prepared_block_parallel, ParallelIndexConfig,
-    ParallelIndexError, PreparedRawTransaction, UnverifiedOrderedBlockIndex,
+    inspect_prepared_block_one_team, inspect_prepared_block_one_team_hash_seen,
+    inspect_prepared_block_parallel, ParallelIndexConfig, ParallelIndexError,
+    PreparedRawTransaction, UnverifiedOrderedBlockIndex,
 };
 use crate::read_only::{
     compact_size_prefix, prepare_transaction_prefix, source_prevouts_from_layout, RawOutpoint,
@@ -66,6 +67,16 @@ pub struct UnverifiedRawBlockView<'a> {
     layouts: Vec<TransactionLayout>,
     stripped_block_bytes: usize,
     block_weight: u64,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum PreindexMode {
+    Serial,
+    Windowed,
+    OneTeam,
+    OneTeamHash,
+    OneTeamInplaceMerkle,
+    OneTeamHashInplaceMerkle,
 }
 
 impl<'a> UnverifiedRawBlockView<'a> {
@@ -176,8 +187,7 @@ impl<'a> UnverifiedRawBlockView<'a> {
     fn index(
         &self,
         config: ParallelIndexConfig,
-        parallel: bool,
-        one_team: bool,
+        mode: PreindexMode,
     ) -> Result<UnverifiedRawBlockIndex, RawBlockIngestError> {
         let prepared = self
             .transaction_ranges
@@ -188,25 +198,32 @@ impl<'a> UnverifiedRawBlockView<'a> {
                 layout,
             })
             .collect::<Vec<_>>();
-        let report = if one_team {
-            inspect_prepared_block_one_team(&prepared, config)
-        } else {
-            inspect_prepared_block_parallel(
-                &prepared,
-                if parallel {
-                    config
-                } else {
-                    ParallelIndexConfig::serial()
-                },
-            )
+        let report = match mode {
+            PreindexMode::Serial => {
+                inspect_prepared_block_parallel(&prepared, ParallelIndexConfig::serial())
+            }
+            PreindexMode::Windowed => inspect_prepared_block_parallel(&prepared, config),
+            PreindexMode::OneTeam | PreindexMode::OneTeamInplaceMerkle => {
+                inspect_prepared_block_one_team(&prepared, config)
+            }
+            PreindexMode::OneTeamHash | PreindexMode::OneTeamHashInplaceMerkle => {
+                inspect_prepared_block_one_team_hash_seen(&prepared, config)
+            }
         }
         .map_err(RawBlockIngestError::TransactionPreindex)?;
-        let txids = report
-            .ordered()
-            .iter()
-            .map(|item| item.observation.txid)
-            .collect::<Vec<_>>();
-        let root = merkle_root_unverified(&txids)?;
+        let root = match mode {
+            PreindexMode::OneTeamInplaceMerkle | PreindexMode::OneTeamHashInplaceMerkle => {
+                merkle_root_ordered_inplace(&report)?
+            }
+            _ => {
+                let txids = report
+                    .ordered()
+                    .iter()
+                    .map(|item| item.observation.txid)
+                    .collect::<Vec<_>>();
+                merkle_root_unverified(&txids)?
+            }
+        };
         if root != self.header_merkle_root_raw {
             return Err(RawBlockIngestError::HeaderMerkleRootMismatch);
         }
@@ -223,7 +240,7 @@ impl<'a> UnverifiedRawBlockView<'a> {
         &self,
         config: ParallelIndexConfig,
     ) -> Result<UnverifiedRawBlockIndex, RawBlockIngestError> {
-        self.index(config, true, false)
+        self.index(config, PreindexMode::Windowed)
     }
     /// Experimental CPU-only scanner that spawns ONE scoped worker team
     /// per block instead of recreating workers for every bounded window.
@@ -234,11 +251,38 @@ impl<'a> UnverifiedRawBlockView<'a> {
         &self,
         config: ParallelIndexConfig,
     ) -> Result<UnverifiedRawBlockIndex, RawBlockIngestError> {
-        self.index(config, true, true)
+        self.index(config, PreindexMode::OneTeam)
+    }
+
+    /// EXPERIMENTAL: source-ordered HashMap duplicate detection. The same
+    /// immutable worker scan and reference allocating Merkle path remain.
+    pub fn inspect_parallel_one_team_hash_seen(
+        &self,
+        config: ParallelIndexConfig,
+    ) -> Result<UnverifiedRawBlockIndex, RawBlockIngestError> {
+        self.index(config, PreindexMode::OneTeamHash)
+    }
+
+    /// EXPERIMENTAL: reuse the same allocation for every Merkle level;
+    /// duplicate detection and thread scheduling retain original semantics.
+    pub fn inspect_parallel_one_team_inplace_merkle(
+        &self,
+        config: ParallelIndexConfig,
+    ) -> Result<UnverifiedRawBlockIndex, RawBlockIngestError> {
+        self.index(config, PreindexMode::OneTeamInplaceMerkle)
+    }
+
+    /// EXPERIMENTAL combined faster reduction: HashMap duplicate detection
+    /// and single-allocation source-ordered Merkle. Unverified preindex only.
+    pub fn inspect_parallel_one_team_fast_reduce(
+        &self,
+        config: ParallelIndexConfig,
+    ) -> Result<UnverifiedRawBlockIndex, RawBlockIngestError> {
+        self.index(config, PreindexMode::OneTeamHashInplaceMerkle)
     }
 
     pub fn inspect_serial(&self) -> Result<UnverifiedRawBlockIndex, RawBlockIngestError> {
-        self.index(ParallelIndexConfig::serial(), false, false)
+        self.index(ParallelIndexConfig::serial(), PreindexMode::Serial)
     }
 
     pub const fn require_full_bitcoin_consensus(&self) -> Result<(), RawBlockTrustError> {
@@ -390,6 +434,65 @@ impl UnverifiedRawBlockView<'_> {
             unverified_external_prevouts: external,
         })
     }
+}
+
+/// EXPERIMENTAL in-place reducer. The caller owns the mutable leaf array,
+/// and each parent overwrites the earliest consumed child. Parent index i
+/// reads leaves 2*i / 2*i+1, so writes never change future child reads.
+/// Adjacent equal *actual* siblings fail, while Bitcoin's implicit odd-node
+/// duplication is permitted exactly as in the reference implementation.
+fn merkle_root_inplace_nodes(nodes: &mut [[u8; 32]]) -> Result<[u8; 32], RawBlockIngestError> {
+    if nodes.is_empty() {
+        return Err(RawBlockIngestError::ZeroTransactions);
+    }
+    if nodes.len() > crate::parallel_txindex::MAX_BLOCK_TRANSACTIONS {
+        return Err(RawBlockIngestError::TooManyTransactions);
+    }
+    let mut width = nodes.len();
+    while width > 1 {
+        let parents = width.div_ceil(2);
+        for parent in 0..parents {
+            let first = nodes[parent * 2];
+            let next = parent * 2 + 1;
+            let second = if next < width {
+                let sibling = nodes[next];
+                if first == sibling {
+                    return Err(RawBlockIngestError::InvalidTxidMerkleTree);
+                }
+                sibling
+            } else {
+                first
+            };
+            let mut concat = [0u8; 64];
+            concat[..32].copy_from_slice(&first);
+            concat[32..].copy_from_slice(&second);
+            nodes[parent] = double_sha256(&concat);
+        }
+        width = parents;
+    }
+    Ok(nodes[0])
+}
+
+/// Standalone Merkle parity surface. Copies source leaves exactly once and
+/// mutates the private buffer, rather than allocating at each Merkle level.
+/// This matches the reference including mutated-tree errors and odd leaves.
+pub fn merkle_root_unverified_inplace(
+    txids_raw: &[[u8; 32]],
+) -> Result<[u8; 32], RawBlockIngestError> {
+    merkle_root_inplace_nodes(&mut txids_raw.to_vec())
+}
+
+/// Avoid the otherwise separate TXID extraction Vec and Merkle-level Vec:
+/// copy ordered observations straight into the single mutable node array.
+fn merkle_root_ordered_inplace(
+    report: &UnverifiedOrderedBlockIndex,
+) -> Result<[u8; 32], RawBlockIngestError> {
+    let mut nodes = report
+        .ordered()
+        .iter()
+        .map(|row| row.observation.txid)
+        .collect::<Vec<_>>();
+    merkle_root_inplace_nodes(&mut nodes)
 }
 
 /// Bounded pairwise Bitcoin TXID Merkle SHA256d. This detects adjacent
