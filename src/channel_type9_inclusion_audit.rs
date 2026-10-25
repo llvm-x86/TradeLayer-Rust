@@ -129,8 +129,8 @@ pub fn inspect_raw_type9_candidate_unverified(
     if digits.is_empty() || (digits.len() > 1 && digits.starts_with('0')) {
         return Err(Type9OriginError::InvalidType9Fields);
     }
-    let clearlist_id = u32::try_from(parse_base36(digits)?)
-        .map_err(|_| Type9OriginError::InvalidType9Fields)?;
+    let clearlist_id =
+        u32::try_from(parse_base36(digits)?).map_err(|_| Type9OriginError::InvalidType9Fields)?;
     let target = fields[2];
     let metadata = fields[3];
     if target.is_empty()
@@ -326,7 +326,11 @@ pub fn audit_bitcoin_type9_relative_history_unverified<'a>(
         claimed_events.push(item.claim);
     }
     // Chronological, same-fork, no-future and no-same-tx claimed checks.
-    ClaimedHistoricalDirectView::audit(TradeLayerMainnet::Bitcoin, target_position, &claimed_events)?;
+    ClaimedHistoricalDirectView::audit(
+        TradeLayerMainnet::Bitcoin,
+        target_position,
+        &claimed_events,
+    )?;
     Ok(UnverifiedBitcoinType9History {
         target,
         observed_events,
