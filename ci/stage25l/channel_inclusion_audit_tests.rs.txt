@@ -1,0 +1,313 @@
+//! Stage25L: dual txid-Merkle inclusion is relative to UNTRUSTED headers.
+//! RegtestLike proof-of-work and a claimed anchor are fabricated. The exact
+//! Stage25J serialized fixture was originally labelled Litecoin for its
+//! Bitcoin-style transaction format; these test-only bytes are re-used to
+//! exercise a Bitcoin SHA256d header model, never mainnet confirmation.
+
+use tradelayer_core::bitcoin_inclusion::{
+    BitcoinPowProfile, CheckedHeaderSegment, MerklePath,
+};
+use tradelayer_core::chain::{BlockId, Tip};
+use tradelayer_core::channel_inclusion_audit::{
+    audit_bitcoin_p2wsh_relative_inclusion_unverified, ChannelInclusionError,
+};
+use tradelayer_core::channel_witness_audit::{
+    ClaimedTwoOfTwoPubkeys, StructuralChannelError,
+};
+use tradelayer_core::network_profile::TradeLayerMainnet;
+use tradelayer_core::read_only::{decode_hex, inspect_transaction};
+
+const HEADER_FUNDING_101: &str = concat!(
+    "02000000",
+    "3434343434343434343434343434343434343434343434343434343434343434",
+    "123874d4a84664ee8e041e639c7ff01f999953bcce8335ca2a35abece40f2bc0",
+    "00f15365ffff7f2000000000"
+);
+const HEADER_SPENDING_102: &str = concat!(
+    "02000000",
+    "8703d309262d3cd9760351af10d252dcef5a8a2b140c05a193378dbc0230a272",
+    "66471b2c34f5c2b2c02becf4c6f557af02c2cf94b468e4a1f61a89042a40fd61",
+    "01f15365ffff7f2000000000"
+);
+const HEADER_SAME_BLOCK_101: &str = concat!(
+    "02000000",
+    "3434343434343434343434343434343434343434343434343434343434343434",
+    "7fdf54fdcd9fefe4dc36b905be2658220e10aaa4839dc9ea0d8a2b192ee8f332",
+    "0af15365ffff7f2000000000"
+);
+
+fn bytes(hex: &str) -> Vec<u8> {
+    decode_hex(hex).unwrap()
+}
+
+fn header(hex: &str) -> [u8; 80] {
+    bytes(hex).try_into().unwrap()
+}
+
+fn fixture(key: &str) -> Vec<u8> {
+    let value = include_str!("../fixtures/channel_p2wsh_ecdsa_signed_synthetic.tsv")
+        .lines()
+        .filter(|line| !line.starts_with('#') && !line.is_empty())
+        .find_map(|line| {
+            let (name, value) = line.split_once('\t')?;
+            (name == key).then_some(value)
+        })
+        .unwrap();
+    bytes(value)
+}
+
+fn keys() -> ClaimedTwoOfTwoPubkeys {
+    ClaimedTwoOfTwoPubkeys {
+        participant_a: fixture("pubkey_a").try_into().unwrap(),
+        participant_b: fixture("pubkey_b").try_into().unwrap(),
+    }
+}
+
+fn anchor() -> Tip {
+    Tip {
+        height: 100,
+        id: BlockId([0x34; 32]),
+    }
+}
+
+fn path_single() -> MerklePath {
+    MerklePath {
+        tx_index: 0,
+        tx_count: 1,
+        siblings_raw: vec![],
+    }
+}
+
+fn linked_headers() -> CheckedHeaderSegment {
+    CheckedHeaderSegment::check_against_claimed_anchor(
+        anchor(),
+        &[
+            header(HEADER_FUNDING_101),
+            header(HEADER_SPENDING_102),
+        ],
+        BitcoinPowProfile::RegtestLike,
+    )
+    .unwrap()
+}
+
+fn same_block_header() -> CheckedHeaderSegment {
+    CheckedHeaderSegment::check_against_claimed_anchor(
+        anchor(),
+        &[header(HEADER_SAME_BLOCK_101)],
+        BitcoinPowProfile::RegtestLike,
+    )
+    .unwrap()
+}
+
+fn two_leaf_paths() -> (MerklePath, MerklePath) {
+    let funding = fixture("funding_hex");
+    let spending = fixture("spending_hex");
+    (
+        MerklePath {
+            tx_index: 0,
+            tx_count: 2,
+            siblings_raw: vec![inspect_transaction(&spending).unwrap().txid],
+        },
+        MerklePath {
+            tx_index: 1,
+            tx_count: 2,
+            siblings_raw: vec![inspect_transaction(&funding).unwrap().txid],
+        },
+    )
+}
+
+#[test]
+fn included_funding_precedes_spend_in_the_same_claimed_header_chain() {
+    let funding = fixture("funding_hex");
+    let spending = fixture("spending_hex");
+    let report = audit_bitcoin_p2wsh_relative_inclusion_unverified(
+        TradeLayerMainnet::Bitcoin,
+        &linked_headers(),
+        &funding, 101, 0, &path_single(),
+        &spending, 102, 1, &path_single(),
+        keys(),
+    )
+    .unwrap();
+    assert_eq!(report.claimed_anchor(), anchor());
+    assert_eq!(report.funding().height(), 101);
+    assert_eq!(report.spending().height(), 102);
+    assert_eq!(report.funding().tx_count(), 1);
+    assert_eq!(report.spending().tx_index(), 0);
+    assert_eq!(report.structural().funding_satoshis(), 20_000);
+    assert_eq!(
+        report.require_authenticated_channel_spend(),
+        Err(ChannelInclusionError::ActiveChainWitnessAndSignaturesUnverified)
+    );
+}
+
+#[test]
+fn same_block_inclusion_requires_topological_transaction_order() {
+    let (fund_path, spend_path) = two_leaf_paths();
+    let funding = fixture("funding_hex");
+    let spending = fixture("spending_hex");
+    let segment = same_block_header();
+    let result = audit_bitcoin_p2wsh_relative_inclusion_unverified(
+        TradeLayerMainnet::Bitcoin,
+        &segment,
+        &funding, 101, 0, &fund_path,
+        &spending, 101, 1, &spend_path,
+        keys(),
+    )
+    .unwrap();
+    assert_eq!(result.funding().tx_index(), 0);
+    assert_eq!(result.spending().tx_index(), 1);
+    assert_eq!(
+        audit_bitcoin_p2wsh_relative_inclusion_unverified(
+            TradeLayerMainnet::Bitcoin,
+            &segment,
+            &funding, 101, 0, &spend_path,
+            &spending, 101, 1, &fund_path,
+            keys(),
+        ),
+        Err(ChannelInclusionError::NoncausalTransactionOrder)
+    );
+    assert_eq!(
+        audit_bitcoin_p2wsh_relative_inclusion_unverified(
+            TradeLayerMainnet::Bitcoin,
+            &segment,
+            &funding, 102, 0, &fund_path,
+            &spending, 101, 1, &spend_path,
+            keys(),
+        ),
+        Err(ChannelInclusionError::NoncausalTransactionOrder)
+    );
+}
+
+#[test]
+fn forged_merkle_branch_and_wrong_header_height_fail_closed() {
+    let (fund_path, mut spend_path) = two_leaf_paths();
+    spend_path.siblings_raw[0][0] ^= 1;
+    let funding = fixture("funding_hex");
+    let spending = fixture("spending_hex");
+    assert!(matches!(
+        audit_bitcoin_p2wsh_relative_inclusion_unverified(
+            TradeLayerMainnet::Bitcoin,
+            &same_block_header(),
+            &funding, 101, 0, &fund_path,
+            &spending, 101, 1, &spend_path,
+            keys(),
+        ),
+        Err(ChannelInclusionError::SpendingMerkle(_))
+    ));
+    assert!(matches!(
+        audit_bitcoin_p2wsh_relative_inclusion_unverified(
+            TradeLayerMainnet::Bitcoin,
+            &linked_headers(),
+            &funding, 101, 0, &path_single(),
+            &spending, 103, 1, &path_single(),
+            keys(),
+        ),
+        Err(ChannelInclusionError::SpendingMerkle(_))
+    ));
+    let mut corrupt_funding = funding.clone();
+    corrupt_funding[47] ^= 1;
+    assert!(matches!(
+        audit_bitcoin_p2wsh_relative_inclusion_unverified(
+            TradeLayerMainnet::Bitcoin,
+            &linked_headers(),
+            &corrupt_funding, 101, 0, &path_single(),
+            &spending, 102, 1, &path_single(),
+            keys(),
+        ),
+        Err(ChannelInclusionError::FundingMerkle(_))
+    ));
+}
+
+#[test]
+fn merkle_txid_proof_does_not_authenticate_witness_signature_bytes() {
+    let funding = fixture("funding_hex");
+    let spending = fixture("spending_hex");
+    // A DER-shaped *mathematically invalid* witness still shares the SAME
+    // txid and therefore the SAME header Merkle path, until the missing
+    // witness commitment, script and ECDSA checks are independently added.
+    let needle = [0x30u8, 0x44, 0x02, 0x20, 0x21, 0xd7, 0xc0, 0x87];
+    let start = spending
+        .windows(needle.len())
+        .position(|window| window == needle)
+        .unwrap();
+    let mut tampered = spending.clone();
+    tampered[start + 5] ^= 1;
+    let original = inspect_transaction(&spending).unwrap();
+    let forged = inspect_transaction(&tampered).unwrap();
+    assert_eq!(original.txid, forged.txid);
+    assert_ne!(original.wtxid, forged.wtxid);
+    let report = audit_bitcoin_p2wsh_relative_inclusion_unverified(
+        TradeLayerMainnet::Bitcoin,
+        &linked_headers(),
+        &funding, 101, 0, &path_single(),
+        &tampered, 102, 1, &path_single(),
+        keys(),
+    )
+    .unwrap();
+    assert_eq!(report.spending().txid_display(), {
+        let mut hash = forged.txid;
+        hash.reverse();
+        hash
+    });
+    assert_eq!(
+        report.require_authenticated_channel_spend(),
+        Err(ChannelInclusionError::ActiveChainWitnessAndSignaturesUnverified)
+    );
+}
+
+#[test]
+fn invalid_witness_shape_rejected_even_when_merkle_txid_is_unchanged() {
+    let funding = fixture("funding_hex");
+    let mut spending = fixture("spending_hex");
+    let needle = [0x30u8, 0x44, 0x02, 0x20, 0x21, 0xd7, 0xc0, 0x87];
+    let start = spending
+        .windows(needle.len())
+        .position(|window| window == needle)
+        .unwrap();
+    spending[start] = 0x31;
+    assert!(matches!(
+        audit_bitcoin_p2wsh_relative_inclusion_unverified(
+            TradeLayerMainnet::Bitcoin,
+            &linked_headers(),
+            &funding, 101, 0, &path_single(),
+            &spending, 102, 1, &path_single(),
+            keys(),
+        ),
+        Err(ChannelInclusionError::ChannelStructure(
+            StructuralChannelError::MalformedSignatureEncoding
+        ))
+    ));
+}
+
+#[test]
+fn litecoin_dogecoin_and_empty_merkle_paths_do_not_gain_bitcoin_authority() {
+    let funding = fixture("funding_hex");
+    let spending = fixture("spending_hex");
+    for network in [TradeLayerMainnet::Litecoin, TradeLayerMainnet::Dogecoin] {
+        assert_eq!(
+            audit_bitcoin_p2wsh_relative_inclusion_unverified(
+                network,
+                &linked_headers(),
+                &funding, 101, 0, &path_single(),
+                &spending, 102, 1, &path_single(),
+                keys(),
+            ),
+            Err(ChannelInclusionError::UnsupportedNetwork)
+        );
+    }
+    let incorrect = MerklePath {
+        tx_index: 0,
+        tx_count: 2,
+        siblings_raw: vec![],
+    };
+    assert!(matches!(
+        audit_bitcoin_p2wsh_relative_inclusion_unverified(
+            TradeLayerMainnet::Bitcoin,
+            &linked_headers(),
+            &funding, 101, 0, &incorrect,
+            &spending, 102, 1, &path_single(),
+            keys(),
+        ),
+        Err(ChannelInclusionError::FundingMerkle(_))
+    ));
+}
