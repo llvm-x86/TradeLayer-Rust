@@ -122,7 +122,8 @@ pub fn characterize_bankruptcy_fraction_unverified(
         let price_times_size = last
             .checked_mul(qn)
             .ok_or(BankruptcyAuditError::ArithmeticOverflow)?;
-        let eq_price = input.equity_atoms
+        let eq_price = input
+            .equity_atoms
             .checked_mul(ONE)
             .ok_or(BankruptcyAuditError::ArithmeticOverflow)?;
         let numerator = if input.signed_contracts > 0 {
@@ -136,7 +137,8 @@ pub fn characterize_bankruptcy_fraction_unverified(
         };
         fraction(numerator, qn)
     } else {
-        let eq_last = input.equity_atoms
+        let eq_last = input
+            .equity_atoms
             .checked_mul(last)
             .ok_or(BankruptcyAuditError::ArithmeticOverflow)?;
         let scaled = ONE
