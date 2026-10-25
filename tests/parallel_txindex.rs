@@ -312,3 +312,25 @@ fn reorg_reinspection_has_no_cross_fork_memoized_candidates_or_source_state() {
         Err(ParallelIndexTrustError::FullBlockAndChainNotVerified)
     );
 }
+
+#[test]
+fn ten_thousand_transaction_microbatch_scan_preserves_canonical_positions() {
+    // Real Bitcoin blocks can contain thousands of transactions. This
+    // synthetic input deliberately varies script sizes and TL/non-TL ratio;
+    // it does NOT authenticate their previous outputs or blockchain status.
+    let rows = synthetic_block(10_000, 192);
+    let serial = inspect_unverified_block_serial(&rows).unwrap();
+    assert_eq!(serial.transaction_count(), 10_000);
+    let positions = serial.candidate_positions().to_vec();
+    assert!(positions.len() > 80);
+    assert!(positions.windows(2).all(|pair| pair[0] < pair[1]));
+    for (workers, window) in [(2, 32), (4, 64), (8, 256), (16, 512)] {
+        let parallel = inspect_unverified_block_parallel(&rows, config(workers, window)).unwrap();
+        assert_eq!(parallel, serial, "{workers} workers and {window} index window");
+        assert_eq!(parallel.candidate_positions(), positions.as_slice());
+        assert_eq!(
+            parallel.require_authenticated_transaction_state(),
+            Err(ParallelIndexTrustError::ScriptAndStateNotVerified)
+        );
+    }
+}
