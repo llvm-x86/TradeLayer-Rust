@@ -152,6 +152,8 @@ jobs:
         run: cargo test --frozen --test stage8d_fused_dependency
       - name: Stage 8D1b one scoped TX worker team and serial-equivalent 10k TX proof
         run: cargo test --frozen --test stage8d_one_team
+      - name: Stage 8D5 source-ordered hash-index and in-place Bitcoin Merkle parity
+        run: cargo test --frozen --test stage8d5_reduction_merkle
       - name: Legacy txIndex.js exact pinned source Node VM with fake RPC/DB and three-argument decoder
         run: node scripts/audit_legacy_txindex_source.cjs
       - name: Legacy txIndex.js Rust source marker offsets, vout-loss and permanent denial
@@ -297,6 +299,10 @@ jobs:
           grep -Fxq 'full_block_consensus=UNVERIFIED' /tmp/txindex-8d-large.log
           grep -q '^one_team_prepared_only_median_ms=' /tmp/txindex-8d-large.log
           grep -q '^one_team_vs_windowed_ratio=' /tmp/txindex-8d-large.log
+          grep -q '^one_team_fast_reduce_prepared_only_median_ms=' /tmp/txindex-8d-large.log
+          grep -q '^fast_reduce_vs_one_team_ratio=' /tmp/txindex-8d-large.log
+          grep -q '^duplicate_hashmap_vs_btree_ratio=' /tmp/txindex-8d-large.log
+          grep -q '^merkle_inplace_vs_allocating_ratio=' /tmp/txindex-8d-large.log
           grep -Fxq 'one_team_extra_result_slots=10000' /tmp/txindex-8d-large.log
 
   # Preserve the preexisting required "check" job name, but make it an
