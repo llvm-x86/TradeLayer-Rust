@@ -171,8 +171,14 @@ fn main() {
     println!("full_owned_block_pipeline_median_ms={full_owned_ms:.3}");
     println!("fused_prepared_only_median_ms={prepared_ms:.3}");
     println!("one_team_prepared_only_median_ms={one_team_ms:.3}");
-    println!("one_team_vs_windowed_ratio={:.3}", prepared_ms / one_team_ms.max(1e-9));
-    println!("one_team_extra_result_slots={}", if workers > 1 { count } else { 0 });
+    println!(
+        "one_team_vs_windowed_ratio={:.3}",
+        prepared_ms / one_team_ms.max(1e-9)
+    );
+    println!(
+        "one_team_extra_result_slots={}",
+        if workers > 1 { count } else { 0 }
+    );
     println!("bulk_borrowed_parallel_median_ms={bulk_ms:.3}");
     println!(
         "full_pipeline_speed_ratio={:.3}",

@@ -413,7 +413,8 @@ pub(crate) fn inspect_prepared_block_one_team(
     // Consume only AFTER all workers join, strictly in original order.
     // A failed row at a higher index can never mask a lower-index failure.
     for (index, slot) in slots.into_iter().enumerate() {
-        let observation = slot.into_inner()
+        let observation = slot
+            .into_inner()
             .ok_or(ParallelIndexError::MissingWorkerResult)??;
         append_observation(
             &mut report,
