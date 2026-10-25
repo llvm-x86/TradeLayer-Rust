@@ -30,9 +30,9 @@ class DummyBN {
 }
 const mockedBase94={fromBase94(s){return String(s)}};
 const forbiddenBase256={base256ToHex(){throw Error("SHADOWED FIRST SETTLEMENT DECODER CALLED")}};
-const module={exports:{}};
+const sourceModule={exports:{}};
 vm.runInNewContext(bytes.toString("utf8"),{
- module,exports:module.exports,console:{log(){},error(){}},
+ module:sourceModule,exports:sourceModule.exports,console:{log(){},error(){}},
  require(key){
   if(key==="bignumber.js")return DummyBN;
   if(key==="./base94.js")return mockedBase94;
@@ -40,7 +40,7 @@ vm.runInNewContext(bytes.toString("utf8"),{
   throw Error("unapproved module import "+key);
  }
 },{timeout:1000,filename:"pinned-txDecoder.js"});
-const decoder=module.exports;
+const decoder=sourceModule.exports;
 const methods={
  4:"decodeCommitToken",
  7:"decodeCreateWhitelist",
