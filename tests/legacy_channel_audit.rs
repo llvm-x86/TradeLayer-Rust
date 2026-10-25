@@ -94,7 +94,7 @@ fn duplicate_sender_commits_append_and_never_clear_policy_on_false_or_empty_list
     assert_eq!(s.commits()[1].sender, "Alice1");
     assert_eq!(s.commits()[1].column, Side::A);
     assert_eq!(s.commits()[1].amount_atoms, 250_000_000);
-    assert_eq!(s.commits()[1].pay_enabled, false);
+    assert!(!s.commits()[1].pay_enabled);
     assert_eq!(s.commits()[1].commit_clearlist_id, Some(99));
     assert_eq!(s.clear_lists(Side::A), &[7, 9]);
     assert!(s.pay_enabled(Side::A));
