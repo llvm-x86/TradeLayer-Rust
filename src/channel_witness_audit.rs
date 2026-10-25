@@ -295,7 +295,7 @@ fn selected_transaction<'a>(
     ))
 }
 
-fn check_der_all(sig: &[u8]) -> Result<(), StructuralChannelError> {
+pub(crate) fn check_der_all(sig: &[u8]) -> Result<(), StructuralChannelError> {
     // BIP66 DER, with the sighash byte included in the item but EXCLUDED
     // from the DER sequence length. Positive minimally encoded R/S.
     if !(9..=73).contains(&sig.len())
@@ -333,7 +333,7 @@ fn check_der_all(sig: &[u8]) -> Result<(), StructuralChannelError> {
     Ok(())
 }
 
-fn check_script(
+pub(crate) fn check_script(
     script: &[u8],
     claimed: ClaimedTwoOfTwoPubkeys,
 ) -> Result<(), StructuralChannelError> {
