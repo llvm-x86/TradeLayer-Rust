@@ -11,6 +11,7 @@ pub mod bitcoin_forks; // Bounded greatest-work selection among observed header 
 pub mod bitcoin_inclusion; // Bitcoin SHA256d header and tx Merkle checks; no full consensus.
 pub mod chain; // Trust-boundary and reversible block progression, prototype only.
 pub mod channel_bip143_audit; // Stage 25I exact SegWit-v0 SIGHASH_ALL digest; no signature verification.
+pub mod channel_p2sh_audit; // Stage 25K legacy P2SH HASH160 outpoint and redeem script, not ECDSA.
 pub mod channel_witness_audit; // Stage 25H raw native P2WSH script/outpoint only; not ECDSA authorization.
 pub mod clearing_cadence; // Stage 24C read-only JS clearing callback and funding schedule observations.
 pub mod clearing_chain; // Stage 25D unverified combined spot-clearing rollback and TLCC checkpoints.
@@ -20,6 +21,7 @@ pub mod clearing_sandbox; // Stage 25A isolated single-ledger derivative margin 
 mod codec; // Bounded, checksummed snapshot codec.
 pub mod execution; // Prototype unified registry+ledger replay; input unverified.
 pub mod funding_audit; // Stage 24B read-only signed funding and conservation projections.
+mod hash160; // Dependency-free research RIPEMD160/HASH160, no production authorization.
 mod hash256; // Offline SHA-256d txid fingerprints; not trusted consensus.
 pub mod joint; // Stage 22 independent registry + sole spot-owned ledger in one mixed state.
 pub mod joint_chain; // Stage 22 mixed unverified block replay and TLJC checkpoints.
