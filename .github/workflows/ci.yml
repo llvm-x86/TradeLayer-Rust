@@ -152,6 +152,8 @@ jobs:
         run: cargo test --frozen --test stage8d_fused_dependency
       - name: Stage 8D1b one scoped TX worker team and serial-equivalent 10k TX proof
         run: cargo test --frozen --test stage8d_one_team
+      - name: Stage 8D3 readonly dependency-wave barriers, cancellation and permanent denial
+        run: cargo test --frozen --test stage8d_wave_precheck
       - name: Legacy txIndex.js exact pinned source Node VM with fake RPC/DB and three-argument decoder
         run: node scripts/audit_legacy_txindex_source.cjs
       - name: Legacy txIndex.js Rust source marker offsets, vout-loss and permanent denial
