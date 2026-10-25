@@ -1,10 +1,9 @@
 //! Stage 25G: current-block mark and channel *assertions*, never authorization.
 use tradelayer_core::ledger::{AccountId, PropertyId, TxId};
 use tradelayer_core::liquidation_input_gate::{
-    audit_current_block_mark_unverified, audit_liquidation_claim_unverified,
-    AssertedChannelUpdate, AssertedPriceRecord, AssertedPriceRoute,
-    ContractMarkExpectation, ContractMarkSource, MissingIndependentProof,
-    SourceGateError, ALL_MISSING_PROOFS, MAX_UNVERIFIED_CLEARLIST_IDS,
+    audit_current_block_mark_unverified, audit_liquidation_claim_unverified, AssertedChannelUpdate,
+    AssertedPriceRecord, AssertedPriceRoute, ContractMarkExpectation, ContractMarkSource,
+    MissingIndependentProof, SourceGateError, ALL_MISSING_PROOFS, MAX_UNVERIFIED_CLEARLIST_IDS,
     MAX_UNVERIFIED_MARK_ROWS,
 };
 use tradelayer_core::network_profile::TradeLayerMainnet;
@@ -82,10 +81,7 @@ fn structurally_correct_oracle_mark_is_explicitly_unverified() {
     let mut older = prior;
     older.height = 479;
     older.price_e8 = 100 * ONE;
-    let selected = audit_current_block_mark_unverified(
-        expected_oracle(),
-        &[older, prior],
-    ).unwrap();
+    let selected = audit_current_block_mark_unverified(expected_oracle(), &[older, prior]).unwrap();
     assert_eq!(selected.height(), 480);
     assert_eq!(selected.price_e8(), 101 * ONE);
     assert_eq!(selected.contract_id(), 19);
@@ -103,10 +99,7 @@ fn structurally_correct_oracle_mark_is_explicitly_unverified() {
 
 #[test]
 fn native_current_block_mark_requires_matching_index_pair() {
-    let s = audit_current_block_mark_unverified(
-        expected_native(),
-        &[native_record()],
-    ).unwrap();
+    let s = audit_current_block_mark_unverified(expected_native(), &[native_record()]).unwrap();
     assert_eq!(s.price_e8(), 101 * ONE);
     let mut bad = native_record();
     bad.route = AssertedPriceRoute::NativeVolumeIndex {
@@ -373,31 +366,20 @@ fn declared_clearlist_ids_cannot_become_historical_attestation_proofs() {
 
 #[test]
 fn all_required_independent_verifiers_remain_explicitly_missing() {
-    let mark = audit_current_block_mark_unverified(
-        expected_native(),
-        &[native_record()],
-    ).unwrap();
+    let mark = audit_current_block_mark_unverified(expected_native(), &[native_record()]).unwrap();
     let claim = audit_liquidation_claim_unverified(mark, channel_claim()).unwrap();
     let gaps = claim.missing_proofs();
     assert_eq!(gaps.len(), 6);
-    assert!(gaps.contains(
-        &MissingIndependentProof::AuthenticatedNetworkBlockAndTransactionInclusion
-    ));
-    assert!(gaps.contains(
-        &MissingIndependentProof::HistoricalOracleAdminOrNativeVolumeIndex
-    ));
-    assert!(gaps.contains(
-        &MissingIndependentProof::HistoricalCommitAndClearlistState
-    ));
-    assert!(gaps.contains(
-        &MissingIndependentProof::GenuineTwoOfTwoSpendOrSignedChannelUpdate
-    ));
-    assert!(gaps.contains(
-        &MissingIndependentProof::ExecutedAmmFirstOrMakerFill
-    ));
-    assert!(gaps.contains(
-        &MissingIndependentProof::RatifiedLiquidationRoundingWaterfallAndActivation
-    ));
+    assert!(
+        gaps.contains(&MissingIndependentProof::AuthenticatedNetworkBlockAndTransactionInclusion)
+    );
+    assert!(gaps.contains(&MissingIndependentProof::HistoricalOracleAdminOrNativeVolumeIndex));
+    assert!(gaps.contains(&MissingIndependentProof::HistoricalCommitAndClearlistState));
+    assert!(gaps.contains(&MissingIndependentProof::GenuineTwoOfTwoSpendOrSignedChannelUpdate));
+    assert!(gaps.contains(&MissingIndependentProof::ExecutedAmmFirstOrMakerFill));
+    assert!(
+        gaps.contains(&MissingIndependentProof::RatifiedLiquidationRoundingWaterfallAndActivation)
+    );
     assert_eq!(
         claim.require_authenticated_liquidation(),
         Err(SourceGateError::AuthenticationUnavailable)
