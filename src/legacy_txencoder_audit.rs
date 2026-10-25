@@ -195,7 +195,7 @@ fn b36_id(id: u128) -> Result<String, LegacyEncoderError> {
 /// encoded as base36 ATOMS, but the source accidentally omits the "~".
 pub fn source_encode_amount_unverified(atoms: u128) -> Result<String, LegacyEncoderError> {
     amount_safe(atoms)?;
-    if atoms % ATOMS_PER_TOKEN == 0 {
+    if atoms.is_multiple_of(ATOMS_PER_TOKEN) {
         Ok(b36(atoms / ATOMS_PER_TOKEN))
     } else {
         Ok(b36(atoms))
@@ -345,7 +345,7 @@ pub fn source_encode_send_unverified(
         } => {
             required_text(recipient)?;
             let mut caveats = vec![];
-            if amount_atoms % ATOMS_PER_TOKEN != 0 {
+            if !amount_atoms.is_multiple_of(ATOMS_PER_TOKEN) {
                 caveats.push(SourceEncoderCaveat::FractionalAmountMissingTilde);
             }
             source_output(
