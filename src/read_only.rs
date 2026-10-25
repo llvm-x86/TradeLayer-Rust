@@ -134,7 +134,6 @@ pub(crate) struct TransactionLayout {
 impl TransactionLayout {
     pub(crate) const fn total_bytes(&self) -> usize { self.total_bytes }
     pub(crate) const fn stripped_bytes(&self) -> usize { self.stripped_bytes }
-    pub(crate) const fn output_count(&self) -> u32 { self.output_count }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
