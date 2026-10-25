@@ -501,8 +501,8 @@ pub(crate) fn inspect_prepared_block_weighted_shards(
             .map(|range| {
                 scope.spawn(move || {
                     let mut local = Vec::with_capacity(range.len());
-                    for index in range.start..range.end {
-                        let row = &transactions[index];
+                    for (offset, row) in transactions[range.start..range.end].iter().enumerate() {
+                        let index = range.start + offset;
                         let result = inspect_prepared_transaction(row.raw, row.layout)
                             .map_err(|source| ParallelIndexError::RawScan { index, source });
                         let failed = result.is_err();
