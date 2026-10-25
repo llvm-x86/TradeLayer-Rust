@@ -260,6 +260,16 @@ pub fn scan_transactions_parallel_unverified(
     })
 }
 
+/// Bridge from the existing CandidateBlock input shape into independent
+/// pre-execution scanning. This function does NOT call TrustedChainAdapter,
+/// and therefore its results must NOT authorize ChainState::apply_block.
+pub fn scan_candidate_block_parallel_unverified(
+    candidate: &crate::chain::CandidateBlock,
+    config: ParallelScanConfig,
+) -> Result<UnverifiedIndexedBlock,ParallelIndexError> {
+    scan_transactions_parallel_unverified(&candidate.raw_transactions, config)
+}
+
 /// Convenience entry point with bounded CPU allotment; the caller still
 /// provides the serialized block's actual ordered transaction list.
 pub fn scan_transactions_auto_unverified(
