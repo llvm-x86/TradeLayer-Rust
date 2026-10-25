@@ -9,8 +9,8 @@ use tradelayer_core::raw_block_ingest::{
 };
 use tradelayer_core::read_only::{decode_hex, inspect_transaction};
 use tradelayer_core::wave_precheck::{
-    inspect_dependency_waves_with_probe, UnverifiedProbeVerdict,
-    UnverifiedWaveTrustError, WaveProbeError, WAVE_OBSERVATION_STATUS,
+    inspect_dependency_waves_with_probe, UnverifiedProbeVerdict, UnverifiedWaveTrustError,
+    WaveProbeError, WAVE_OBSERVATION_STATUS,
 };
 
 fn config(workers: usize, window_transactions: usize) -> ParallelIndexConfig {
@@ -162,11 +162,8 @@ fn lower_source_rejection_wins_despite_parallel_worker_completion() {
     let view = UnverifiedRawBlockView::parse(&raw, None).unwrap();
     let indexed = view.inspect_serial().unwrap();
     for _ in 0..100 {
-        let outcome = inspect_dependency_waves_with_probe(
-            &view,
-            &indexed,
-            config(16, 512),
-            |i, _| {
+        let outcome =
+            inspect_dependency_waves_with_probe(&view, &indexed, config(16, 512), |i, _| {
                 if i == 1 {
                     for _ in 0..8 {
                         std::thread::yield_now();
@@ -177,8 +174,7 @@ fn lower_source_rejection_wins_despite_parallel_worker_completion() {
                 } else {
                     UnverifiedProbeVerdict::NoLocalRejection
                 }
-            },
-        );
+            });
         assert_eq!(
             outcome,
             Err(WaveProbeError::ProbeRejected { wave: 0, index: 1 })
@@ -197,19 +193,14 @@ fn wave_failure_precedes_lower_transaction_index_in_unvisited_wave() {
     );
     let seen = Arc::new(Mutex::new(Vec::new()));
     let captured = Arc::clone(&seen);
-    let result = inspect_dependency_waves_with_probe(
-        &view,
-        &indexed,
-        config(3, 64),
-        |index, _| {
-            captured.lock().unwrap().push(index);
-            if index == 2 || index == 3 {
-                UnverifiedProbeVerdict::Reject
-            } else {
-                UnverifiedProbeVerdict::NoLocalRejection
-            }
-        },
-    );
+    let result = inspect_dependency_waves_with_probe(&view, &indexed, config(3, 64), |index, _| {
+        captured.lock().unwrap().push(index);
+        if index == 2 || index == 3 {
+            UnverifiedProbeVerdict::Reject
+        } else {
+            UnverifiedProbeVerdict::NoLocalRejection
+        }
+    });
     // Barrier policy is (wave, source index), not smallest theoretical
     // error index in work that has deliberately not been authorized to run.
     assert_eq!(
@@ -225,17 +216,13 @@ fn probe_panics_are_denied_instead_of_granting_partial_success() {
     let view = UnverifiedRawBlockView::parse(&raw, None).unwrap();
     let indexed = view.inspect_serial().unwrap();
     for workers in [1, 2, 16] {
-        let failure = inspect_dependency_waves_with_probe(
-            &view,
-            &indexed,
-            config(workers, 4),
-            |index, _| {
+        let failure =
+            inspect_dependency_waves_with_probe(&view, &indexed, config(workers, 4), |index, _| {
                 if index == 2 {
                     panic!("deliberate untrusted precheck panic");
                 }
                 UnverifiedProbeVerdict::NoLocalRejection
-            },
-        );
+            });
         assert_eq!(
             failure,
             Err(WaveProbeError::ProbePanicked { wave: 0, index: 2 })
@@ -248,16 +235,12 @@ fn rejected_callback_precedes_later_panic_within_wave() {
     let raw = fixture();
     let view = UnverifiedRawBlockView::parse(&raw, None).unwrap();
     let indexed = view.inspect_serial().unwrap();
-    let failed = inspect_dependency_waves_with_probe(
-        &view,
-        &indexed,
-        config(4, 1),
-        |i, _| match i {
+    let failed =
+        inspect_dependency_waves_with_probe(&view, &indexed, config(4, 1), |i, _| match i {
             1 => UnverifiedProbeVerdict::Reject,
             3 => panic!("later panicking probe"),
             _ => UnverifiedProbeVerdict::NoLocalRejection,
-        },
-    );
+        });
     assert_eq!(
         failed,
         Err(WaveProbeError::ProbeRejected { wave: 0, index: 1 })
@@ -273,12 +256,9 @@ fn different_header_or_merkle_preindex_cannot_be_reused() {
     other[0] ^= 0x01;
     let other_view = UnverifiedRawBlockView::parse(&other, None).unwrap();
     assert_eq!(
-        inspect_dependency_waves_with_probe(
-            &other_view,
-            &scanned,
-            config(2, 64),
-            |_, _| UnverifiedProbeVerdict::NoLocalRejection
-        ),
+        inspect_dependency_waves_with_probe(&other_view, &scanned, config(2, 64), |_, _| {
+            UnverifiedProbeVerdict::NoLocalRejection
+        }),
         Err(WaveProbeError::Dependencies(
             DependencyAuditError::MismatchedPreindex
         ))
@@ -311,19 +291,17 @@ fn double_spend_is_denied_before_any_wave_precheck_is_called() {
     let view = UnverifiedRawBlockView::parse(&raw, None).unwrap();
     let indexed = view.inspect_serial().unwrap();
     let calls = AtomicUsize::new(0);
-    let result = inspect_dependency_waves_with_probe(
-        &view,
-        &indexed,
-        config(8, 512),
-        |_, _| {
-            calls.fetch_add(1, Ordering::SeqCst);
-            UnverifiedProbeVerdict::NoLocalRejection
-        },
-    );
+    let result = inspect_dependency_waves_with_probe(&view, &indexed, config(8, 512), |_, _| {
+        calls.fetch_add(1, Ordering::SeqCst);
+        UnverifiedProbeVerdict::NoLocalRejection
+    });
     assert_eq!(
         result,
         Err(WaveProbeError::Dependencies(
-            DependencyAuditError::DuplicateInputSpend { first: 2, second: 3 }
+            DependencyAuditError::DuplicateInputSpend {
+                first: 2,
+                second: 3
+            }
         ))
     );
     assert_eq!(calls.load(Ordering::SeqCst), 0);
@@ -334,12 +312,9 @@ fn every_no_rejection_result_still_denies_consensus_and_tl_apply() {
     let raw = fixture();
     let view = UnverifiedRawBlockView::parse(&raw, None).unwrap();
     let scanned = view.inspect_parallel(config(4, 2)).unwrap();
-    let result = inspect_dependency_waves_with_probe(
-        &view,
-        &scanned,
-        config(4, 512),
-        |_, _| UnverifiedProbeVerdict::NoLocalRejection,
-    )
+    let result = inspect_dependency_waves_with_probe(&view, &scanned, config(4, 512), |_, _| {
+        UnverifiedProbeVerdict::NoLocalRejection
+    })
     .unwrap();
     assert_eq!(
         result.require_authenticated_parent_utxos(),
