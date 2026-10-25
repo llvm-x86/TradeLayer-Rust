@@ -257,8 +257,8 @@ fn forged_claim_fields_and_wrong_positions_reject_despite_valid_merkle_paths() {
 fn invalid_merkle_forks_target_markers_and_other_networks_refuse() {
     let tx = source_raws();
     let mut paths = source_paths();
-    let events = sample_events(&tx, &paths);
     paths[3].siblings_raw[0][0] ^= 1;
+    let events = sample_events(&tx, &paths);
     assert!(matches!(
         audit_bitcoin_type9_relative_history_unverified(
             TradeLayerMainnet::Bitcoin,
