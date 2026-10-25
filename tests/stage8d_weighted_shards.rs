@@ -108,10 +108,7 @@ fn mixed_witness_blocks_match_all_workers_and_windows() {
                     actual, reference,
                     "witness={witness_percent} workers={workers} window={window}"
                 );
-                assert_eq!(
-                    actual.txid_merkle_root_raw(),
-                    view.header_merkle_root_raw()
-                );
+                assert_eq!(actual.txid_merkle_root_raw(), view.header_merkle_root_raw());
             }
         }
     }
