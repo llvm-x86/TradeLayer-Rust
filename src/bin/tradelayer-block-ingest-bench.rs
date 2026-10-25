@@ -154,7 +154,7 @@ fn main() {
     let mut merkle_reference_times = Vec::new();
     let mut merkle_inplace_times = Vec::new();
     let mut bulk_times = Vec::new();
-    for _ in 0..repeats {
+    for repetition in 0..repeats {
         let start = Instant::now();
         let owned: Vec<_> = view
             .transaction_ranges()
@@ -194,28 +194,34 @@ fn main() {
         prepared_times.push(start.elapsed());
         assert_eq!(*prepared_only.ordered_preindex(), serial_by_slot);
         black_box(prepared_only);
-        let start = Instant::now();
-        let pooled = view.inspect_parallel_one_team(config).unwrap();
-        one_team_times.push(start.elapsed());
-        assert_eq!(*pooled.ordered_preindex(), serial_by_slot);
-        black_box(pooled);
-        let start = Instant::now();
-        let hash_only = view.inspect_parallel_one_team_hash_seen(config).unwrap();
-        hash_seen_times.push(start.elapsed());
-        assert_eq!(*hash_only.ordered_preindex(), serial_by_slot);
-        black_box(hash_only);
-        let start = Instant::now();
-        let merkle_only = view
-            .inspect_parallel_one_team_inplace_merkle(config)
+        // Counterbalance first/last variant position on alternating rounds
+        // to reduce warm-cache and frequency-scaling order bias.
+        let variants = if repetition % 2 == 0 {
+            [0, 1, 2, 3]
+        } else {
+            [3, 2, 1, 0]
+        };
+        for variant in variants {
+            let start = Instant::now();
+            let indexed = match variant {
+                0 => view.inspect_parallel_one_team(config),
+                1 => view.inspect_parallel_one_team_hash_seen(config),
+                2 => view.inspect_parallel_one_team_inplace_merkle(config),
+                3 => view.inspect_parallel_one_team_fast_reduce(config),
+                _ => unreachable!("fixed four-variant array"),
+            }
             .unwrap();
-        inplace_merkle_times.push(start.elapsed());
-        assert_eq!(*merkle_only.ordered_preindex(), serial_by_slot);
-        black_box(merkle_only);
-        let start = Instant::now();
-        let combined = view.inspect_parallel_one_team_fast_reduce(config).unwrap();
-        fast_reduce_times.push(start.elapsed());
-        assert_eq!(*combined.ordered_preindex(), serial_by_slot);
-        black_box(combined);
+            let elapsed = start.elapsed();
+            assert_eq!(*indexed.ordered_preindex(), serial_by_slot);
+            black_box(indexed);
+            match variant {
+                0 => one_team_times.push(elapsed),
+                1 => hash_seen_times.push(elapsed),
+                2 => inplace_merkle_times.push(elapsed),
+                3 => fast_reduce_times.push(elapsed),
+                _ => unreachable!("fixed four-variant array"),
+            }
+        }
         let start = Instant::now();
         let observed =
             fetch_and_inspect_unverified_block(view.header_hash_raw(), config, |_| Ok(raw.clone()))
@@ -267,6 +273,7 @@ fn main() {
     println!("benchmark=UNVERIFIED_SYNTHETIC_BULK_BLOCK_INGEST");
     println!("transaction_count={count}");
     println!("witness_percent={witness_percent}");
+    println!("one_team_variant_order=COUNTERBALANCED");
     println!("workers={workers}");
     println!("raw_block_bytes={}", raw.len());
     println!("declared_weight={}", view.block_weight());
