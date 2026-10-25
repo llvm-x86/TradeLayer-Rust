@@ -777,8 +777,8 @@ pub(crate) fn inspect_prepared_block_pooled_barrier(
                 *published
                     .lock()
                     .map_err(|_| ParallelIndexError::WorkerPanicked)? = None;
-                let completed = Arc::try_unwrap(window)
-                    .map_err(|_| ParallelIndexError::WorkerPanicked)?;
+                let completed =
+                    Arc::try_unwrap(window).map_err(|_| ParallelIndexError::WorkerPanicked)?;
                 if shared_fault.load(Ordering::Acquire)
                     || completed.panicked.load(Ordering::Acquire)
                 {
