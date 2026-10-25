@@ -258,7 +258,8 @@ pub fn characterize_weighted_avg_entry_e8(
     let q = sum / total_qty;
     let rem = sum % total_qty;
     let rounded = if rem >= total_qty - rem {
-        q.checked_add(1).ok_or(SourceAuditError::ArithmeticOverflow)?
+        q.checked_add(1)
+            .ok_or(SourceAuditError::ArithmeticOverflow)?
     } else {
         q
     };
@@ -294,24 +295,34 @@ pub fn compare_avg_accounting_to_mark_pnl(
     if signed_contracts == 0 {
         return Err(SourceAuditError::ZeroQuantity);
     }
-    if [avg_entry_e8, last_mark_e8, execution_e8, notional_e8]
-        .contains(&0)
-    {
+    if [avg_entry_e8, last_mark_e8, execution_e8, notional_e8].contains(&0) {
         return Err(SourceAuditError::MissingPrice);
     }
     let avg_entry_accounting_pnl_atoms = mark_to_mark_pnl_atoms(
-        signed_contracts, avg_entry_e8, execution_e8, notional_e8, inverse, rounding,
+        signed_contracts,
+        avg_entry_e8,
+        execution_e8,
+        notional_e8,
+        inverse,
+        rounding,
     )?;
     let incremental_mark_pnl_atoms = mark_to_mark_pnl_atoms(
-        signed_contracts, last_mark_e8, execution_e8, notional_e8, inverse, rounding,
+        signed_contracts,
+        last_mark_e8,
+        execution_e8,
+        notional_e8,
+        inverse,
+        rounding,
     )?;
     let js_linear_settle_pnl_atoms = if inverse {
         None
     } else {
         let delta = i128::from(execution_e8) - i128::from(last_mark_e8);
-        Some(delta
-            .checked_mul(i128::from(signed_contracts))
-            .ok_or(SourceAuditError::ArithmeticOverflow)?)
+        Some(
+            delta
+                .checked_mul(i128::from(signed_contracts))
+                .ok_or(SourceAuditError::ArithmeticOverflow)?,
+        )
     };
     Ok(HistoricalPnlComparison {
         avg_entry_accounting_pnl_atoms,
