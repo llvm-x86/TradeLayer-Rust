@@ -60,7 +60,10 @@ pub enum SourcePropertyId {
     Regular(u64),
     /// Source decodePropertyId accepts both s-<id>-<id> and s<id>-<id>.
     /// It converts the two base36 fields to decimal JS numeric IDs.
-    Synthetic { collateral_id: u64, contract_id: u64 },
+    Synthetic {
+        collateral_id: u64,
+        contract_id: u64,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -177,19 +180,17 @@ impl UnverifiedDecodedBody {
     pub fn caveats(&self) -> &[SourceDecoderCaveat] {
         &self.caveats
     }
-    pub const fn require_historically_accepted_transaction(&self)
-        -> Result<(), LegacyDecoderError>
-    {
+    pub const fn require_historically_accepted_transaction(
+        &self,
+    ) -> Result<(), LegacyDecoderError> {
         Err(LegacyDecoderError::HistoricalTransactionNotAuthenticated)
     }
-    pub const fn require_accepted_registry_transition(&self)
-        -> Result<(), LegacyDecoderError>
-    {
+    pub const fn require_accepted_registry_transition(&self) -> Result<(), LegacyDecoderError> {
         Err(LegacyDecoderError::RegistryAndActivationUnverified)
     }
-    pub const fn require_canonical_signed_channel_revision(&self)
-        -> Result<(), LegacyDecoderError>
-    {
+    pub const fn require_canonical_signed_channel_revision(
+        &self,
+    ) -> Result<(), LegacyDecoderError> {
         Err(LegacyDecoderError::CanonicalSignedChannelRevisionAbsent)
     }
     pub const fn require_trusted_execution(&self) -> Result<(), LegacyDecoderError> {
@@ -214,12 +215,12 @@ fn body_check(body: &str) -> Result<(), LegacyDecoderError> {
 fn source_field<'a>(parts: &'a [&str], index: usize) -> &'a str {
     parts.get(index).copied().unwrap_or("")
 }
-fn numeric(
-    raw: &str,
-    default_zero: bool,
-    field: &'static str,
-) -> Result<u64, LegacyDecoderError> {
-    let value = if raw.is_empty() && default_zero { "0" } else { raw };
+fn numeric(raw: &str, default_zero: bool, field: &'static str) -> Result<u64, LegacyDecoderError> {
+    let value = if raw.is_empty() && default_zero {
+        "0"
+    } else {
+        raw
+    };
     if value.is_empty() {
         return Err(LegacyDecoderError::NonCanonicalLegacyNumeric(field));
     }
@@ -255,7 +256,11 @@ pub fn source_decode_property_id_unverified(
             contract_id: numeric(contract, false, "synthetic contract")?,
         });
     }
-    Ok(SourcePropertyId::Regular(numeric(raw, false, "property id")?))
+    Ok(SourcePropertyId::Regular(numeric(
+        raw,
+        false,
+        "property id",
+    )?))
 }
 
 fn literal_flag(value: &str) -> bool {
@@ -274,22 +279,27 @@ fn source_decimal_ref(raw: &str) -> Option<u64> {
     if digits.is_empty() {
         return None;
     }
-    digits.parse::<u64>().ok().filter(|n| u128::from(*n) <= MAX_SOURCE_SAFE_INTEGER)
+    digits
+        .parse::<u64>()
+        .ok()
+        .filter(|n| u128::from(*n) <= MAX_SOURCE_SAFE_INTEGER)
 }
 
 fn location_string(raw: &str) -> SourceChannelLocation {
     match raw.strip_prefix("ref:") {
-        Some(tail) => SourceChannelLocation::RawReference(
-            tail.split(':').next().unwrap_or("").to_owned(),
-        ),
+        Some(tail) => {
+            SourceChannelLocation::RawReference(tail.split(':').next().unwrap_or("").to_owned())
+        }
         None => SourceChannelLocation::Address(raw.to_owned()),
     }
 }
 
 fn source_decode_commit(parts: &[&str]) -> Result<UnverifiedSourceBody, LegacyDecoderError> {
-    let channel = parts.get(2).ok_or(
-        LegacyDecoderError::MissingIndexedFieldWouldThrow("commit channel field"),
-    )?;
+    let channel = parts
+        .get(2)
+        .ok_or(LegacyDecoderError::MissingIndexedFieldWouldThrow(
+            "commit channel field",
+        ))?;
     let property = source_decode_property_id_unverified(source_field(parts, 0))?;
     let raw_amount = source_field(parts, 1);
     let amount_atoms = amount_atoms(raw_amount)?;
@@ -326,9 +336,9 @@ fn source_decode_commit(parts: &[&str]) -> Result<UnverifiedSourceBody, LegacyDe
 fn source_decode_withdrawal(parts: &[&str]) -> Result<UnverifiedSourceBody, LegacyDecoderError> {
     let place = source_field(parts, 4);
     let channel = match place.strip_prefix("ref:") {
-        Some(raw) => SourceChannelLocation::WithdrawalReference(
-            source_decimal_ref(raw.split(':').next().unwrap_or("")),
-        ),
+        Some(raw) => SourceChannelLocation::WithdrawalReference(source_decimal_ref(
+            raw.split(':').next().unwrap_or(""),
+        )),
         None => SourceChannelLocation::Address(place.to_owned()),
     };
     Ok(UnverifiedSourceBody::Withdrawal {
@@ -341,9 +351,11 @@ fn source_decode_withdrawal(parts: &[&str]) -> Result<UnverifiedSourceBody, Lega
 }
 
 fn source_decode_transfer(parts: &[&str]) -> Result<UnverifiedSourceBody, LegacyDecoderError> {
-    let place = parts.get(3).ok_or(
-        LegacyDecoderError::MissingIndexedFieldWouldThrow("transfer destination"),
-    )?;
+    let place = parts
+        .get(3)
+        .ok_or(LegacyDecoderError::MissingIndexedFieldWouldThrow(
+            "transfer destination",
+        ))?;
     Ok(UnverifiedSourceBody::Transfer {
         property: source_decode_property_id_unverified(source_field(parts, 0))?,
         amount_atoms: amount_atoms(source_field(parts, 1))?,
@@ -391,9 +403,9 @@ pub fn source_decode_body_unverified(
         },
         9 => {
             caveats.push(SourceDecoderCaveat::AttestationMissingMetadataThrows);
-            let metadata = parts.get(3).ok_or(
-                LegacyDecoderError::MissingAttestationMetadataWouldThrow,
-            )?;
+            let metadata = parts
+                .get(3)
+                .ok_or(LegacyDecoderError::MissingAttestationMetadataWouldThrow)?;
             UnverifiedSourceBody::Attestation {
                 revoke: literal_flag(source_field(&parts, 0)),
                 list_id: numeric(source_field(&parts, 1), true, "attestation list id")?,
@@ -401,9 +413,11 @@ pub fn source_decode_body_unverified(
                 metadata_upper: metadata.to_ascii_uppercase(),
             }
         }
-        15 => UnverifiedSourceBody::CloseOraclePrimitive(
-            numeric(body, true, "close oracle primitive")?,
-        ),
+        15 => UnverifiedSourceBody::CloseOraclePrimitive(numeric(
+            body,
+            true,
+            "close oracle primitive",
+        )?),
         21 => {
             caveats.push(SourceDecoderCaveat::TwoDifferentReferenceNumberRules);
             caveats.push(SourceDecoderCaveat::AmountFloatLimitedToExactSafeAtoms);
@@ -442,9 +456,12 @@ pub fn source_decode_body_unverified(
             caveats.push(SourceDecoderCaveat::Types32And33ValidatorCommentedOut);
             let action = source_field(&parts, 0);
             if action.is_empty() || !action.bytes().all(|x| x.is_ascii_digit()) {
-                return Err(LegacyDecoderError::NonCanonicalLegacyNumeric("colored action"));
+                return Err(LegacyDecoderError::NonCanonicalLegacyNumeric(
+                    "colored action",
+                ));
             }
-            let action_decimal = action.parse::<u64>()
+            let action_decimal = action
+                .parse::<u64>()
                 .map_err(|_| LegacyDecoderError::NonCanonicalLegacyNumeric("colored action"))?;
             UnverifiedSourceBody::ColoredCoin {
                 action_decimal,
@@ -455,7 +472,11 @@ pub fn source_decode_body_unverified(
         }
         _ => return Err(LegacyDecoderError::UnsupportedOrUnportedLayout(type_id)),
     };
-    Ok(UnverifiedDecodedBody { type_id, fields, caveats })
+    Ok(UnverifiedDecodedBody {
+        type_id,
+        fields,
+        caveats,
+    })
 }
 
 /// Historical Type34 Types dispatcher calls decodeCrossLayerBridge, which
