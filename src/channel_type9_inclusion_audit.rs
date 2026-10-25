@@ -166,7 +166,7 @@ pub struct ClaimedIncludedType9<'a> {
     pub merkle_path: &'a MerklePath,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UnverifiedBitcoinType9History<'a> {
     target: IncludedTransaction,
     observed_events: Vec<IncludedTransaction>,
