@@ -132,6 +132,10 @@ jobs:
         run: node scripts/audit_legacy_txdecoder_source.cjs
       - name: Legacy txDecoder.js Rust 10-layout numeric/ref and permanent-denial adversaries
         run: cargo test --frozen --test legacy_txdecoder_audit
+      - name: Legacy txEncoder.js original Node VM 22 golden source return and round-trip regressions
+        run: node scripts/audit_legacy_txencoder_source.cjs
+      - name: Legacy txEncoder.js Rust 14-family 256-bit/hash/amount and permanent-authority denials
+        run: cargo test --frozen --test legacy_txencoder_audit
       - name: Stage 25F source-only exact rational bankruptcy threshold
         run: cargo test --frozen --test bankruptcy_source_audit
       - name: Verify Stage 25A isolated margin and funding atomicity
