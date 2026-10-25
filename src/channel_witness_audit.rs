@@ -118,9 +118,7 @@ impl UnverifiedP2wshOutpointSpend {
     pub const fn claimed_pubkeys(&self) -> ClaimedTwoOfTwoPubkeys {
         self.script_pubkeys
     }
-    pub const fn require_verified_channel_signatures(
-        &self,
-    ) -> Result<(), StructuralChannelError> {
+    pub const fn require_verified_channel_signatures(&self) -> Result<(), StructuralChannelError> {
         Err(StructuralChannelError::SignaturesNotVerified)
     }
 }
@@ -137,7 +135,10 @@ impl<'a> Cursor<'a> {
 
     fn take(&mut self, n: usize) -> Result<&'a [u8], ScanError> {
         let end = self.position.checked_add(n).ok_or(ScanError::TooLong)?;
-        let slice = self.bytes.get(self.position..end).ok_or(ScanError::Truncated)?;
+        let slice = self
+            .bytes
+            .get(self.position..end)
+            .ok_or(ScanError::Truncated)?;
         self.position = end;
         Ok(slice)
     }
@@ -373,13 +374,15 @@ pub fn audit_native_p2wsh_outpoint_unverified(
     spending_vin: u32,
     claimed_pubkeys: ClaimedTwoOfTwoPubkeys,
 ) -> Result<UnverifiedP2wshOutpointSpend, StructuralChannelError> {
-    if !matches!(network, TradeLayerMainnet::Bitcoin | TradeLayerMainnet::Litecoin) {
+    if !matches!(
+        network,
+        TradeLayerMainnet::Bitcoin | TradeLayerMainnet::Litecoin
+    ) {
         return Err(StructuralChannelError::UnsupportedNetwork);
     }
     claimed_pubkeys.check()?;
     let funding_observation = inspect_transaction(raw_funding_transaction)?;
-    let (_, funding_output, _) =
-        selected_transaction(raw_funding_transaction, 0, funding_vout)?;
+    let (_, funding_output, _) = selected_transaction(raw_funding_transaction, 0, funding_vout)?;
     if funding_output.value_sats == 0 {
         return Err(StructuralChannelError::InvalidOutputValue);
     }
