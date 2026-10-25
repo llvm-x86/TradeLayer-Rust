@@ -67,7 +67,10 @@ def modules(source):
     return items
 m, f = modules(main_lib), modules(formal_lib)
 def without_modules(source):
-    return module_pattern.sub("", source)
+    # Remove entire declaration lines, not just their text: one branch
+    # legitimately has more modules/newline separators than the other.
+    return "".join(line for line in source.splitlines(keepends=True)
+                   if not module_pattern.fullmatch(line.strip()))
 if without_modules(main_lib) != without_modules(formal_lib):
     raise SystemExit("lib.rs nonmodule code diverged; refuse automated union")
 all_modules = dict(m)
