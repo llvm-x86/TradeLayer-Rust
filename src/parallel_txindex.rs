@@ -206,10 +206,10 @@ where
                         break;
                     }
                     let end = offset.saturating_add(claim_size).min(length);
-                    for slot in offset..end {
+                    for (slot, cell) in slots.iter().enumerate().take(end).skip(offset) {
                         let result = job(start + slot);
                         // Each index is owned by exactly one claimed range.
-                        let _ = slots[slot].set(result);
+                        let _ = cell.set(result);
                     }
                 })
             })
