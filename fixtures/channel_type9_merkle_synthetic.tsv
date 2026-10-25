@@ -3,7 +3,7 @@
 # Each tx carries one canonical ASCII OP_RETURN, zero base-chain sats and one fake input.
 # Parent/coin origin, type9 sender/admin, historic state and economic authorization unverified.
 anchor_height	100
-anchor_hash_display	6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a
+anchor_hash_display	6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a
 header_hex	020000006a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6ae5bda97853c1cea60c53e740e7496436a6bac52af111a2e174ce2e5c42d8c98200d0dd6affff7f2000000000
 block_hash_display	16f2edb4cd1715cc6b48f3cf804dfc1c32636bafaa565dd383d941a26c9ef119
 tx_count	5
