@@ -34,7 +34,7 @@ fn synthetic_tx(position: usize, pad: usize) -> Vec<u8> {
     raw.extend_from_slice(&0xffff_ffffu32.to_le_bytes());
     raw.push(1);
     raw.extend_from_slice(&0u64.to_le_bytes());
-    let script = if position % 97 == 0 {
+    let script = if position.is_multiple_of(97) {
         &b"\x6a\x0etl20;alice;5;2"[..]
     } else {
         &b"\x51\x21\x02\x00\x00\x00\x00"[..]
