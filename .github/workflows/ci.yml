@@ -106,6 +106,10 @@ jobs:
         run: python3 scripts/audit_type9_p2wpkh_openssl.py --check
       - name: Stage 25O native P2WPKH first-input research and permanent authorization denial
         run: cargo test --frozen --test channel_type9_sender_audit
+      - name: Legacy activation.js source-registry name and non-genesis parity oracle
+        run: node scripts/audit_legacy_activation_parity.cjs
+      - name: Legacy activation.js 36-type/33-threshold/Rust permanent-denial parity
+        run: cargo test --frozen --test legacy_activation_audit
       - name: Stage 25F source-only exact rational bankruptcy threshold
         run: cargo test --frozen --test bankruptcy_source_audit
       - name: Verify Stage 25A isolated margin and funding atomicity
