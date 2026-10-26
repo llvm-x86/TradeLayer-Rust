@@ -1,5 +1,5 @@
 name = "BitcoinCore36629"
-defaultTargets = ["ReorgSchedule", "MergeSnapshot", "DBKeyOrder", "UniversalKeyOrder", "FixedDigits", "IndexModel", "OrderedEncoding", "OffsetCodec", "HistoryExecution", "SpenderExecution", "BlockLayout", "RPCGuard", "MergeHistory"]
+defaultTargets = ["ForkAwareMerge", "ReorgSchedule", "MergeSnapshot", "DBKeyOrder", "UniversalKeyOrder", "FixedDigits", "IndexModel", "OrderedEncoding", "OffsetCodec", "HistoryExecution", "SpenderExecution", "BlockLayout", "RPCGuard", "MergeHistory"]
 
 [[lean_lib]]
 name = "IndexModel"
@@ -39,3 +39,6 @@ name = "MergeSnapshot"
 
 [[lean_lib]]
 name = "ReorgSchedule"
+
+[[lean_lib]]
+name = "ForkAwareMerge"
