@@ -40,8 +40,10 @@ def markMempool (includeSpenders : Bool) (out : ObservedOutput)
   if out.spent then out
   else match conflict with
   | none => out
-  | some id => { out with spent := true,
-                 spendingTxid := if includeSpenders then some id else none }
+  | some id =>
+      let marked := { out with spent := true }
+      if includeSpenders then { marked with spendingTxid := some id }
+      else { marked with spendingTxid := none }
 
 /-- With spending details disabled, a fresh output gets only the spent flag. -/
 theorem omission_preserves_missing_spender (out : ObservedOutput)
@@ -56,8 +58,9 @@ theorem mempool_conflict_marks_spent (includeSpenders : Bool)
   cases hspent : out.spent <;> simp [markMempool, hspent]
 
 /-- Matches the source resolve_spender condition for a single output. -/
-def eligible (out : ObservedOutput) (spender : SpendingTx) : Prop :=
-  out.spent = true ∧ out.spendingTxid = none ∧ out.outpoint ∈ spender.inputs
+def eligible (out : ObservedOutput) (spender : SpendingTx) : Bool :=
+  out.spent && out.spendingTxid.isNone &&
+    decide (out.outpoint ∈ spender.inputs)
 
 def resolve (out : ObservedOutput) (spender : SpendingTx) : ObservedOutput :=
   if eligible out spender then
@@ -68,17 +71,17 @@ theorem newly_resolved_is_actual_input (out : ObservedOutput)
     (spender : SpendingTx) (hprior : out.spendingTxid = none)
     (hafter : (resolve out spender).spendingTxid = some spender.txid) :
     out.outpoint ∈ spender.inputs := by
-  unfold resolve at hafter
-  split at hafter
-  · rename_i hit
-    exact hit.2.2
-  · simp [hprior] at hafter
+  by_cases hit : eligible out spender = true
+  · have hinput : out.outpoint ∈ spender.inputs := by
+      simp [eligible] at hit
+      exact hit.2.2
+    exact hinput
+  · simp [resolve, hit, hprior] at hafter
 
 /-- A completed resolution preserves the output's original spent flag. -/
 theorem resolve_preserves_spent (out : ObservedOutput) (spender : SpendingTx) :
     (resolve out spender).spent = out.spent := by
-  unfold resolve
-  split <;> rfl
+  by_cases hit : eligible out spender = true <;> simp [resolve, hit]
 
 /-- Unspendable outputs and BIP30-excluded coinbases cannot be marked spent
     by a missing UTXO in the confirmed-chain stage. -/
@@ -86,7 +89,7 @@ def confirmedSpent (unspendable bip30Excluded foundInCoins : Bool) : Bool :=
   !unspendable && !bip30Excluded && !foundInCoins
 
 theorem unspendable_is_unspent (bip30 found : Bool) :
-    confirmedSpent true bip30 found = false := by decide
+    confirmedSpent true bip30 found = false := by simp [confirmedSpent]
 
 theorem bip30_exception_is_unspent (unspendable found : Bool) :
     confirmedSpent unspendable true found = false := by decide
@@ -125,7 +128,7 @@ theorem new_spender_charged_once (seen : List TxKey) (budget bytes : Nat)
   simp [countTransaction, h, affordable]
 
 theorem charged_then_duplicate (seen : List TxKey) (budget bytes : Nat)
-    (key : TxKey) (h : key ∉ seen) (affordable : bytes ≤ budget) :
+    (key : TxKey) (_h : key ∉ seen) (_affordable : bytes ≤ budget) :
     countTransaction (key :: seen) (budget - bytes) key bytes =
       some (budget - bytes, key :: seen, false) := by
   simp [countTransaction]
