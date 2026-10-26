@@ -42,7 +42,9 @@ theorem insert_stable (view : Snapshot) (groups : GroupMap)
         have countEq : previous.voutCount = hit.voutCount := by
           have hpair : (previous.txid, previous.voutCount) =
               (hit.txid, hit.voutCount) := by
-            have hEq := hPrevSnap.symm.trans hHit.1
+            have hSnap : view hit.pos = some (previous.txid, previous.voutCount) := by
+              simpa [hpPrev] using hPrevSnap
+            have hEq := hSnap.symm.trans hHit.1
             exact Option.some.inj hEq
           exact congrArg Prod.snd hpair
         have hNewBound := safe_same_transaction_union previous hit
