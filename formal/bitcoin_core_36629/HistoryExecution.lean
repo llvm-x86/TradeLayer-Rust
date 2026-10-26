@@ -232,6 +232,37 @@ theorem scan_sound (query wanted endHeight budget : Nat) (rows : List Row) :
                 · exact hLater tx hright
               simpa [scan, hstep, hrest, SoundScan] using hAll
 
+
+/-- Every successful scan returns a remaining charged budget at most the
+    initial allowance. An exhausted RPC returns no partial transaction list. -/
+def BudgetScan (initial : Nat) : ScanResult → Prop
+  | .complete remaining _ _ => remaining ≤ initial
+  | .exhausted => True
+
+theorem scan_budget (query wanted endHeight budget : Nat) (rows : List Row) :
+    BudgetScan budget (scan query wanted endHeight budget rows) := by
+  induction rows generalizing budget with
+  | nil => simp [scan, BudgetScan]
+  | cons row rest ih =>
+      cases hstep : step query wanted endHeight budget row with
+      | exhausted => simp [scan, hstep, BudgetScan]
+      | stop remaining =>
+          have hb : remaining ≤ budget := by
+            simpa [hstep, BudgetStep] using
+              step_budget query wanted endHeight budget row
+          simpa [scan, hstep, BudgetScan] using hb
+      | next remaining found pruned =>
+          have hb : remaining ≤ budget := by
+            simpa [hstep, BudgetStep] using
+              step_budget query wanted endHeight budget row
+          cases hrest : scan query wanted endHeight remaining rest with
+          | exhausted => simp [scan, hstep, hrest, BudgetScan]
+          | complete after later laterPruned =>
+              have ht : after ≤ remaining := by
+                simpa [hrest, BudgetScan] using ih remaining
+              have htotal : after ≤ budget := Nat.le_trans ht hb
+              simpa [scan, hstep, hrest, BudgetScan] using htotal
+
 /-- A wanted collision costs bytes but cannot fabricate a verified match. -/
 def collidingRow : Row :=
   { hashPrefix := 0, height := 8, blockHash := 123,
