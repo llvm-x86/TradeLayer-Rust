@@ -84,4 +84,19 @@ theorem accepted_results_reference_active_blocks
     ∀ hit ∈ hits, chain hit.tx.pos.height = some hit.blockHash := by
   exact (check_all_iff chain hits).mp h
 
+
+/-- Composes the two mitigation invariants. Every merged output index is
+    bounded by its immutable block transaction body and every referenced
+    block is in the final active chain. This establishes confirmed-result
+    membership and structural safety, not historical UTXO spentness or
+    mempool consistency. -/
+theorem anchored_fork_merge_sound (chain : ActiveChainImage)
+    (image : ForkImage) (hits : List ForkHit)
+    (valid : ∀ h ∈ hits, ValidForkHit image h)
+    (checked : checkAll chain hits = true) :
+    Stable image (ForkAwareMerge.aggregate hits) ∧
+    validConfirmed chain hits := by
+  exact ⟨ForkAwareMerge.aggregate_sound image hits valid,
+         (check_all_iff chain hits).mp checked⟩
+
 end BitcoinCore36629.ActiveHashGuard
