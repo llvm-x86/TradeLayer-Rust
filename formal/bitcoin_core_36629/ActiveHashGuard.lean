@@ -32,7 +32,7 @@ def validConfirmed (chain : ActiveChainImage) (hits : List ForkHit) : Prop :=
   ∀ hit ∈ hits, activeConfirmed chain hit
 
 def activeAtReturn (chain : ActiveChainImage) (hit : ForkHit) : Bool :=
-  decide (activeConfirmed chain hit)
+  decide (chain hit.tx.pos.height = some hit.blockHash)
 
 def checkAll (chain : ActiveChainImage) (hits : List ForkHit) : Bool :=
   hits.all (activeAtReturn chain)
@@ -43,16 +43,17 @@ theorem check_all_iff (chain : ActiveChainImage) (hits : List ForkHit) :
   | nil => simp [checkAll, validConfirmed]
   | cons hit rest ih =>
       simp only [checkAll, List.all_cons, Bool.and_eq_true,
-        activeAtReturn, decide_eq_true_eq]
+        activeAtReturn]
       constructor
       · rintro ⟨hhead, htail⟩
         intro h hh
         rcases List.mem_cons.mp hh with rfl | more
-        · exact hhead
+        · simpa [activeConfirmed] using hhead
         · exact ih.mp htail h more
       · intro all
         constructor
-        · exact all hit (by simp)
+        · have hp := all hit (by simp)
+          simpa [activeConfirmed] using hp
         · apply ih.mpr
           intro h hh
           exact all h (by simp [hh])
