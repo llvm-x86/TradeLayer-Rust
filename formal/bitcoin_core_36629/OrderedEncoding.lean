@@ -89,4 +89,36 @@ theorem max_supported_roundtrip : decode (encode max5) = some max5 := by decide
 theorem rejects_six_byte_prefix : decode [248, 0, 0, 0, 0] = none := by decide
 theorem rejects_truncation : decode [192, 0] = none := by decide
 
+
+/-- Universal C++ encoder/decoder roundtrip for the entire supported range. -/
+theorem roundtrip (n : Nat) (hn : n ≤ max5) :
+    decode (encode n) = some n := by
+  unfold max5 at hn
+  by_cases h1 : n < 128
+  · simp [encode, h1, decode]
+  · by_cases h2 : n < 16512
+    · have hv : 128 ≤ 128 + (n - 128) / 256 ∧
+          128 + (n - 128) / 256 < 192 ∧ (n - 128) % 256 < 256 := by omega
+      simp [encode, h1, h2, decode, hv] <;> omega
+    · by_cases h3 : n < 2113664
+      · have hv : 192 ≤ 192 + (n - 16512) / 65536 ∧
+            192 + (n - 16512) / 65536 < 224 ∧
+            ((n - 16512) / 256) % 256 < 256 ∧
+            (n - 16512) % 256 < 256 := by omega
+        simp [encode, h1, h2, h3, decode, hv] <;> omega
+      · by_cases h4 : n < 270549120
+        · have hv : 224 ≤ 224 + (n - 2113664) / 16777216 ∧
+              224 + (n - 2113664) / 16777216 < 240 ∧
+              ((n - 2113664) / 65536) % 256 < 256 ∧
+              ((n - 2113664) / 256) % 256 < 256 ∧
+              (n - 2113664) % 256 < 256 := by omega
+          simp [encode, h1, h2, h3, h4, decode, hv] <;> omega
+        · have hv : 240 ≤ 240 + (n - 270549120) / 4294967296 ∧
+              240 + (n - 270549120) / 4294967296 < 248 ∧
+              ((n - 270549120) / 16777216) % 256 < 256 ∧
+              ((n - 270549120) / 65536) % 256 < 256 ∧
+              ((n - 270549120) / 256) % 256 < 256 ∧
+              (n - 270549120) % 256 < 256 := by omega
+          simp [encode, h1, h2, h3, h4, decode, hv] <;> omega
+
 end BitcoinCore36629.Encoding
