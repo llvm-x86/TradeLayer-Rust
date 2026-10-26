@@ -49,17 +49,9 @@ int main() {
     const bool first_index_ready = true;
     const bool second_index_ready = true;
 
-    // Simulate the exact step-5 by_position map key and try_emplace behavior.
+    // Mirror the step-5 by_position map key and try_emplace behavior.
+    // Its retained transaction starts with an empty matched-output vector.
     std::map<std::pair<unsigned, unsigned>, Hit> by_position;
-    for (const Hit& hit : {old_hit, new_hit}) {
-        auto [it, inserted] = by_position.try_emplace(
-            std::pair{hit.height, hit.tx_offset}, hit);
-        (void)inserted;
-        for (unsigned n : hit.outputs) it->second.outputs.push_back(n);
-    }
-    // The loop above inserted output lists twice; the real source starts
-    // with an empty output vector. Reset and exercise exactly that sequence.
-    by_position.clear();
     for (const Hit& hit : {old_hit, new_hit}) {
         Hit blank{hit.block_hash, hit.height, hit.tx_offset, hit.txid, {},
                   hit.vout_count};
