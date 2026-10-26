@@ -478,7 +478,7 @@ index 0000000..51a21c4
 +        sys.exit(1)
 diff --git a/src/bin/tradelayer-core-index-ingest.rs b/src/bin/tradelayer-core-index-ingest.rs
 new file mode 100644
-index 0000000..5382fc0
+index 0000000..c887210
 --- /dev/null
 +++ b/src/bin/tradelayer-core-index-ingest.rs
 @@ -0,0 +1,277 @@
@@ -646,8 +646,8 @@ index 0000000..5382fc0
 +            return Err("data after end-of-stream sentinel".into());
 +        }
 +        let columns = line.split('\t').collect::<Vec<_>>();
-+        match columns.as_slice() {
-+            &["B", height, blockhash, rawhex] => {
++        match *columns.as_slice() {
++            ["B", height, blockhash, rawhex] => {
 +                if mode.is_some_and(|m| m != Mode::Blocks) {
 +                    return Err("cannot mix BLOCKS and SCRIPT frames".into());
 +                }
@@ -687,7 +687,7 @@ index 0000000..5382fc0
 +                last_height = Some(height);
 +                last_blockhash = Some(expected);
 +            }
-+            &["S", txid, blockhash, rawhex, matches] => {
++            ["S", txid, blockhash, rawhex, matches] => {
 +                if mode.is_some_and(|m| m != Mode::Script) {
 +                    return Err("cannot mix BLOCKS and SCRIPT frames".into());
 +                }
@@ -719,7 +719,7 @@ index 0000000..5382fc0
 +                total_txs += 1;
 +                records += 1;
 +            }
-+            &["E", kind, count] => {
++            ["E", kind, count] => {
 +                let expected_mode = match kind {
 +                    "BLOCKS" => Mode::Blocks,
 +                    "SCRIPT" => Mode::Script,
