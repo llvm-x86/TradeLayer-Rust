@@ -478,10 +478,10 @@ index 0000000..51a21c4
 +        sys.exit(1)
 diff --git a/src/bin/tradelayer-core-index-ingest.rs b/src/bin/tradelayer-core-index-ingest.rs
 new file mode 100644
-index 0000000..cca19f9
+index 0000000..5382fc0
 --- /dev/null
 +++ b/src/bin/tradelayer-core-index-ingest.rs
-@@ -0,0 +1,267 @@
+@@ -0,0 +1,277 @@
 +//! Read-only, bounded Bitcoin Core RPC stream consumer for TradeLayer candidates.
 +//!
 +//! Input frames come from scripts/bitcoin_core_rpc_stream.py. A completed
@@ -596,7 +596,9 @@ index 0000000..cca19f9
 +            id_hex(&tx.txid),
 +            carrier.vout,
 +            carrier.format.label(),
-+            carrier.transaction_type.map_or_else(|| "-".into(), |n| n.to_string()),
++            carrier
++                .transaction_type
++                .map_or_else(|| "-".into(), |n| n.to_string()),
 +            carrier.status
 +        );
 +    }
@@ -617,7 +619,11 @@ index 0000000..cca19f9
 +                    .map_err(|_| "invalid worker count")?;
 +            }
 +            "--one-team" => one_team = true,
-+            _ => return Err("usage: tradelayer-core-index-ingest [--workers 1..16] [--one-team]".into()),
++            _ => {
++                return Err(
++                    "usage: tradelayer-core-index-ingest [--workers 1..16] [--one-team]".into(),
++                )
++            }
 +        }
 +    }
 +    config.validate().map_err(|err| format!("{err:?}"))?;
@@ -674,7 +680,9 @@ index 0000000..cca19f9
 +                            .ok_or("missing source transaction range")?,
 +                    );
 +                }
-+                total_txs = total_txs.checked_add(view.transaction_count()).ok_or("counter overflow")?;
++                total_txs = total_txs
++                    .checked_add(view.transaction_count())
++                    .ok_or("counter overflow")?;
 +                records += 1;
 +                last_height = Some(height);
 +                last_blockhash = Some(expected);
@@ -699,7 +707,9 @@ index 0000000..cca19f9
 +                }
 +                let mut previous = None;
 +                for output in matches.split(',') {
-+                    let index = output.parse::<u32>().map_err(|_| "invalid matching output index")?;
++                    let index = output
++                        .parse::<u32>()
++                        .map_err(|_| "invalid matching output index")?;
 +                    if index >= observed.output_count || previous.is_some_and(|p| p >= index) {
 +                        return Err("invalid or duplicated matching output index".into());
 +                    }
@@ -751,10 +761,10 @@ index 0000000..cca19f9
 +}
 diff --git a/tests/bitcoin_core_index_ingest.rs b/tests/bitcoin_core_index_ingest.rs
 new file mode 100644
-index 0000000..27a265a
+index 0000000..cfe2024
 --- /dev/null
 +++ b/tests/bitcoin_core_index_ingest.rs
-@@ -0,0 +1,101 @@
+@@ -0,0 +1,112 @@
 +//! Offline Bitcoin Core RPC frame contract, using the existing raw-block fixture.
 +use std::io::Write;
 +use std::process::{Command, Stdio};
@@ -769,7 +779,12 @@ index 0000000..27a265a
 +        .stderr(Stdio::piped())
 +        .spawn()
 +        .unwrap();
-+    process.stdin.take().unwrap().write_all(input.as_bytes()).unwrap();
++    process
++        .stdin
++        .take()
++        .unwrap()
++        .write_all(input.as_bytes())
++        .unwrap();
 +    let output = process.wait_with_output().unwrap();
 +    (
 +        output.status.success(),
@@ -834,13 +849,19 @@ index 0000000..27a265a
 +    let view = UnverifiedRawBlockView::parse(&block, None).unwrap();
 +    let transaction = view.raw_transaction(1).unwrap();
 +    let txid = id_hex(&inspect_transaction(transaction).unwrap().txid);
-+    let txhex = transaction.iter().map(|byte| format!("{byte:02x}")).collect::<String>();
++    let txhex = transaction
++        .iter()
++        .map(|byte| format!("{byte:02x}"))
++        .collect::<String>();
 +    let input = format!("S\t{txid}\t{blockhash}\t{txhex}\t0\nE\tSCRIPT\t1\n");
 +    let (ok, out, error) = run(&input);
 +    assert!(ok, "{error}");
 +    assert!(out.contains("C\tSCRIPT\t-\t"));
 +    assert!(out.contains("END\tCOMPLETE_UNVERIFIED\tSCRIPT\t1\t1\t1"));
-+    let wrong = format!("S\t{}\t{blockhash}\t{txhex}\t0\nE\tSCRIPT\t1\n", "0".repeat(64));
++    let wrong = format!(
++        "S\t{}\t{blockhash}\t{txhex}\t0\nE\tSCRIPT\t1\n",
++        "0".repeat(64)
++    );
 +    let (ok, _, error) = run(&wrong);
 +    assert!(!ok);
 +    assert!(error.contains("TXID mismatch"));
