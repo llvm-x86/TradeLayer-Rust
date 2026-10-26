@@ -1,5 +1,5 @@
 name = "BitcoinCore36629"
-defaultTargets = ["UniversalKeyOrder", "FixedDigits", "IndexModel", "OrderedEncoding", "OffsetCodec", "HistoryExecution", "SpenderExecution", "BlockLayout", "RPCGuard", "MergeHistory"]
+defaultTargets = ["DBKeyOrder", "UniversalKeyOrder", "FixedDigits", "IndexModel", "OrderedEncoding", "OffsetCodec", "HistoryExecution", "SpenderExecution", "BlockLayout", "RPCGuard", "MergeHistory"]
 
 [[lean_lib]]
 name = "IndexModel"
@@ -30,3 +30,6 @@ name = "FixedDigits"
 
 [[lean_lib]]
 name = "UniversalKeyOrder"
+
+[[lean_lib]]
+name = "DBKeyOrder"
