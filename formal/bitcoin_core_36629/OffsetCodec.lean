@@ -147,4 +147,29 @@ theorem three_offsets :
 theorem max_count_rejected :
     deserializeValue 4000000 2 [81, 1, 1] = none := by decide
 
+
+/-- Successful C++-style validation reconstructs any bounded, strictly
+    increasing offset list, as long as its entry count fits the guard. -/
+theorem checked_delta_roundtrip (maxSize maxCount prev count : Nat)
+    (offsets : List Nat) (valid : WellFormed maxSize prev offsets)
+    (room : count + offsets.length ≤ maxCount) :
+    readDeltas maxSize maxCount prev count (deltas prev offsets) =
+      some offsets := by
+  induction offsets generalizing prev count with
+  | nil => simp [readDeltas, deltas]
+  | cons off rest ih =>
+      have hIncrease : prev < off := valid.1
+      have hInside : off < maxSize := valid.2.1
+      have hCount : count < maxCount := by
+        simp only [List.length_cons] at room
+        omega
+      have hStep : off - prev > 0 ∧
+          off - prev < maxSize - prev ∧ count < maxCount := by omega
+      have hNewRoom : (count + 1) + rest.length ≤ maxCount := by
+        simp only [List.length_cons] at room
+        omega
+      have hRest := ih off (count + 1) valid.2.2 hNewRoom
+      have hSum : prev + (off - prev) = off := by omega
+      simp [deltas, readDeltas, hStep, hSum, hRest]
+
 end BitcoinCore36629.OffsetCodec
