@@ -10,6 +10,8 @@ From formal/bitcoin_core_36629, run:
 
     lake build --wfail
     python3 scripts/check_cpp_parity.py
+    python3 scripts/check_reorg_oracle.py
+    python3 scripts/check_source_contracts.py
 
 The dedicated GitHub Actions workflow builds every Lean target, rejects
 proof placeholders (sorry, admit, axiom), and compiles the pinned upstream
@@ -176,6 +178,53 @@ Source: src/rpc/blockchain.cpp, final chain-tip equality guard.
 
 These are specification boundaries for endpoint-only checks. No claim is
 made that an atomic mempool snapshot is an existing RPC promise.
+
+### ReorgSchedule.lean
+Source: src/index/base.cpp and src/rpc/blockchain.cpp at the pinned head.
+
+- Models callback-complete, index-synchronized states A -> B -> A with
+  separate script-hash queries at A and B.
+- Proves both individual reads can satisfy their local snapshot premises
+  while final tip-pointer equality accepts the A -> B -> A path.
+- Proves same height and tx offset across forks may poison merged output
+  indexes. No live bitcoind scheduling exploit is claimed.
+- A hypothetical monotone chain epoch catches this path. Equal epochs
+  force zero intervening indexed transitions in the modeled execution.
+
+### ForkAwareMerge.lean
+Source: src/rpc/blockchain.cpp, script-history aggregation.
+
+- Proves map grouping by (block hash,height,tx offset) preserves bounded
+  output indexes across separate forks under the immutable block-body
+  premise. Provides a concrete comparison against the source's
+  height-and-offset-only grouping.
+- The alternative is proposed and verified as an abstract change.
+  It has not been applied to Bitcoin Core's C++ RPC.
+
+### ActiveHashGuard.lean
+Source: src/rpc/blockchain.cpp, final tip equality guard.
+
+- A proposed final active-chain membership check for each confirmed hit
+  rejects stale-fork results in the A -> B -> A model.
+- A successful check proves every confirmed hit's block hash is on the
+  active chain at that check's linearization point.
+- Combined with immutable-block fork-aware merging, the model proves
+  bounded output indexes and confirmed block membership.
+- This leaves UTXO spentness, mempool state and physical I/O bounds open.
+
+### Reorg and source execution checks
+
+- cpp_reorg_oracle.cpp and scripts/check_reorg_oracle.py compile and run a
+  narrow C++ extraction of the existing try_emplace/append/at sequence.
+  They reproduce the invalid-index symptom and exercise the block-hash
+  merge mitigation. This is not an unchanged Bitcoin Core RPC run.
+- scripts/check_source_contracts.py fetches three pinned upstream
+  C++ files by commit, checks their exact Git blob hashes, and checks the
+  callbacks, Find loop, aggregation and final-tip source statements.
+  Requires network access and fails closed if provenance cannot be checked.
+- REVIEW_FINDINGS.md records the source reasoning, conditional nature of
+  the result and an acceptance test requiring a deterministic regtest
+  scheduler barrier between separate Find calls.
 
 ## Important unverified obligations
 
