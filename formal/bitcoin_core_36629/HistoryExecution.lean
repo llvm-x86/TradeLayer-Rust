@@ -112,6 +112,22 @@ theorem boundary_key_can_exhaust (query wanted endHeight budget : Nat) (row : Ro
     step query wanted endHeight budget row = .exhausted := by
   simp [step, hBudget]
 
+
+/-- Semantic invariant of any successfully returned row. -/
+def SoundStep (query : ScriptHash) : RowStep → Prop
+  | .next _ hits _ => ∀ tx ∈ hits, exactHit query tx
+  | _ => True
+
+/-- Regardless of collisions, pruning and a budget failure, executing
+    any row can only emit exact script-hash matches. -/
+theorem step_sound (query wanted endHeight budget : Nat) (row : Row) :
+    SoundStep query (step query wanted endHeight budget row) := by
+  have hExact : ∀ tx ∈ exactResults query row.candidates,
+      exactHit query tx := by
+    intro tx htx
+    exact exactResults_sound query row.candidates tx htx
+  simp [step, SoundStep, hExact]
+
 /-- Complete row-scan outcome. A failure returns no partial response. -/
 inductive ScanResult where
   | exhausted
