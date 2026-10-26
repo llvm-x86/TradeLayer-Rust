@@ -145,6 +145,37 @@ theorem step_sound (query wanted endHeight budget : Nat) (row : Row) :
                 simpa [step, SoundStep, hKey, hOut, hValue,
                   hChain, hAvailable, hRead] using hExact
 
+
+/-- Tracked budget never increases after processing one LevelDB row. -/
+def BudgetStep (budget : Nat) : RowStep → Prop
+  | .exhausted => True
+  | .stop remaining => remaining ≤ budget
+  | .next remaining _ _ => remaining ≤ budget
+
+theorem step_budget (query wanted endHeight budget : Nat) (row : Row) :
+    BudgetStep budget (step query wanted endHeight budget row) := by
+  by_cases hKey : budget < row.keyBytes
+  · simp [step, BudgetStep, hKey]
+  · by_cases hOut : row.hashPrefix ≠ wanted ∨ endHeight < row.height
+    · simp [step, BudgetStep, hKey, hOut]
+    · by_cases hValue : budget - row.keyBytes < row.valueBytes
+      · simp [step, BudgetStep, hKey, hOut, hValue]
+      · by_cases hChain : row.activeChain = false
+        · simp [step, BudgetStep, hKey, hOut, hValue, hChain] <;> omega
+        · by_cases hAvailable : row.dataAvailable = false
+          · simp [step, BudgetStep, hKey, hOut, hValue,
+              hChain, hAvailable] <;> omega
+          · cases hRead : readCandidates (budget - row.keyBytes - row.valueBytes)
+                row.candidates with
+            | none =>
+                simp [step, BudgetStep, hKey, hOut, hValue,
+                  hChain, hAvailable, hRead]
+            | some remaining =>
+                have hc := readCandidates_conserves row.candidates
+                  (budget - row.keyBytes - row.valueBytes) remaining hRead
+                simp [step, BudgetStep, hKey, hOut, hValue,
+                  hChain, hAvailable, hRead] <;> omega
+
 /-- Complete row-scan outcome. A failure returns no partial response. -/
 inductive ScanResult where
   | exhausted
