@@ -9,9 +9,12 @@ Toolchain: Lean 4.34.1, dependency-free Lake package.
 From formal/bitcoin_core_36629, run:
 
     lake build --wfail
+    python3 scripts/check_cpp_parity.py
 
-The dedicated GitHub Actions workflow builds every Lean target and rejects
-proof placeholders (sorry, admit, axiom).
+The dedicated GitHub Actions workflow builds every Lean target, rejects
+proof placeholders (sorry, admit, axiom), and compiles the pinned upstream
+C++ encoding header against a minimal byte stream shim. The source file's
+Git blob is checked before a 4,123-case C++/Lean parity comparison.
 
 This is a manually extracted functional C++ model. A passing Lean build
 does not establish full bitcoind binary correctness or a C++-to-Lean
@@ -41,7 +44,43 @@ Source: src/index/ordered_varint.h and src/test/ordered_varint_tests.cpp.
 - Adjacent width cutovers have the required lexicographic order.
 - Bad prefix and truncated examples are rejected.
 
-The global pairwise lexicographic monotonicity proof remains open.
+### FixedDigits.lean and UniversalKeyOrder.lean
+Source: src/index/ordered_varint.h.
+
+- Every fixed-width base-256 digit representation from two through five
+  bytes is strictly ordered by its underlying natural-number value.
+- Each width class of the exact OrderedVarInt reference encoder preserves
+  strict numeric order.
+- The kernel-checked strict_order theorem proves strict lexicographic
+  byte ordering for ALL x < y with y <= 34,630,287,487, including arbitrary
+  cross-width comparisons. This closes the pure encoding-order obligation.
+
+### DBKeyOrder.lean
+Source: src/index/txoscriptindex_key.h.
+
+- rowKey models the serialized 's' discriminator byte, five-byte big-endian
+  salted hash prefix and OrderedVarInt block-height suffix.
+- same_prefix_height_order and seek_boundary_order prove increasing block
+  heights yield strictly increasing complete LevelDB keys.
+- different_prefix_order proves all keys with a smaller five-byte prefix
+  sort before all keys with a larger prefix, irrespective of height.
+- The theorem assumes the standard source BigEndianFormatter<5> layout and
+  unsigned-byte lexicographic LevelDB key comparison. Correspondence to
+  the compiled C++ DBKey methods is a remaining obligation.
+
+### Pinned C++ source execution oracle
+Source: upstream/ordered_varint.h, exact Git blob
+fe7cf1f5239aea3bf98f301c12953a0c8f402a8e.
+
+- Compile and run the unchanged upstream OrderedVarIntFormatter against
+  cpp_stubs/serialize.h, a deliberately narrow stream IO shim.
+- scripts/check_cpp_parity.py verifies that pinned Git blob, compiles C++
+  with -Wall -Wextra -Werror and compares 4,123 deterministic output rows
+  byte-for-byte against the Lean executable reference.
+- The C++ oracle independently checks truncated data, 0xf8..0xff
+  prefixes, oversize encoding and uint32 decoding overflow.
+- These samples support source-model fidelity. They do not constitute
+  a mathematical proof of C++/Lean equivalence for every input.
 
 ### OffsetCodec.lean
 Source: src/index/txoscriptindex_key.h, DBValue.
@@ -115,6 +154,19 @@ The counterexample exposes a necessary stable-position assumption across
 Find calls and possible reorg interleavings; it is not proof of a
 practically exploitable Bitcoin Core bug.
 
+### MergeSnapshot.lean
+Source: src/rpc/blockchain.cpp, step 5 multi-script aggregation.
+
+- StableGroups states the required common immutable mapping from
+  (height, transaction offset) to a transaction ID and output count.
+- insert_stable and aggregate_sound prove all merged entries retain
+  valid output indexes for ANY finite sequence of script-query hits
+  satisfying that common-view precondition.
+- opposing_snapshots_same_key constructs an explicit witness showing
+  why two independently read chain snapshots may violate that invariant.
+- Existence of an exploitable reorganization interleaving is not
+  established; the stronger source-level snapshot/fork invariant is open.
+
 ### RPCGuard.lean
 Source: src/rpc/blockchain.cpp, final chain-tip equality guard.
 
@@ -127,20 +179,20 @@ made that an atomic mempool snapshot is an existing RPC promise.
 
 ## Important unverified obligations
 
-1. Universal lexicographic ordering of exact OrderedVarInt keys,
-   including the five-byte hash-prefix and ordered-height composition.
-2. Concrete Bitcoin Core VARINT and CompactSize bytes, 32-bit integer
-   bounds, on-disk DBValue decoding and corruption paths.
-3. C++ source-to-model refinement for WriteEntries, Find, FindSpender,
-   the full twelve-stage getscripthistory RPC, and actual serialization.
-4. Reorg races, LevelDB consistency, salt persistence, crash recovery,
-   pruning windows, and the active-chain snapshot used while scanning.
+1. A complete C++-to-Lean refinement theorem for the formatter and DBKey
+   serializer, beyond the pinned-header C++/Lean sampling check.
+2. Actual Bitcoin Core VARINT and CompactSize wire bytes, 32-bit arithmetic
+   bounds, C++ exception behavior, on-disk DBValue corruption paths.
+3. Concrete C++ refinement for WriteEntries, Find, FindSpender and the
+   complete twelve-stage getscripthistory RPC, including error paths.
+4. Reorg races, LevelDB snapshots, salt persistence, crash recovery and
+   the common chain/transaction identity view used across separate Find calls.
 5. Descriptor expansion, actual per-output indexes, spentness/BIP30
-   behavior, mempool timing, verbosity-2 block/undo reads and JSON.
-6. Whole-node I/O constraints: the 50 MiB work limit does not cover
-   every block and undo read made while building verbose RPC results.
-7. Cross-language source oracle and Bitcoin Core regression-suite
-   execution against the pinned PR commit.
+   behavior, mempool timing, verbosity-2 undo/block reads and JSON.
+6. Whole-node I/O bounds: the nominal 50 MiB limit excludes some
+   additional full block and undo reads from charged work.
+7. The upstream Bitcoin Core test suite remains to be executed at the
+   exact pinned commit for independent behavioral parity.
 
 This proof-only branch changes neither Bitcoin Core C++ nor TradeLayer
 Rust runtime and does not change economic policy.
