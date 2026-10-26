@@ -165,6 +165,42 @@ def scan (query : ScriptHash) (wanted endHeight : Nat) :
           | .complete after moreMatches morePruned =>
               .complete after (found ++ moreMatches) (pruned ++ morePruned)
 
+
+/-- Soundness property of a completed multi-row scan. -/
+def SoundScan (query : ScriptHash) : ScanResult → Prop
+  | .complete _ hits _ => ∀ tx ∈ hits, exactHit query tx
+  | .exhausted => True
+
+/-- All successfully returned transactions from the *entire iterator*
+    passed full script-hash comparison, including after prefix collisions,
+    pruned entries, early stops and repeated budget charges. -/
+theorem scan_sound (query wanted endHeight budget : Nat) (rows : List Row) :
+    SoundScan query (scan query wanted endHeight budget rows) := by
+  induction rows generalizing budget with
+  | nil => simp [scan, SoundScan]
+  | cons row rest ih =>
+      cases hstep : step query wanted endHeight budget row with
+      | exhausted => simp [scan, hstep, SoundScan]
+      | stop remaining => simp [scan, hstep, SoundScan]
+      | next remaining found pruned =>
+          cases hrest : scan query wanted endHeight remaining rest with
+          | exhausted => simp [scan, hstep, hrest, SoundScan]
+          | complete after later laterPruned =>
+              have hFirst : ∀ tx ∈ found, exactHit query tx := by
+                have ht := step_sound query wanted endHeight budget row
+                rw [hstep] at ht
+                exact ht
+              have hLater : ∀ tx ∈ later, exactHit query tx := by
+                have ht := ih remaining
+                rw [hrest] at ht
+                exact ht
+              have hAll : ∀ tx ∈ found ++ later, exactHit query tx := by
+                intro tx hmem
+                rcases List.mem_append.mp hmem with hleft | hright
+                · exact hFirst tx hleft
+                · exact hLater tx hright
+              simpa [scan, hstep, hrest, SoundScan] using hAll
+
 /-- A wanted collision costs bytes but cannot fabricate a verified match. -/
 def collidingRow : Row :=
   { hashPrefix := 0, height := 8, blockHash := 123,
