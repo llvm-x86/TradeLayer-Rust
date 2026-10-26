@@ -39,3 +39,6 @@ jobs:
             echo "Proof escape hatch found" >&2
             exit 1
           fi
+      - name: Compile pinned C++ header and compare Lean-generated encoding vectors
+        shell: bash
+        run: python3 formal/bitcoin_core_36629/scripts/check_cpp_parity.py
