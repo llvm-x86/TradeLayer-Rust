@@ -179,10 +179,10 @@ def charge (remaining cost : Nat) : Option Nat :=
 theorem charge_conserves (remaining cost rest : Nat)
     (h : charge remaining cost = some rest) :
     cost + rest = remaining := by
-  unfold charge at h
-  split_ifs at h with affordable
-  · cases h
-    simpa [Nat.add_comm] using (Nat.sub_add_cancel affordable)
-  · contradiction
+  by_cases affordable : cost ≤ remaining
+  · simp only [charge, if_pos affordable, Option.some.injEq] at h
+    subst rest
+    omega
+  · simp [charge, affordable] at h
 
 end BitcoinCore36629
