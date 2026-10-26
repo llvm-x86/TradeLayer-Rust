@@ -55,15 +55,15 @@ theorem omission_preserves_missing_spender (out : ObservedOutput)
 theorem mempool_conflict_marks_spent (includeSpenders : Bool)
     (out : ObservedOutput) (id : Nat) :
     (markMempool includeSpenders out (some id)).spent = true := by
-  cases hspent : out.spent <;> simp [markMempool, hspent]
+  cases hspent : out.spent <;> cases includeSpenders <;> simp [markMempool, hspent]
 
 /-- Matches the source resolve_spender condition for a single output. -/
-def eligible (out : ObservedOutput) (spender : SpendingTx) : Bool :=
-  out.spent && out.spendingTxid.isNone &&
-    decide (out.outpoint ∈ spender.inputs)
+def eligible (out : ObservedOutput) (spender : SpendingTx) : Prop :=
+  out.spent = true ∧ out.spendingTxid = none ∧ out.outpoint ∈ spender.inputs
 
-def resolve (out : ObservedOutput) (spender : SpendingTx) : ObservedOutput :=
-  if eligible out spender then
+noncomputable def resolve (out : ObservedOutput) (spender : SpendingTx) : ObservedOutput := by
+  classical
+  exact if eligible out spender then
     { out with spendingTxid := some spender.txid }
   else out
 
@@ -71,17 +71,16 @@ theorem newly_resolved_is_actual_input (out : ObservedOutput)
     (spender : SpendingTx) (hprior : out.spendingTxid = none)
     (hafter : (resolve out spender).spendingTxid = some spender.txid) :
     out.outpoint ∈ spender.inputs := by
-  by_cases hit : eligible out spender = true
-  · have hinput : out.outpoint ∈ spender.inputs := by
-      simp [eligible] at hit
-      exact hit.2.2
-    exact hinput
+  classical
+  by_cases hit : eligible out spender
+  · exact hit.2.2
   · simp [resolve, hit, hprior] at hafter
 
 /-- A completed resolution preserves the output's original spent flag. -/
 theorem resolve_preserves_spent (out : ObservedOutput) (spender : SpendingTx) :
     (resolve out spender).spent = out.spent := by
-  by_cases hit : eligible out spender = true <;> simp [resolve, hit]
+  classical
+  by_cases hit : eligible out spender <;> simp [resolve, hit]
 
 /-- Unspendable outputs and BIP30-excluded coinbases cannot be marked spent
     by a missing UTXO in the confirmed-chain stage. -/
@@ -92,10 +91,10 @@ theorem unspendable_is_unspent (bip30 found : Bool) :
     confirmedSpent true bip30 found = false := by simp [confirmedSpent]
 
 theorem bip30_exception_is_unspent (unspendable found : Bool) :
-    confirmedSpent unspendable true found = false := by decide
+    confirmedSpent unspendable true found = false := by simp [confirmedSpent]
 
 theorem available_coin_is_unspent (unspendable bip30 : Bool) :
-    confirmedSpent unspendable bip30 true = false := by decide
+    confirmedSpent unspendable bip30 true = false := by simp [confirmedSpent]
 
 /-- Source count_transaction uses block hash plus transaction ID. -/
 structure TxKey where
