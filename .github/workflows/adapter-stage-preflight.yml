@@ -1,0 +1,38 @@
+name: Bitcoin Core #36629 adapter patch preflight
+
+on:
+  pull_request:
+    paths:
+      - 'patches/bitcoin-core-36629-adapter.patch'
+      - '.github/workflows/adapter-stage-preflight.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: core-index-patch-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  patch-preflight:
+    runs-on: ubuntu-24.04
+    env:
+      CARGO_NET_OFFLINE: "true"
+    steps:
+      - name: Checkout pinned branch revision
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Install repository Rust 1.90 toolchain
+        run: rustup toolchain install 1.90.0 --profile minimal --component rustfmt --component clippy
+      - name: Apply and inspect adapter patch without touching branch source
+        run: |
+          git apply --check patches/bitcoin-core-36629-adapter.patch
+          git apply patches/bitcoin-core-36629-adapter.patch
+          git diff --check
+      - name: Complete required Rust preflight on patched tree
+        run: bash scripts/ci-preflight.sh --full
+      - name: Run bridge contract tests
+        run: python3 -m unittest discover -s tests -p 'test_bitcoin_core_rpc_stream.py' -v
+      - name: Compile release stream consumer
+        run: cargo build --locked --release --bin tradelayer-core-index-ingest

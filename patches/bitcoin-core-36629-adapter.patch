@@ -1,0 +1,1040 @@
+diff --git a/docs/BITCOIN_CORE_SCRIPT_INDEX_RPC.md b/docs/BITCOIN_CORE_SCRIPT_INDEX_RPC.md
+new file mode 100644
+index 0000000..a156e3e
+--- /dev/null
++++ b/docs/BITCOIN_CORE_SCRIPT_INDEX_RPC.md
+@@ -0,0 +1,170 @@
++# Bitcoin Core script-history compatibility and live raw-block indexing
++
++**Scope:** read-only **Bitcoin** candidate discovery. This bridge neither writes
++TradeLayer state nor claims a fully verified Bitcoin, Litecoin or Dogecoin chain.
++Its frames are evidence, and cannot be consumed as `TrustedChainAdapter`
++permissions. Nothing changes registry activation, ledger balances, clearing,
++channel authorization or chain checkpoints.
++
++Source revisions: Bitcoin Core `bitcoin/bitcoin#36629`, inspected at
++`cf9b981fcc7ae52c7864beae35df5d60b5c322b4`; TradeLayer-Rust main
++`c7a37eb90b1ea335051bfc3cb7712116b372cfb7`. The Core PR remains
++unmerged. Its RPC name/fields can change during review.
++
++## Why a separate raw-block path is essential
++
++`txoscriptindex` uses a salted SipHash of SHA256 of the **entire** output
++`scriptPubKey`. TradeLayer embeds distinct per-transaction bytes in its
++`OP_RETURN` output scripts. The Core index cannot answer "all scripts beginning
++with OP_RETURN tl". An index query for a wallet address/descriptors also cannot
++find every TradeLayer transaction originating elsewhere. Consequently:
++
++* `blocks` mode is a **complete structural OP_RETURN scan of the supplied full
++  block bytes**. It uses one `getblock(hash, 0)` per block, not one
++  `getrawtransaction` per transaction. Core RPC request batches and a persistent
++  HTTP connection amortize latency. The pre-existing Stage8D fused borrowed
++  scanner extracts markers and preserves canonical tx positions. A local
++  header-hash check, TXID Merkle check, and adjacent previous-hash consistency
++  checks are applied; these are NOT PoW/UTXO/active-chain proof.
++* `script` mode calls new `getscripthistory(query, 0, options)` for an **exact**
++  Bitcoin address, Electrum script hash, or descriptor (including ranged xpubs).
++  It supports inclusive height bounds; excludes the mempool and extra spending
++  transactions for deterministic historical output-discovery. It bisects
++  height ranges only on the PR's 50 MiB lookup-budget errors, validates TXID
++  from the returned raw bytes, records matching output numbers, and refuses
++  an incomplete result if Core returns `pruned_blocks`. It never presents
++  this narrow result as full-chain TradeLayer discovery.
++
++A node with the proposed **~52 GB script index** and pruned blocks cannot
++provide an all-history raw-block replay from `getblock`: historical blocks are
++unavailable. For a new TradeLayer full-chain historical bootstrap, use an
++archival block source or explicit peer block retrieval plus independent
++verification, then archive the sparse candidate transactions and their
++provenance before pruning. For ongoing forward sync a pruned Core node can
++serve the current retained blocks. The suggested total **~65 GB** pruned-node
++footprint comes from the author of #36629 and is not benchmarked here.
++
++## Setup
++
++Use a Bitcoin Core build containing #36629 with `-txoscriptindex` for script
++mode. `-txospenderindex` is optional for this bridge because it deliberately
++sets `include_spending_transactions=false`. A normal Core node with raw block
++RPC is sufficient for blocks mode. The commands below assume an accessible
++local bitcoind RPC on port 8332, `python3`, and Cargo's pinned Rust toolchain.
++For a remote VPS use an SSH loopback port forward. The bridge deliberately
++refuses direct non-loopback HTTP so the cookie is not sent to an arbitrary
++remote endpoint.
++
++### High-throughput whole-block candidate discovery
++
++```bash
++set -o pipefail
++python3 scripts/bitcoin_core_rpc_stream.py \
++  --mode blocks --network main --cookie-file "$HOME/.bitcoin/.cookie" \
++  --start-height 850000 --end-height 850100 --batch-size 4 \
++  | cargo run --locked --release --bin tradelayer-core-index-ingest -- --workers 8 \
++  > /tmp/tl-candidates.tsv
++```
++
++On the first invocation Cargo builds the scanner. For meaningful wall-clock
++benchmarks, build once and invoke `target/release/tradelayer-core-index-ingest`
++subsequently. Use an archival block source for historical heights beyond the
++node's pruning horizon. The `--one-team` switch opts in to the previously
++benchmarked single-scoped-worker implementation; leave it disabled unless the
++measured throughput and scratch-memory tradeoff justify it.
++
++### Targeted script/address/descriptor history (experimental Core RPC)
++
++```bash
++set -o pipefail
++python3 scripts/bitcoin_core_rpc_stream.py \
++  --mode script --network main --cookie-file "$HOME/.bitcoin/.cookie" \
++  --script 'wpkh([fingerprint/84h/0h/0h]xpub.../0/*)' \
++  --descriptor-range 0:100 --start-height 850000 --end-height 850100 \
++  | target/release/tradelayer-core-index-ingest > /tmp/wallet-candidates.tsv
++```
++
++Replace the example descriptor with one produced by your wallet. The Core
++method accepts raw Bitcoin addresses and 64-hex Electrum scripthashes too.
++For outbound wallet activity, this initial implementation will omit spender-
++only transactions; support for `txospenderindex` output should be a separate
++opt-in mode with its own ordering and deduplication tests.
++
++## Transport contract
++
++One tab-delimited UTF-8 frame per line, terminated by an explicit success
++sentinel. Hex blobs contain no whitespace. Each frame is read with a strict
++per-line cap before allocation.
++
++```text
++B<TAB>block_height<TAB>block_hash_display_hex<TAB>raw_block_hex
++S<TAB>txid_display_hex<TAB>block_hash_display_hex_or_dash<TAB>raw_tx_hex<TAB>matching_vout_csv
++E<TAB>BLOCKS|SCRIPT<TAB>record_count
++```
++
++For block frames Rust verifies advertised hash against raw 80-byte header,
++contiguous height and previous hash linkage (across consecutive frames),
++serialization bounds/weight, full transaction parsing, TXID Merkle root,
++duplicate TXIDs, and ordered TradeLayer candidate extraction. Script frames
++independently rehash each raw transaction and reject bad or repeated matching
++vout indices. The source transport can contain unverified values even when all
++local checks pass.
++
++The Rust consumer writes one `C` line per detected carrier:
++
++```text
++C<TAB>BLOCK|SCRIPT<TAB>height_or_dash<TAB>blockhash_or_dash<TAB>tx_position_or_dash<TAB>txid<TAB>carrier_vout<TAB>format<TAB>type_or_dash<TAB>syntax_status<TAB>raw_transaction_hex
++```
++
++A successful run ends with:
++
++```text
++END<TAB>COMPLETE_UNVERIFIED<TAB>BLOCKS|SCRIPT<TAB>source_records<TAB>scanned_txs<TAB>carrier_count
++```
++
++**Downstream consumers must require** this exact success sentinel, zero exit
++status on both sides of the pipe, and independent mainnet/UTXO verification
++before treating any candidate as admissible to TradeLayer. A truncated or
++erroring RPC source emits no `E` frame. The Rust consumer then exits nonzero
++and omits the final `END`. Candidate `C` lines before failure are uncommitted
++partial observations; do not ingest them into a persistent canonical ledger.
++The recommended pipeline should write to a temp file and publish it only after
++both processes succeed, rather than directly append to a production DB.
++
++## Measurement and validation
++
++The Python stderr log reports total JSON-RPC methods, HTTP roundtrips, elapsed
++wall time, and blocks/s or returned history records/s. Rust stderr reports
++transactions scanned per wall second and syntactic TL candidate counts.
++The Rust timer includes waiting for producer frames when the scanner is
++already listening, so it captures RPC latency and CPU time for a live pipe.
++No speedup threshold is asserted from offline fixtures.
++
++```bash
++python3 -m unittest discover -s tests -p 'test_bitcoin_core_rpc_stream.py' -v
++bash scripts/ci-preflight.sh --full
++cargo test --locked --test bitcoin_core_index_ingest
++```
++
++Offline Python tests use synthetic RPC replies, including unordered batch
++responses, reorgs, 50 MiB bisection and pruned-data failure. Rust integration
++tests use the existing `raw_block_ingest_synthetic.hex` fixture and assert
++canonical candidate order, raw TXID checks, hash chaining, explicit completion
++and fail-closed mismatches. End-to-end timing must ultimately be repeated
++against a real Core node with the #36629 branch, and compared with legacy
++sequential per-TX RPC and Stage8C/8D block benchmarks at 1k/4k/10k TX sizes.
++
++## Remaining proof and performance work
++
++1. Persist sparse TL candidate bytes, block proof/position and versioned
++   checkpoint anchors, with atomic reorg rollback. Retain raw bytes before
++   the pruned Core node discards underlying blocks.
++2. Bind source block hashes to active-chain work, PoW/difficulty, BIP141
++   witness commitments, UTXO and signature checks, and legacy source
++   activation before any protocol mutations.
++3. Add an optional spender-history channel and an explicit `getblockfrompeer`
++   recovery queue; fail until missing block contents are independently verified.
++4. Measure live p50/p95 block lag, Core disk/cache pressure, RPC call rates,
++   bounded memory and exact serial-equivalent TradeLayer replay/checkpoint
++   roots. Current implementation yields a read-only candidate stream, not
++   production consensus ingestion.
+diff --git a/scripts/bitcoin_core_rpc_stream.py b/scripts/bitcoin_core_rpc_stream.py
+new file mode 100644
+index 0000000..51a21c4
+--- /dev/null
++++ b/scripts/bitcoin_core_rpc_stream.py
+@@ -0,0 +1,296 @@
++#!/usr/bin/env python3
++"""Bounded Bitcoin Core RPC -> Rust read-only candidate index stream.
++
++BLOCKS uses batched getblockhash / getblock(hash, 0), avoiding N per-TX RPCs.
++SCRIPT uses bitcoin/bitcoin#36629 getscripthistory for exact scripts only.
++Requires a locally reachable Bitcoin Core RPC with an explicitly supplied
++cookie file. No fallback silently converts targeted history to global history.
++This is discovery from one node, never independent consensus authentication.
++"""
++import argparse
++import base64
++import http.client
++import json
++import os
++from pathlib import Path
++import sys
++import time
++from urllib.parse import urlsplit
++
++MAX_BLOCK_BYTES = 4_000_000
++MAX_HTTP_BYTES = 128 * 1024 * 1024
++MAX_BATCH = 8
++MAX_SCRIPT_RECORDS = 200_000
++
++
++class RPCError(Exception):
++    def __init__(self, code, message):
++        super().__init__(f"Bitcoin Core RPC {code}: {message}")
++        self.code = code
++        self.message = message
++
++
++class IncompleteHistory(Exception):
++    pass
++
++
++class BitcoinCoreRPC:
++    """Persistent standard-library JSON RPC client; batch replies keyed by ID."""
++
++    def __init__(self, url, cookie_file, timeout=120):
++        target = urlsplit(url)
++        if (target.scheme != "http" or target.hostname not in
++                ("127.0.0.1", "localhost", "::1") or target.username or
++                target.password or target.query or target.fragment):
++            raise ValueError("RPC requires loopback HTTP; use a local SSH tunnel for remote nodes")
++        if not target.port:
++            raise ValueError("RPC URL must include Bitcoin Core's RPC port")
++        credential = Path(cookie_file).read_text(encoding="utf-8").strip()
++        if credential.count(":") < 1 or "\n" in credential:
++            raise ValueError("invalid Bitcoin Core RPC cookie")
++        token = base64.b64encode(credential.encode()).decode("ascii")
++        self.headers = {"Authorization": "Basic " + token, "Content-Type": "application/json"}
++        self.connection = http.client.HTTPConnection(target.hostname, target.port, timeout=timeout)
++        self.path = target.path or "/"
++        self.counter = 0
++        self.rpc_requests = 0
++        self.http_requests = 0
++
++    def batch(self, calls):
++        if not calls:
++            return []
++        if len(calls) > MAX_BATCH:
++            raise ValueError("RPC batch exceeds maximum")
++        requests = []
++        for method, params in calls:
++            self.counter += 1
++            requests.append({"jsonrpc": "2.0", "id": self.counter,
++                             "method": method, "params": params})
++        data = json.dumps(requests, separators=(",", ":")).encode()
++        self.connection.request("POST", self.path, body=data, headers=self.headers)
++        response = self.connection.getresponse()
++        content = response.read(MAX_HTTP_BYTES + 1)
++        self.http_requests += 1
++        self.rpc_requests += len(requests)
++        if len(content) > MAX_HTTP_BYTES:
++            raise ValueError("Bitcoin Core RPC response exceeds bounded size")
++        if response.status not in (200, 500):
++            raise RuntimeError(f"Bitcoin Core HTTP status {response.status}: " +
++                               content[:200].decode("utf-8", errors="replace"))
++        replies = json.loads(content)
++        if not isinstance(replies, list) or len(replies) != len(requests):
++            raise ValueError("malformed Bitcoin Core batch reply")
++        by_id = {}
++        for reply in replies:
++            if not isinstance(reply, dict) or type(reply.get("id")) is not int:
++                raise ValueError("invalid RPC reply ID")
++            if reply["id"] in by_id:
++                raise ValueError("duplicate RPC reply ID")
++            by_id[reply["id"]] = reply
++        ordered = []
++        for request in requests:
++            reply = by_id.get(request["id"])
++            if reply is None:
++                raise ValueError("missing RPC reply ID")
++            if reply.get("error") is not None:
++                error = reply["error"]
++                if not isinstance(error, dict):
++                    raise ValueError("malformed RPC error")
++                raise RPCError(error.get("code"), error.get("message", "unknown"))
++            ordered.append(reply.get("result"))
++        if response.status != 200:
++            raise RuntimeError("Bitcoin Core returned HTTP 500 without a JSON-RPC error")
++        return ordered
++
++    def call(self, method, *params):
++        return self.batch([(method, list(params))])[0]
++
++
++def valid_hash(value):
++    return (isinstance(value, str) and len(value) == 64 and
++            all(char in "0123456789abcdef" for char in value))
++
++
++def raw_hex(value, max_bytes):
++    if (not isinstance(value, str) or len(value) < 2 or
++            len(value) % 2 or len(value) // 2 > max_bytes or not value.isascii()):
++        raise ValueError("invalid or oversized raw block/transaction hex in RPC reply")
++    return value
++
++
++def active_tip(rpc, network):
++    chain = rpc.call("getblockchaininfo")
++    if not isinstance(chain, dict) or chain.get("chain") != network:
++        raise ValueError(f"wrong Bitcoin network: expected {network}, got {chain!r}")
++    height = chain.get("blocks")
++    if type(height) is not int or height < 0:
++        raise ValueError("invalid Bitcoin Core active-chain height")
++    return height
++
++
++def block_batch(rpc, heights):
++    """Stage complete, cross-check all active block hashes, then emit."""
++    hashes = rpc.batch([("getblockhash", [height]) for height in heights])
++    if not all(valid_hash(block_hash) for block_hash in hashes):
++        raise ValueError("malformed getblockhash reply")
++    raw_blocks = rpc.batch([("getblock", [block_hash, 0]) for block_hash in hashes])
++    raw_blocks = [raw_hex(raw, MAX_BLOCK_BYTES) for raw in raw_blocks]
++    rechecked = rpc.batch([("getblockhash", [height]) for height in heights])
++    if rechecked != hashes:
++        raise ValueError("Bitcoin active chain changed during block RPC batch")
++    return list(zip(heights, hashes, raw_blocks))
++
++
++def stream_blocks(rpc, network, start_height, end_height, batch_size, output):
++    tip = active_tip(rpc, network)
++    if not (0 <= start_height <= end_height <= tip):
++        raise ValueError(f"height range must lie inside active chain [0,{tip}]")
++    pinned_end = rpc.call("getblockhash", end_height)
++    if not valid_hash(pinned_end):
++        raise ValueError("malformed end-block chain anchor")
++    count = 0
++    for first in range(start_height, end_height + 1, batch_size):
++        heights = list(range(first, min(end_height + 1, first + batch_size)))
++        for height, blockhash, raw in block_batch(rpc, heights):
++            output.write(f"B\t{height}\t{blockhash}\t{raw}\n")
++            count += 1
++        output.flush()
++    if rpc.call("getblockhash", end_height) != pinned_end:
++        raise ValueError("Bitcoin active chain changed before stream completion")
++    output.write(f"E\tBLOCKS\t{count}\n")
++    output.flush()
++    return count
++
++
++def budget_failure(error):
++    return isinstance(error, RPCError) and (
++        "Script history index lookup limit exceeded" in error.message or
++        "Script history exceeds the" in error.message)
++
++
++def fetch_script_pages(rpc, query, start_height, end_height, descriptor_range=None):
++    """Bounded recursive height bisection on PR #36629's 50 MiB work limit."""
++    options = {"start_height": start_height, "end_height": end_height,
++               "include_mempool": False, "include_spending_transactions": False}
++    if descriptor_range is not None:
++        options["range"] = descriptor_range
++    try:
++        page = rpc.call("getscripthistory", query, 0, options)
++    except RPCError as error:
++        if not budget_failure(error):
++            raise
++        if start_height == end_height:
++            raise IncompleteHistory(f"lookup budget exceeded for block {start_height}; "
++                                    "narrow descriptor range") from error
++        mid = (start_height + end_height) // 2
++        yield from fetch_script_pages(rpc, query, start_height, mid, descriptor_range)
++        yield from fetch_script_pages(rpc, query, mid + 1, end_height, descriptor_range)
++        return
++    if not isinstance(page, dict) or not isinstance(page.get("transactions"), list):
++        raise ValueError("malformed getscripthistory result")
++    pruned = page.get("pruned_blocks", [])
++    if not isinstance(pruned, list) or any(not valid_hash(p) for p in pruned):
++        raise ValueError("malformed getscripthistory pruned_blocks")
++    if pruned:
++        raise IncompleteHistory(f"missing pruned block data: {','.join(pruned[:8])}; "
++                                "recover and retry before claiming complete history")
++    if page.get("spending_transactions"):
++        raise ValueError("unexpected spending_transactions despite disabled option")
++    yield page["transactions"]
++
++
++def history_rows(transactions):
++    for item in transactions:
++        if not isinstance(item, dict) or not valid_hash(item.get("txid")):
++            raise ValueError("malformed script-history transaction TXID")
++        raw = raw_hex(item.get("hex"), 1_000_000)
++        blockhash = item.get("blockhash", "-")
++        if blockhash != "-" and not valid_hash(blockhash):
++            raise ValueError("invalid script-history blockhash")
++        if not isinstance(item.get("vout"), list) or not item["vout"]:
++            raise ValueError("script-history lacks matching vout")
++        indexes = []
++        for output in item["vout"]:
++            n = output.get("n") if isinstance(output, dict) else None
++            if type(n) is not int or not 0 <= n <= 100_000:
++                raise ValueError("malformed script-history vout index")
++            indexes.append(n)
++        if indexes != sorted(set(indexes)):
++            raise ValueError("duplicate or unsorted script-history vout indexes")
++        yield f"S\t{item['txid']}\t{blockhash}\t{raw}\t{','.join(map(str, indexes))}\n"
++
++
++def stream_script(rpc, network, query, start_height, end_height, descriptor_range, output):
++    tip = active_tip(rpc, network)
++    if not (0 <= start_height <= end_height <= tip):
++        raise ValueError(f"height range must lie inside active chain [0,{tip}]")
++    pinned_end = rpc.call("getblockhash", end_height)
++    if not valid_hash(pinned_end):
++        raise ValueError("malformed start chain anchor")
++    count = 0
++    for page in fetch_script_pages(rpc, query, start_height, end_height, descriptor_range):
++        rows = list(history_rows(page))  # validate the page before emitting it
++        if count + len(rows) > MAX_SCRIPT_RECORDS:
++            raise IncompleteHistory("script-history stream exceeds 200,000 records")
++        if rpc.call("getblockhash", end_height) != pinned_end:
++            raise IncompleteHistory("Bitcoin chain reorganized during script history")
++        output.writelines(rows)
++        output.flush()
++        count += len(rows)
++    if rpc.call("getblockhash", end_height) != pinned_end:
++        raise IncompleteHistory("Bitcoin chain reorganized before completing script history")
++    output.write(f"E\tSCRIPT\t{count}\n")
++    output.flush()
++    return count
++
++
++def main(argv=None):
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument("--mode", choices=("blocks", "script"), required=True)
++    parser.add_argument("--rpc-url", default="http://127.0.0.1:8332/")
++    parser.add_argument("--cookie-file", required=True)
++    parser.add_argument("--network", choices=("main", "test", "testnet4", "signet", "regtest"),
++                        default="main")
++    parser.add_argument("--start-height", type=int, default=0)
++    parser.add_argument("--end-height", type=int)
++    parser.add_argument("--batch-size", type=int, default=4)
++    parser.add_argument("--script", help="exact address, Electrum scripthash, or Core descriptor")
++    parser.add_argument("--descriptor-range", help="ranged descriptor index interval: start:end")
++    args = parser.parse_args(argv)
++    if not 1 <= args.batch_size <= MAX_BATCH:
++        parser.error(f"--batch-size must be between 1 and {MAX_BATCH}")
++    if args.mode == "script" and not args.script:
++        parser.error("--script is required for script mode")
++    if args.mode == "blocks" and (args.script or args.descriptor_range):
++        parser.error("--script and --descriptor-range belong to script mode")
++    descriptor_range = None
++    if args.descriptor_range:
++        try:
++            low, high = (int(v) for v in args.descriptor_range.split(":"))
++            if not 0 <= low <= high < 2**31:
++                raise ValueError
++            descriptor_range = [low, high]
++        except (ValueError, TypeError):
++            parser.error("--descriptor-range must be start:end with 0 <= start <= end")
++    rpc = BitcoinCoreRPC(args.rpc_url, args.cookie_file)
++    begun = time.monotonic()
++    tip = active_tip(rpc, args.network) if args.end_height is None else args.end_height
++    if args.mode == "blocks":
++        count = stream_blocks(rpc, args.network, args.start_height, tip,
++                              args.batch_size, sys.stdout)
++    else:
++        count = stream_script(rpc, args.network, args.script, args.start_height,
++                              tip, descriptor_range, sys.stdout)
++    seconds = max(time.monotonic() - begun, 1e-6)
++    print(f"source=BITCOIN_CORE_RPC mode={args.mode} records={count} "
++          f"rpc_methods={rpc.rpc_requests} http_roundtrips={rpc.http_requests} "
++          f"elapsed_s={seconds:.3f} records_per_s={count / seconds:.1f} "
++          "consensus=UNVERIFIED", file=sys.stderr)
++
++
++if __name__ == "__main__":
++    try:
++        main()
++    except (RPCError, IncompleteHistory, ValueError, OSError, RuntimeError) as error:
++        print(f"INCOMPLETE Bitcoin Core stream: {error}", file=sys.stderr)
++        sys.exit(1)
+diff --git a/src/bin/tradelayer-core-index-ingest.rs b/src/bin/tradelayer-core-index-ingest.rs
+new file mode 100644
+index 0000000..cca19f9
+--- /dev/null
++++ b/src/bin/tradelayer-core-index-ingest.rs
+@@ -0,0 +1,267 @@
++//! Read-only, bounded Bitcoin Core RPC stream consumer for TradeLayer candidates.
++//!
++//! Input frames come from scripts/bitcoin_core_rpc_stream.py. A completed
++//! stream ends with E<TAB>BLOCKS|SCRIPT<TAB>record_count. This process produces
++//! syntactic OP_RETURN observations, never authenticated Bitcoin or TL state.
++//! Core PR bitcoin/bitcoin#36629 indexes EXACT scripts, not all TL payloads.
++use std::io::{self, BufRead};
++use std::time::Instant;
++use tradelayer_core::parallel_txindex::ParallelIndexConfig;
++use tradelayer_core::raw_block_ingest::{UnverifiedRawBlockView, MAX_UNVERIFIED_RAW_BLOCK_BYTES};
++use tradelayer_core::read_only::{id_hex, inspect_transaction, TransactionObservation};
++
++const MAX_FRAME_BYTES: usize = MAX_UNVERIFIED_RAW_BLOCK_BYTES * 2 + 512;
++const MAX_SCRIPT_TX_BYTES: usize = 1_000_000;
++
++#[derive(Debug, Clone, Copy, PartialEq, Eq)]
++enum Mode {
++    Blocks,
++    Script,
++}
++impl Mode {
++    const fn label(self) -> &'static str {
++        match self {
++            Self::Blocks => "BLOCKS",
++            Self::Script => "SCRIPT",
++        }
++    }
++}
++
++fn nibble(byte: u8) -> Option<u8> {
++    match byte {
++        b'0'..=b'9' => Some(byte - b'0'),
++        b'a'..=b'f' => Some(byte - b'a' + 10),
++        b'A'..=b'F' => Some(byte - b'A' + 10),
++        _ => None,
++    }
++}
++
++fn hex_bytes(input: &str, maximum: usize) -> Result<Vec<u8>, String> {
++    if !input.len().is_multiple_of(2) || input.len() / 2 > maximum {
++        return Err("invalid or oversized hexadecimal input".into());
++    }
++    let mut bytes = Vec::with_capacity(input.len() / 2);
++    for pair in input.as_bytes().chunks_exact(2) {
++        let high = nibble(pair[0]).ok_or("invalid hexadecimal digit")?;
++        let low = nibble(pair[1]).ok_or("invalid hexadecimal digit")?;
++        bytes.push((high << 4) | low);
++    }
++    Ok(bytes)
++}
++
++fn hash_from_display(input: &str) -> Result<[u8; 32], String> {
++    if input.len() != 64 || input.bytes().any(|b| nibble(b).is_none()) {
++        return Err("expected a 64-character hash".into());
++    }
++    let mut bytes: [u8; 32] = hex_bytes(input, 32)?
++        .try_into()
++        .map_err(|_| "invalid hash length")?;
++    bytes.reverse();
++    Ok(bytes)
++}
++
++/// Reads one bounded line without allocating its entire unchecked length.
++fn read_bounded_line<R: BufRead>(input: &mut R) -> Result<Option<String>, String> {
++    let mut data = Vec::new();
++    loop {
++        let (consumed, ended, eof) = {
++            let available = input.fill_buf().map_err(|err| err.to_string())?;
++            let eof = available.is_empty();
++            let end = available.iter().position(|byte| *byte == b'\n');
++            let take = end.map_or(available.len(), |position| position + 1);
++            if data.len().saturating_add(take) > MAX_FRAME_BYTES {
++                return Err("RPC stream frame exceeds bounded raw block size".into());
++            }
++            data.extend_from_slice(&available[..take]);
++            (take, end.is_some(), eof)
++        };
++        input.consume(consumed);
++        if eof || ended {
++            break;
++        }
++    }
++    if data.is_empty() {
++        return Ok(None);
++    }
++    if data.ends_with(b"\n") {
++        data.pop();
++    }
++    if data.ends_with(b"\r") {
++        data.pop();
++    }
++    String::from_utf8(data)
++        .map(Some)
++        .map_err(|_| "RPC stream must be UTF-8".into())
++}
++
++fn print_candidates(
++    kind: &str,
++    height: &str,
++    blockhash: &str,
++    position: &str,
++    tx: &TransactionObservation,
++    raw_transaction: &[u8],
++) -> usize {
++    let rawhex = raw_transaction
++        .iter()
++        .map(|byte| format!("{byte:02x}"))
++        .collect::<String>();
++    for carrier in &tx.carriers {
++        println!(
++            "C\t{kind}\t{height}\t{blockhash}\t{position}\t{}\t{}\t{}\t{}\t{}\t{rawhex}",
++            id_hex(&tx.txid),
++            carrier.vout,
++            carrier.format.label(),
++            carrier.transaction_type.map_or_else(|| "-".into(), |n| n.to_string()),
++            carrier.status
++        );
++    }
++    tx.carriers.len()
++}
++
++fn argument_config() -> Result<(ParallelIndexConfig, bool), String> {
++    let mut config = ParallelIndexConfig::default();
++    let mut one_team = false;
++    let mut arguments = std::env::args().skip(1);
++    while let Some(argument) = arguments.next() {
++        match argument.as_str() {
++            "--workers" => {
++                config.workers = arguments
++                    .next()
++                    .ok_or("--workers requires a value")?
++                    .parse()
++                    .map_err(|_| "invalid worker count")?;
++            }
++            "--one-team" => one_team = true,
++            _ => return Err("usage: tradelayer-core-index-ingest [--workers 1..16] [--one-team]".into()),
++        }
++    }
++    config.validate().map_err(|err| format!("{err:?}"))?;
++    Ok((config, one_team))
++}
++
++fn run() -> Result<(), String> {
++    let (config, one_team) = argument_config()?;
++    let mut reader = io::stdin().lock();
++    let start = Instant::now();
++    let mut mode: Option<Mode> = None;
++    let mut records = 0usize;
++    let mut total_txs = 0usize;
++    let mut candidates = 0usize;
++    let mut last_height: Option<u32> = None;
++    let mut last_blockhash: Option<[u8; 32]> = None;
++    let mut complete = false;
++    while let Some(line) = read_bounded_line(&mut reader)? {
++        if complete {
++            return Err("data after end-of-stream sentinel".into());
++        }
++        let columns = line.split('\t').collect::<Vec<_>>();
++        match columns.as_slice() {
++            &["B", height, blockhash, rawhex] => {
++                if mode.is_some_and(|m| m != Mode::Blocks) {
++                    return Err("cannot mix BLOCKS and SCRIPT frames".into());
++                }
++                mode = Some(Mode::Blocks);
++                let height = height.parse::<u32>().map_err(|_| "invalid block height")?;
++                if last_height.is_some_and(|previous| previous.checked_add(1) != Some(height)) {
++                    return Err("block stream must be contiguous and ascending".into());
++                }
++                let expected = hash_from_display(blockhash)?;
++                let bytes = hex_bytes(rawhex, MAX_UNVERIFIED_RAW_BLOCK_BYTES)?;
++                let view = UnverifiedRawBlockView::parse(&bytes, Some(expected))
++                    .map_err(|err| format!("block {height}: {err:?}"))?;
++                if last_blockhash.is_some_and(|previous| &bytes[4..36] != previous.as_slice()) {
++                    return Err("block previous-hash linkage mismatch".into());
++                }
++                let report = if one_team {
++                    view.inspect_parallel_one_team(config)
++                } else {
++                    view.inspect_parallel(config)
++                }
++                .map_err(|err| format!("block {height}: {err:?}"))?;
++                for candidate in report.ordered_preindex().candidates_in_source_order() {
++                    candidates += print_candidates(
++                        "BLOCK",
++                        &height.to_string(),
++                        blockhash,
++                        &candidate.position.to_string(),
++                        &candidate.observation,
++                        view.raw_transaction(candidate.position)
++                            .ok_or("missing source transaction range")?,
++                    );
++                }
++                total_txs = total_txs.checked_add(view.transaction_count()).ok_or("counter overflow")?;
++                records += 1;
++                last_height = Some(height);
++                last_blockhash = Some(expected);
++            }
++            &["S", txid, blockhash, rawhex, matches] => {
++                if mode.is_some_and(|m| m != Mode::Script) {
++                    return Err("cannot mix BLOCKS and SCRIPT frames".into());
++                }
++                mode = Some(Mode::Script);
++                if blockhash != "-" {
++                    hash_from_display(blockhash)?;
++                }
++                let expected_txid = hash_from_display(txid)?;
++                let raw = hex_bytes(rawhex, MAX_SCRIPT_TX_BYTES)?;
++                let observed = inspect_transaction(&raw)
++                    .map_err(|err| format!("script-history transaction {txid}: {err}"))?;
++                if observed.txid != expected_txid {
++                    return Err("script-history raw transaction TXID mismatch".into());
++                }
++                if matches.is_empty() {
++                    return Err("script-history result lacks matching output indexes".into());
++                }
++                let mut previous = None;
++                for output in matches.split(',') {
++                    let index = output.parse::<u32>().map_err(|_| "invalid matching output index")?;
++                    if index >= observed.output_count || previous.is_some_and(|p| p >= index) {
++                        return Err("invalid or duplicated matching output index".into());
++                    }
++                    previous = Some(index);
++                }
++                candidates += print_candidates("SCRIPT", "-", blockhash, "-", &observed, &raw);
++                total_txs += 1;
++                records += 1;
++            }
++            &["E", kind, count] => {
++                let expected_mode = match kind {
++                    "BLOCKS" => Mode::Blocks,
++                    "SCRIPT" => Mode::Script,
++                    _ => return Err("invalid stream end mode".into()),
++                };
++                if mode.is_some_and(|m| m != expected_mode) {
++                    return Err("stream end mode mismatches records".into());
++                }
++                let count = count.parse::<usize>().map_err(|_| "invalid stream count")?;
++                if count != records {
++                    return Err("stream end count mismatch".into());
++                }
++                complete = true;
++                mode = Some(expected_mode);
++            }
++            _ => return Err("invalid RPC stream frame".into()),
++        }
++    }
++    if !complete {
++        return Err("truncated RPC stream: missing E sentinel".into());
++    }
++    let seconds = start.elapsed().as_secs_f64().max(0.000_001);
++    println!(
++        "END\tCOMPLETE_UNVERIFIED\t{}\t{records}\t{total_txs}\t{candidates}",
++        mode.expect("end sentinel required").label()
++    );
++    eprintln!(
++        "records={records} txs={total_txs} candidates={candidates} elapsed_s={seconds:.3} observed_txs_per_sec={:.0} source=UNVERIFIED",
++        total_txs as f64 / seconds
++    );
++    Ok(())
++}
++
++fn main() {
++    if let Err(error) = run() {
++        eprintln!("REJECTED RPC INDEX STREAM: {error}");
++        std::process::exit(1);
++    }
++}
+diff --git a/tests/bitcoin_core_index_ingest.rs b/tests/bitcoin_core_index_ingest.rs
+new file mode 100644
+index 0000000..27a265a
+--- /dev/null
++++ b/tests/bitcoin_core_index_ingest.rs
+@@ -0,0 +1,101 @@
++//! Offline Bitcoin Core RPC frame contract, using the existing raw-block fixture.
++use std::io::Write;
++use std::process::{Command, Stdio};
++use tradelayer_core::raw_block_ingest::UnverifiedRawBlockView;
++use tradelayer_core::read_only::{decode_hex, id_hex, inspect_transaction};
++
++fn run(input: &str) -> (bool, String, String) {
++    let binary = env!("CARGO_BIN_EXE_tradelayer-core-index-ingest");
++    let mut process = Command::new(binary)
++        .stdin(Stdio::piped())
++        .stdout(Stdio::piped())
++        .stderr(Stdio::piped())
++        .spawn()
++        .unwrap();
++    process.stdin.take().unwrap().write_all(input.as_bytes()).unwrap();
++    let output = process.wait_with_output().unwrap();
++    (
++        output.status.success(),
++        String::from_utf8(output.stdout).unwrap(),
++        String::from_utf8(output.stderr).unwrap(),
++    )
++}
++
++fn block_fixture() -> (String, String, String) {
++    let block_hex = include_str!("../fixtures/raw_block_ingest_synthetic.hex")
++        .trim()
++        .to_string();
++    let raw = decode_hex(&block_hex).unwrap();
++    let view = UnverifiedRawBlockView::parse(&raw, None).unwrap();
++    let blockhash = id_hex(&view.header_hash_raw());
++    (block_hex, blockhash, view.transaction_count().to_string())
++}
++
++#[test]
++fn bulk_block_stream_recovers_ordered_tl_candidates() {
++    let (raw, blockhash, count) = block_fixture();
++    let input = format!("B\t10\t{blockhash}\t{raw}\nE\tBLOCKS\t1\n");
++    let (ok, out, err) = run(&input);
++    assert!(ok, "{err}");
++    assert!(out.contains("C\tBLOCK\t10\t"));
++    assert!(out.contains("\t1\t") || out.contains("\t2\t"));
++    assert!(out.contains(&format!("END\tCOMPLETE_UNVERIFIED\tBLOCKS\t1\t{count}\t2")));
++    assert!(err.contains("source=UNVERIFIED"));
++}
++
++#[test]
++fn wrong_block_hash_and_missing_end_are_rejected() {
++    let (raw, _, _) = block_fixture();
++    let wrong = format!("B\t0\t{}\t{raw}\nE\tBLOCKS\t1\n", "0".repeat(64));
++    let (ok, _, error) = run(&wrong);
++    assert!(!ok);
++    assert!(error.contains("RequestedHeaderHashMismatch"));
++
++    let (_, blockhash, _) = block_fixture();
++    let (ok, _, error) = run(&format!("B\t0\t{blockhash}\t{raw}\n"));
++    assert!(!ok);
++    assert!(error.contains("missing E sentinel"));
++}
++
++#[test]
++fn linked_blocks_and_count_are_enforced() {
++    let (raw, blockhash, _) = block_fixture();
++    let input = format!("B\t0\t{blockhash}\t{raw}\nB\t1\t{blockhash}\t{raw}\nE\tBLOCKS\t2\n");
++    let (ok, _, error) = run(&input);
++    assert!(!ok);
++    assert!(error.contains("previous-hash linkage mismatch"));
++    let input = format!("B\t0\t{blockhash}\t{raw}\nE\tBLOCKS\t2\n");
++    let (ok, _, error) = run(&input);
++    assert!(!ok);
++    assert!(error.contains("count mismatch"));
++}
++
++#[test]
++fn script_history_txid_and_vout_are_independently_checked() {
++    let (raw, blockhash, _) = block_fixture();
++    let block = decode_hex(&raw).unwrap();
++    let view = UnverifiedRawBlockView::parse(&block, None).unwrap();
++    let transaction = view.raw_transaction(1).unwrap();
++    let txid = id_hex(&inspect_transaction(transaction).unwrap().txid);
++    let txhex = transaction.iter().map(|byte| format!("{byte:02x}")).collect::<String>();
++    let input = format!("S\t{txid}\t{blockhash}\t{txhex}\t0\nE\tSCRIPT\t1\n");
++    let (ok, out, error) = run(&input);
++    assert!(ok, "{error}");
++    assert!(out.contains("C\tSCRIPT\t-\t"));
++    assert!(out.contains("END\tCOMPLETE_UNVERIFIED\tSCRIPT\t1\t1\t1"));
++    let wrong = format!("S\t{}\t{blockhash}\t{txhex}\t0\nE\tSCRIPT\t1\n", "0".repeat(64));
++    let (ok, _, error) = run(&wrong);
++    assert!(!ok);
++    assert!(error.contains("TXID mismatch"));
++    let wrong = format!("S\t{txid}\t{blockhash}\t{txhex}\t0,0\nE\tSCRIPT\t1\n");
++    let (ok, _, error) = run(&wrong);
++    assert!(!ok);
++    assert!(error.contains("duplicated matching output"));
++}
++
++#[test]
++fn script_stream_with_zero_matches_is_an_explicit_complete_observation() {
++    let (ok, out, err) = run("E\tSCRIPT\t0\n");
++    assert!(ok, "{err}");
++    assert!(out.contains("END\tCOMPLETE_UNVERIFIED\tSCRIPT\t0\t0\t0"));
++}
+diff --git a/tests/test_bitcoin_core_rpc_stream.py b/tests/test_bitcoin_core_rpc_stream.py
+new file mode 100644
+index 0000000..d19260b
+--- /dev/null
++++ b/tests/test_bitcoin_core_rpc_stream.py
+@@ -0,0 +1,176 @@
++"""Offline contract tests for the proposed Bitcoin Core RPC streaming bridge."""
++import importlib.util
++import io
++from pathlib import Path
++import tempfile
++import unittest
++from unittest.mock import patch
++
++PATH = Path(__file__).resolve().parents[1] / "scripts" / "bitcoin_core_rpc_stream.py"
++spec = importlib.util.spec_from_file_location("bitcoin_core_rpc_stream", PATH)
++bridge = importlib.util.module_from_spec(spec)
++spec.loader.exec_module(bridge)
++
++A = "a" * 64
++B = "b" * 64
++C = "c" * 64
++TX = "d" * 64
++
++
++class FakeRPC:
++    def __init__(self, *, tip=20, reorg=False, limit=False, pruned=False):
++        self.tip = tip
++        self.reorg = reorg
++        self.limit = limit
++        self.pruned = pruned
++        self.calls = []
++        self.rechecks = 0
++
++    def call(self, method, *params):
++        self.calls.append((method, list(params)))
++        if method == "getblockchaininfo":
++            return {"chain": "regtest", "blocks": self.tip}
++        if method == "getblockhash":
++            return self._hash(params[0])
++        if method == "getscripthistory":
++            options = params[2]
++            left, right = options["start_height"], options["end_height"]
++            if self.limit and right > left:
++                raise bridge.RPCError(-1, "Script history index lookup limit exceeded")
++            if self.pruned:
++                return {"transactions": [], "pruned_blocks": [A]}
++            return {"transactions": [{"txid": TX, "hex": "0200", "blockhash": A,
++                                       "vout": [{"n": 0, "spent": False}]}]}
++        raise AssertionError(method)
++
++    def _hash(self, height):
++        self.rechecks += 1
++        if self.reorg and self.rechecks > 2:
++            return B
++        return A if height == 0 else B
++
++    def batch(self, requests):
++        self.calls.extend(requests)
++        if all(method == "getblockhash" for method, _ in requests):
++            self.rechecks += 1
++            if self.reorg and self.rechecks >= 3:
++                return [C for _ in requests]
++            return [A if params[0] == 0 else B for _, params in requests]
++        if all(method == "getblock" for method, _ in requests):
++            return ["00" * 100 for _ in requests]
++        raise AssertionError(requests)
++
++
++class BridgeTests(unittest.TestCase):
++    def test_bulk_rpc_one_block_request_per_height(self):
++        fake = FakeRPC(tip=2)
++        out = io.StringIO()
++        count = bridge.stream_blocks(fake, "regtest", 0, 2, 2, out)
++        self.assertEqual(count, 3)
++        self.assertEqual(out.getvalue().count("\n"), 4)
++        self.assertTrue(out.getvalue().endswith("E\tBLOCKS\t3\n"))
++        block_calls = [params for method, params in fake.calls if method == "getblock"]
++        self.assertEqual(len(block_calls), 3)
++        self.assertTrue(all(params[1] == 0 for params in block_calls))
++
++    def test_reorg_fails_before_emitting_affected_batch(self):
++        out = io.StringIO()
++        with self.assertRaisesRegex(ValueError, "active chain changed"):
++            bridge.stream_blocks(FakeRPC(tip=2, reorg=True), "regtest", 0, 1, 2, out)
++        self.assertEqual(out.getvalue(), "")
++
++    def test_bounded_script_lookup_bisects_exactly(self):
++        fake = FakeRPC(tip=5, limit=True)
++        out = io.StringIO()
++        self.assertEqual(bridge.stream_script(fake, "regtest", "addr(...)", 1, 3,
++                                              [0, 2], out), 3)
++        self.assertEqual(out.getvalue().count("\n"), 4)
++        self.assertIn("E\tSCRIPT\t3\n", out.getvalue())
++        lookups = [params for method, params in fake.calls if method == "getscripthistory"]
++        self.assertEqual([ (p[2]["start_height"], p[2]["end_height"]) for p in lookups],
++                         [(1, 3), (1, 2), (1, 1), (2, 2), (3, 3)])
++        self.assertTrue(all(p[2]["include_mempool"] is False and
++                            p[2]["include_spending_transactions"] is False for p in lookups))
++
++    def test_pruned_blocks_fail_without_end_sentinel(self):
++        out = io.StringIO()
++        with self.assertRaises(bridge.IncompleteHistory):
++            bridge.stream_script(FakeRPC(pruned=True), "regtest", A, 0, 0, None, out)
++        self.assertEqual(out.getvalue(), "")
++
++    def test_single_height_budget_is_hard_failure(self):
++        class AlwaysLimit(FakeRPC):
++            def call(self, method, *params):
++                if method == "getscripthistory":
++                    raise bridge.RPCError(-1, "Script history exceeds the 52428800 byte budget")
++                return super().call(method, *params)
++        with self.assertRaises(bridge.IncompleteHistory):
++            list(bridge.fetch_script_pages(AlwaysLimit(), A, 4, 4))
++
++    def test_rejects_invalid_history_vout_order(self):
++        with self.assertRaisesRegex(ValueError, "duplicate or unsorted"):
++            list(bridge.history_rows([{"txid": TX, "hex": "0200", "blockhash": A,
++                                       "vout": [{"n": 1}, {"n": 1}]}]))
++
++    def test_wrong_network_fails_before_fetch(self):
++        with self.assertRaisesRegex(ValueError, "wrong Bitcoin network"):
++            bridge.stream_blocks(FakeRPC(), "main", 0, 0, 1, io.StringIO())
++
++    def test_cookie_loopback_constraint(self):
++        with tempfile.TemporaryDirectory() as directory:
++            cookie = Path(directory) / ".cookie"
++            cookie.write_text("__cookie__:example_secret", encoding="utf-8")
++            with self.assertRaisesRegex(ValueError, "loopback"):
++                bridge.BitcoinCoreRPC("http://remote.example:8332", str(cookie))
++            rpc = bridge.BitcoinCoreRPC("http://127.0.0.1:8332", str(cookie))
++            self.assertIn("Basic ", rpc.headers["Authorization"])
++            self.assertNotIn("example_secret", str(rpc.headers))
++            rpc.connection.close()
++
++    def test_http_500_rpc_error_is_parsed_for_budget_bisection(self):
++        class Response:
++            status = 500
++            def read(self, limit):
++                return (b'[{' + b'"id":1,"result":null,"error":{' +
++                        b'"code":-1,"message":"Script history index lookup limit exceeded"}}]')
++        class Connection:
++            def request(self, *args, **kwargs):
++                pass
++            def getresponse(self):
++                return Response()
++        with tempfile.TemporaryDirectory() as directory:
++            cookie = Path(directory) / ".cookie"
++            cookie.write_text("u:p", encoding="utf-8")
++            rpc = bridge.BitcoinCoreRPC("http://127.0.0.1:8332", str(cookie))
++            rpc.connection = Connection()
++            with self.assertRaises(bridge.RPCError) as caught:
++                rpc.call("getscripthistory", A, 0, {"start_height": 0, "end_height": 1})
++            self.assertTrue(bridge.budget_failure(caught.exception))
++
++    def test_batch_reorders_by_request_id_and_rejects_duplicate(self):
++        class Response:
++            status = 200
++            def __init__(self, body):
++                self.body = body
++            def read(self, limit):
++                return self.body
++        class Connection:
++            def __init__(self, content):
++                self.content = content
++            def request(self, *args, **kwargs):
++                pass
++            def getresponse(self):
++                return Response(self.content)
++        with tempfile.TemporaryDirectory() as directory:
++            cookie = Path(directory) / ".cookie"
++            cookie.write_text("u:p", encoding="utf-8")
++            rpc = bridge.BitcoinCoreRPC("http://localhost:8332", str(cookie))
++            rpc.connection = Connection(b'[{"id":2,"result":"second","error":null},{"id":1,"result":"first","error":null}]')
++            self.assertEqual(rpc.batch([("one", []), ("two", [])]), ["first", "second"])
++            rpc.connection = Connection(b'[{"id":3,"result":0,"error":null},{"id":3,"result":1,"error":null}]')
++            with self.assertRaisesRegex(ValueError, "duplicate"):
++                rpc.batch([("one", []), ("two", [])])
++
++
++if __name__ == "__main__":
++    unittest.main()
