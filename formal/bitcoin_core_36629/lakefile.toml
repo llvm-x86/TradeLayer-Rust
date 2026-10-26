@@ -1,11 +1,8 @@
 name = "BitcoinCore36629"
-defaultTargets = ["IndexModel", "OrderedEncoding", "OrderedOrdering"]
+defaultTargets = ["IndexModel", "OrderedEncoding"]
 
 [[lean_lib]]
 name = "IndexModel"
 
 [[lean_lib]]
 name = "OrderedEncoding"
-
-[[lean_lib]]
-name = "OrderedOrdering"
