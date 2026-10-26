@@ -42,7 +42,7 @@ theorem encode_five (x : Nat) (h : 270549120 ≤ x) :
     show ¬x < 270549120 by omega]
 
 /-- Strict bytewise ordering for every supported OrderedVarInt value pair. -/
-theorem strict_order (x y : Nat) (hxy : x < y) (hmax : y ≤ max5) :
+theorem strict_order (x y : Nat) (hxy : x < y) (_hmax : y ≤ max5) :
     byteLex (encode x) (encode y) = true := by
   rcases numeric_classification x with hx1 | hx2 | hx3 | hx4 | hx5
   · rcases numeric_classification y with hy1 | hy2 | hy3 | hy4 | hy5
