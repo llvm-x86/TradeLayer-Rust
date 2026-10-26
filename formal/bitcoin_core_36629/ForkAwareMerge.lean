@@ -145,18 +145,14 @@ theorem source_height_only_merge_has_invalid_vout :
 
 theorem fork_aware_merging_preserves_both_transactions :
     (aggregate [oldFork, newFork] (key oldFork)).map
-        (fun h => h.tx.txid, bounded h.tx) = some (oldHit.txid, true) ∧
+        (fun h : ForkHit => (h.tx.txid, bounded h.tx)) = some (oldHit.txid, true) ∧
     (aggregate [oldFork, newFork] (key newFork)).map
-        (fun h => h.tx.txid, bounded h.tx) = some (newHit.txid, true) := by
+        (fun h : ForkHit => (h.tx.txid, bounded h.tx)) = some (newHit.txid, true) := by
   decide
 
 /-- On the synthetic fork pair, each lookup satisfies the immutable-body map. -/
 theorem example_image_is_safe :
     ValidForkHit exampleImage oldFork ∧ ValidForkHit exampleImage newFork := by
-  constructor
-  · simp [ValidForkHit, exampleImage, key, oldFork, oldHit,
-      outputIndexesInBounds]
-  · simp [ValidForkHit, exampleImage, key, newFork, newHit,
-      outputIndexesInBounds]
+  decide
 
 end BitcoinCore36629.ForkAwareMerge
