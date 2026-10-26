@@ -69,7 +69,7 @@ theorem wellFormed_check_iff (maxSize prev : Nat) (offsets : List Nat) :
   induction offsets generalizing prev with
   | nil => simp [wellFormedCheck, WellFormed]
   | cons off rest ih =>
-      simp [wellFormedCheck, WellFormed, ih]
+      simp [wellFormedCheck, WellFormed, ih, and_assoc]
 
 def serializeValue (maxSize : Nat) (offsets : List Nat) : Option (List Nat) :=
   if offsets.isEmpty then none
