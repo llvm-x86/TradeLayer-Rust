@@ -1,0 +1,41 @@
+name: Bitcoin Core script-index Lean proofs
+
+on:
+  push:
+    branches: [research/lean-bitcoin-scriptindex-36629-20261027]
+    paths:
+      - 'formal/bitcoin_core_36629/**'
+      - '.github/workflows/bitcoin-core-36629-lean.yml'
+  pull_request:
+    paths:
+      - 'formal/bitcoin_core_36629/**'
+      - '.github/workflows/bitcoin-core-36629-lean.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  proofs:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Lean kernel checks
+        uses: leanprover/lean-action@38fbc41a8c28c4cbaec22d7f7de508ec2e7c0dd9 # v1.5.0
+        with:
+          lake-package-directory: formal/bitcoin_core_36629
+          build: "true"
+          build-args: "--wfail"
+          test: "false"
+          lint: "false"
+          use-mathlib-cache: "false"
+      - name: Reject omitted proofs
+        shell: bash
+        run: |
+          if grep -nE '(^|[^A-Za-z_])(sorry|admit|axiom)([^A-Za-z_]|$)' formal/bitcoin_core_36629/*.lean; then
+            echo "Proof escape hatch found" >&2
+            exit 1
+          fi
