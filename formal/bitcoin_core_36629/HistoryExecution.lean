@@ -126,7 +126,24 @@ theorem step_sound (query wanted endHeight budget : Nat) (row : Row) :
       exactHit query tx := by
     intro tx htx
     exact exactResults_sound query row.candidates tx htx
-  simp [step, SoundStep, hExact]
+  by_cases hKey : budget < row.keyBytes
+  · simp [step, SoundStep, hKey]
+  · by_cases hOut : row.hashPrefix ≠ wanted ∨ endHeight < row.height
+    · simp [step, SoundStep, hKey, hOut]
+    · by_cases hValue : budget - row.keyBytes < row.valueBytes
+      · simp [step, SoundStep, hKey, hOut, hValue]
+      · by_cases hChain : row.activeChain = false
+        · simp [step, SoundStep, hKey, hOut, hValue, hChain]
+        · by_cases hAvailable : row.dataAvailable = false
+          · simp [step, SoundStep, hKey, hOut, hValue, hChain, hAvailable]
+          · cases hRead : readCandidates (budget - row.keyBytes - row.valueBytes)
+                row.candidates with
+            | none =>
+                simp [step, SoundStep, hKey, hOut, hValue,
+                  hChain, hAvailable, hRead]
+            | some remaining =>
+                simpa [step, SoundStep, hKey, hOut, hValue,
+                  hChain, hAvailable, hRead] using hExact
 
 /-- Complete row-scan outcome. A failure returns no partial response. -/
 inductive ScanResult where
