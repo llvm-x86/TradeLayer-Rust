@@ -1,3 +1,5 @@
+import Std
+import Lean.Elab.Tactic.Omega
 import OrderedEncoding
 
 set_option autoImplicit false
