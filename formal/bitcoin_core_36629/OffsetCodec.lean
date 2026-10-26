@@ -59,9 +59,21 @@ def deserializeValue (maxSize maxCount : Nat) : List Nat → Option (List Nat)
   | [] => none
   | d :: rest => readDeltas maxSize maxCount 0 0 (d :: rest)
 
+def wellFormedCheck (maxSize prev : Nat) : List Nat → Bool
+  | [] => true
+  | off :: rest => decide (prev < off) && decide (off < maxSize) &&
+      wellFormedCheck maxSize off rest
+
+theorem wellFormed_check_iff (maxSize prev : Nat) (offsets : List Nat) :
+    wellFormedCheck maxSize prev offsets = true ↔ WellFormed maxSize prev offsets := by
+  induction offsets generalizing prev with
+  | nil => simp [wellFormedCheck, WellFormed]
+  | cons off rest ih =>
+      simp [wellFormedCheck, WellFormed, ih]
+
 def serializeValue (maxSize : Nat) (offsets : List Nat) : Option (List Nat) :=
   if offsets.isEmpty then none
-  else if decide (WellFormed maxSize 0 offsets) then some (deltas 0 offsets)
+  else if wellFormedCheck maxSize 0 offsets then some (deltas 0 offsets)
   else none
 
 theorem positive_deltas (maxSize prev : Nat) (offsets : List Nat)
