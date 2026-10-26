@@ -42,3 +42,6 @@ jobs:
       - name: Compile pinned C++ header and compare Lean-generated encoding vectors
         shell: bash
         run: python3 formal/bitcoin_core_36629/scripts/check_cpp_parity.py
+      - name: Check controlled C++ reorg and multi-script aggregation semantics
+        shell: bash
+        run: python3 formal/bitcoin_core_36629/scripts/check_reorg_oracle.py
