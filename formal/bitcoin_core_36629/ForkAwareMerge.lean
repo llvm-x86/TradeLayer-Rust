@@ -153,6 +153,18 @@ theorem fork_aware_merging_preserves_both_transactions :
 /-- On the synthetic fork pair, each lookup satisfies the immutable-body map. -/
 theorem example_image_is_safe :
     ValidForkHit exampleImage oldFork ∧ ValidForkHit exampleImage newFork := by
-  decide
+  constructor
+  · constructor
+    · rfl
+    · intro n hn
+      have eq : n = 0 := by simpa [oldFork, oldHit] using hn
+      subst n
+      decide
+  · constructor
+    · rfl
+    · intro n hn
+      have eq : n = 7 := by simpa [newFork, newHit] using hn
+      subst n
+      decide
 
 end BitcoinCore36629.ForkAwareMerge
