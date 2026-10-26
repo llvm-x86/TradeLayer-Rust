@@ -69,9 +69,13 @@ theorem confirmed_matches_iff (f : PrefixFn) (query : ScriptHash)
   simp only [confirmedMatches, prefixCandidates, List.mem_filter]
   constructor
   · rintro ⟨⟨hmem, _⟩, hexact⟩
-    exact ⟨hmem, hexact⟩
+    have h : exactHit query tx := by simpa using hexact
+    exact ⟨hmem, h⟩
   · rintro ⟨hmem, hexact⟩
-    exact ⟨⟨hmem, exact_implies_prefix_hit f query tx hexact⟩, hexact⟩
+    have hp : decide (prefixHit f query tx) = true := by
+      simpa using exact_implies_prefix_hit f query tx hexact
+    have he : decide (exactHit query tx) = true := by simpa using hexact
+    exact ⟨⟨hmem, hp⟩, he⟩
 
 /-- A DB row is keyed by prefix, height, and transaction offset.
     The actual LevelDB value groups all offsets with the same prefix and height. -/
@@ -178,7 +182,7 @@ theorem charge_conserves (remaining cost rest : Nat)
   unfold charge at h
   split_ifs at h with affordable
   · cases h
-    omega
+    simpa [Nat.add_comm] using (Nat.sub_add_cancel affordable)
   · contradiction
 
 end BitcoinCore36629
