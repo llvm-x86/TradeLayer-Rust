@@ -1,4 +1,5 @@
 import Std
+import Lean.Elab.Tactic.Omega
 
 /-!
 A finite, functional model of the relevant parts of Bitcoin Core PR #36629.
@@ -27,7 +28,7 @@ structure Block where
   deriving Repr, DecidableEq
 
 structure Key where
-  prefix : Prefix
+  hashPrefix : Prefix
   height : Nat
   offset : Nat
   deriving Repr, DecidableEq
@@ -52,17 +53,20 @@ theorem full_hash_filter_exact (f : PrefixFn) (query : ScriptHash) (tx : Tx) :
     exact ⟨exact_implies_prefix_hit f query tx h, h⟩
 
 /-- The actual query performs a prefix lookup, followed by an exact filter. -/
-def prefixCandidates (f : PrefixFn) (query : ScriptHash) (b : Block) : List Tx :=
-  b.txs.filter (fun tx => decide (prefixHit f query tx))
+noncomputable def prefixCandidates (f : PrefixFn) (query : ScriptHash) (b : Block) : List Tx := by
+  classical
+  exact b.txs.filter (fun tx => decide (prefixHit f query tx))
 
-def confirmedMatches (f : PrefixFn) (query : ScriptHash) (b : Block) : List Tx :=
-  (prefixCandidates f query b).filter (fun tx => decide (exactHit query tx))
+noncomputable def confirmedMatches (f : PrefixFn) (query : ScriptHash) (b : Block) : List Tx := by
+  classical
+  exact (prefixCandidates f query b).filter (fun tx => decide (exactHit query tx))
 
 /-- Retrieved, non-pruned transactions are exact and complete despite prefix collisions. -/
 theorem confirmed_matches_iff (f : PrefixFn) (query : ScriptHash)
     (b : Block) (tx : Tx) :
     tx ∈ confirmedMatches f query b ↔ tx ∈ b.txs ∧ exactHit query tx := by
-  simp only [confirmedMatches, prefixCandidates, List.mem_filter, decide_eq_true_eq]
+  classical
+  simp only [confirmedMatches, prefixCandidates, List.mem_filter]
   constructor
   · rintro ⟨⟨hmem, _⟩, hexact⟩
     exact ⟨hmem, hexact⟩
@@ -74,7 +78,7 @@ theorem confirmed_matches_iff (f : PrefixFn) (query : ScriptHash)
 def hasRow (f : PrefixFn) (b : Block) (key : Key) : Prop :=
   key.height = b.height ∧
   ∃ tx, tx ∈ b.txs ∧ tx.offset = key.offset ∧
-  ∃ sh, sh ∈ tx.outputHashes ∧ f sh = key.prefix
+  ∃ sh, sh ∈ tx.outputHashes ∧ f sh = key.hashPrefix
 
 /-- Every matching output generates the correct row before offset deduplication. -/
 theorem matching_output_is_indexed (f : PrefixFn) (b : Block) (tx : Tx)
@@ -88,7 +92,7 @@ theorem indexed_row_sound (f : PrefixFn) (b : Block) (key : Key)
     (h : hasRow f b key) :
     key.height = b.height ∧
     ∃ tx, tx ∈ b.txs ∧ tx.offset = key.offset ∧
-      ∃ sh, sh ∈ tx.outputHashes ∧ f sh = key.prefix := by
+      ∃ sh, sh ∈ tx.outputHashes ∧ f sh = key.hashPrefix := by
   exact h
 
 def inRange (startHeight endHeight height : Nat) : Prop :=
