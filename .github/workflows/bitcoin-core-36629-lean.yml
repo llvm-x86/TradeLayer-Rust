@@ -45,3 +45,6 @@ jobs:
       - name: Check controlled C++ reorg and multi-script aggregation semantics
         shell: bash
         run: python3 formal/bitcoin_core_36629/scripts/check_reorg_oracle.py
+      - name: Validate pinned Bitcoin Core reorg and RPC source predicates
+        shell: bash
+        run: python3 formal/bitcoin_core_36629/scripts/check_source_contracts.py
