@@ -16,6 +16,9 @@ theorem strict_byte_order (x y : Nat)
     (hx : x ≤ max5) (hy : y ≤ max5) (hxy : x < y) :
     byteLex (encode x) (encode y) = true := by
   unfold encode
-  split_ifs <;> simp [byteLex] <;> split_ifs <;> omega
+  repeat (split)
+  all_goals simp [byteLex]
+  repeat (split)
+  all_goals omega
 
 end BitcoinCore36629.Encoding
