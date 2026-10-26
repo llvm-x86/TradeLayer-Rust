@@ -10,7 +10,7 @@ LevelDB Seek is modeled by supplying the suffix of rows beginning at the
 searched key. The row prefixes, heights and transaction lists are trusted
 inputs corresponding to successfully decoded database records. This model
 charges the key *before* the range stop, then the value, then every candidate
-transaction including a hash-prefix false positive. Disk/undo IO is distinct.
+transaction including a hash-wanted false positive. Disk/undo IO is distinct.
 -/
 set_option autoImplicit false
 
@@ -60,7 +60,7 @@ theorem readCandidates_conserves (cs : List CandidateTx)
       by_cases affordable : c.serializedBytes ≤ initial
       · simp [readCandidates, charge, affordable] at h
         have recur := ih (initial - c.serializedBytes) remaining h
-        simp only [totalCandidateBytes, List.map_cons, List.sum_cons]
+        simp only [totalCandidateBytes, List.map_cons, List.sum_cons] at recur ⊢
         omega
       · simp [readCandidates, charge, affordable] at h
 
@@ -79,7 +79,7 @@ theorem exactResults_sound (query : ScriptHash) (cs : List CandidateTx)
 inductive RowStep where
   | exhausted
   | stop (remaining : Nat)
-  | next (remaining : Nat) (matches : List Tx) (pruned : List Nat)
+  | next (remaining : Nat) (hits : List Tx) (pruned : List Nat)
   deriving Repr
 
 def step (query : ScriptHash) (wantedPrefix endHeight budget : Nat)
@@ -99,23 +99,23 @@ def step (query : ScriptHash) (wantedPrefix endHeight budget : Nat)
         | some afterTxs => .next afterTxs (exactResults query row.candidates) []
 
 /-- C++ charges an out-of-range key before terminating the iterator. -/
-theorem boundary_key_charged (query prefix endHeight budget : Nat) (row : Row)
+theorem boundary_key_charged (query wanted endHeight budget : Nat) (row : Row)
     (hBudget : row.keyBytes ≤ budget)
-    (hOut : row.hashPrefix ≠ prefix ∨ row.height > endHeight) :
-    step query prefix endHeight budget row =
+    (hOut : row.hashPrefix ≠ wanted ∨ row.height > endHeight) :
+    step query wanted endHeight budget row =
       .stop (budget - row.keyBytes) := by
   simp [step, Nat.not_lt.mpr hBudget, hOut]
 
 /-- An over-budget boundary key fails the RPC even though the row is excluded. -/
-theorem boundary_key_can_exhaust (query prefix endHeight budget : Nat) (row : Row)
+theorem boundary_key_can_exhaust (query wanted endHeight budget : Nat) (row : Row)
     (hBudget : budget < row.keyBytes) :
-    step query prefix endHeight budget row = .exhausted := by
+    step query wanted endHeight budget row = .exhausted := by
   simp [step, hBudget]
 
 /-- One row's exact matching output list is sound whenever it is emitted. -/
-theorem row_step_matches_sound (query prefix endHeight budget left : Nat)
+theorem row_step_matches_sound (query wanted endHeight budget left : Nat)
     (row : Row) (ms : List Tx) (pruned : List Nat)
-    (h : step query prefix endHeight budget row = .next left ms pruned) :
+    (h : step query wanted endHeight budget row = .next left ms pruned) :
     ∀ tx ∈ ms, exactHit query tx := by
   unfold step at h
   split at h
@@ -140,24 +140,24 @@ theorem row_step_matches_sound (query prefix endHeight budget left : Nat)
 /-- Complete row-scan outcome. A failure returns no partial response. -/
 inductive ScanResult where
   | exhausted
-  | complete (remaining : Nat) (matches : List Tx) (pruned : List Nat)
+  | complete (remaining : Nat) (hits : List Tx) (pruned : List Nat)
   deriving Repr
 
 /-- Caller supplies the iterator after Seek; once a boundary is reached we stop. -/
-def scan (query : ScriptHash) (prefix endHeight : Nat) :
+def scan (query : ScriptHash) (wanted endHeight : Nat) :
     Nat → List Row → ScanResult
   | budget, [] => .complete budget [] []
   | budget, row :: rest =>
-      match step query prefix endHeight budget row with
+      match step query wanted endHeight budget row with
       | .exhausted => .exhausted
       | .stop remaining => .complete remaining [] []
       | .next remaining found pruned =>
-          match scan query prefix endHeight remaining rest with
+          match scan query wanted endHeight remaining rest with
           | .exhausted => .exhausted
           | .complete after moreMatches morePruned =>
               .complete after (found ++ moreMatches) (pruned ++ morePruned)
 
-/-- A prefix collision costs bytes but cannot fabricate a verified match. -/
+/-- A wanted collision costs bytes but cannot fabricate a verified match. -/
 def collidingRow : Row :=
   { hashPrefix := 0, height := 8, blockHash := 123,
     keyBytes := 7, valueBytes := 2, activeChain := true,
