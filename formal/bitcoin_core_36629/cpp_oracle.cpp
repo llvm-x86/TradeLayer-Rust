@@ -1,13 +1,14 @@
 // Source oracle: compile and execute EXACT pinned upstream
 // src/index/ordered_varint.h against a narrow byte-stream adapter.
 // The formatter functions themselves remain unchanged.
-#include <index/ordered_varint.h>
+#include <ordered_varint.h>
 #include <cstdint>
 #include <exception>
 #include <iostream>
 #include <limits>
 #include <stdexcept>
 #include <vector>
+#include <utility>
 struct ByteStream {
     std::vector<uint8_t> bytes;
     std::size_t cursor{0};
