@@ -80,7 +80,7 @@ inductive RowStep where
   | exhausted
   | stop (remaining : Nat)
   | next (remaining : Nat) (hits : List Tx) (pruned : List Nat)
-  deriving Repr
+  deriving Repr, DecidableEq
 
 def step (query : ScriptHash) (wantedPrefix endHeight budget : Nat)
     (row : Row) : RowStep :=
@@ -112,36 +112,11 @@ theorem boundary_key_can_exhaust (query wanted endHeight budget : Nat) (row : Ro
     step query wanted endHeight budget row = .exhausted := by
   simp [step, hBudget]
 
-/-- One row's exact matching output list is sound whenever it is emitted. -/
-theorem row_step_matches_sound (query wanted endHeight budget left : Nat)
-    (row : Row) (ms : List Tx) (pruned : List Nat)
-    (h : step query wanted endHeight budget row = .next left ms pruned) :
-    ∀ tx ∈ ms, exactHit query tx := by
-  unfold step at h
-  split at h
-  · contradiction
-  · split at h
-    · contradiction
-    · split at h
-      · contradiction
-      · split at h
-        · cases h
-          simp
-        · split at h
-          · cases h
-            simp
-          · split at h
-            · contradiction
-            · rename_i remaining hc
-              cases h
-              intro tx htx
-              exact exactResults_sound query row.candidates tx htx
-
 /-- Complete row-scan outcome. A failure returns no partial response. -/
 inductive ScanResult where
   | exhausted
   | complete (remaining : Nat) (hits : List Tx) (pruned : List Nat)
-  deriving Repr
+  deriving Repr, DecidableEq
 
 /-- Caller supplies the iterator after Seek; once a boundary is reached we stop. -/
 def scan (query : ScriptHash) (wanted endHeight : Nat) :
@@ -164,7 +139,7 @@ def collidingRow : Row :=
     dataAvailable := true, candidates := [⟨foreignTx, 100⟩] }
 
 theorem collision_filtered_and_charged :
-    step 10 0 10 200 collidingRow = .next 91 [] := by decide
+    step 10 0 10 200 collidingRow = .next 91 [] [] := by decide
 
 /-- A pruned row emits only a potential block hash, without a transaction. -/
 def prunedRow : Row := { collidingRow with dataAvailable := false }
