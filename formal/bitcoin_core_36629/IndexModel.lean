@@ -180,7 +180,7 @@ theorem charge_conserves (remaining cost rest : Nat)
     (h : charge remaining cost = some rest) :
     cost + rest = remaining := by
   by_cases affordable : cost ≤ remaining
-  · simp only [charge, if_pos affordable, Option.some.injEq] at h
+  · simp [charge, affordable] at h
     subst rest
     omega
   · simp [charge, affordable] at h
