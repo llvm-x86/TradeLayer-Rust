@@ -172,4 +172,26 @@ theorem checked_delta_roundtrip (maxSize maxCount prev count : Nat)
       have hSum : prev + (off - prev) = off := by omega
       simp [deltas, readDeltas, hStep, hSum, hRest]
 
+
+/-- End-to-end serialization/deserialization, including rejecting an empty
+    value and enforcing the upper bound on the number of offsets. -/
+theorem value_roundtrip (maxSize maxCount : Nat) (offsets : List Nat)
+    (nonempty : offsets ≠ [])
+    (valid : WellFormed maxSize 0 offsets)
+    (room : offsets.length ≤ maxCount) :
+    (serializeValue maxSize offsets).bind
+        (deserializeValue maxSize maxCount) = some offsets := by
+  cases offsets with
+  | nil => contradiction
+  | cons off rest =>
+      have hChecked : wellFormedCheck maxSize 0 (off :: rest) = true :=
+        (wellFormed_check_iff maxSize 0 (off :: rest)).2 valid
+      have hRec := checked_delta_roundtrip maxSize maxCount 0 0
+        (off :: rest) valid (by simpa using room)
+      have hSer : serializeValue maxSize (off :: rest) =
+          some (deltas 0 (off :: rest)) := by
+        simp [serializeValue, hChecked]
+      simp only [hSer, Option.bind_some]
+      simpa [deserializeValue, deltas] using hRec
+
 end BitcoinCore36629.OffsetCodec
