@@ -1,5 +1,5 @@
 name = "BitcoinCore36629"
-defaultTargets = ["IndexModel", "OrderedEncoding", "OffsetCodec", "HistoryExecution", "SpenderExecution", "BlockLayout", "RPCGuard", "MergeHistory"]
+defaultTargets = ["FixedDigits", "IndexModel", "OrderedEncoding", "OffsetCodec", "HistoryExecution", "SpenderExecution", "BlockLayout", "RPCGuard", "MergeHistory"]
 
 [[lean_lib]]
 name = "IndexModel"
@@ -24,3 +24,6 @@ name = "RPCGuard"
 
 [[lean_lib]]
 name = "MergeHistory"
+
+[[lean_lib]]
+name = "FixedDigits"
