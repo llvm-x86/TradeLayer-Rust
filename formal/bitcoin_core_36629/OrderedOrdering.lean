@@ -19,6 +19,7 @@ theorem strict_byte_order (x y : Nat)
   repeat (split)
   all_goals simp [byteLex]
   repeat (split)
-  all_goals omega
+  all_goals try omega
+  all_goals trace_state
 
 end BitcoinCore36629.Encoding
