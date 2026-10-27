@@ -89,6 +89,11 @@ python3 scripts/candidate_index_sqlite.py ingest \
 
 python3 scripts/candidate_index_sqlite.py status \
   --db ./candidate-data/evidence.sqlite
+
+# Offline SQLite quick_check, foreign key checks, and active observed-chain
+# parent linkage from the supplied anchor (not a Bitcoin consensus check).
+python3 scripts/candidate_index_sqlite.py audit \
+  --db ./candidate-data/evidence.sqlite
 \`\`\`
 
 A historical bootstrap requires an archival Bitcoin block source. A pruned
@@ -158,7 +163,8 @@ python3 -m unittest discover -s tests -p test_candidate_index_sqlite.py -v
 The adversarial cases cover empty-carrier blocks, repeated replay, side-fork
 rollback, rollback after a missing completion marker, wrong parent, height
 gap, conflicting transactions, duplicate/out-of-order vouts, wrong network,
-and malformed header/stream counts.
+malformed header/stream counts, and persisted parent-hash mutation detected
+by the offline audit command.
 
 ## Next acceptance gates
 
