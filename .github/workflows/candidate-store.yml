@@ -1,0 +1,35 @@
+name: Durable candidate evidence store
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/candidate_index_sqlite.py'
+      - 'tests/test_candidate_index_sqlite.py'
+      - 'docs/DURABLE_CANDIDATE_INDEX.md'
+      - '.github/workflows/candidate-store.yml'
+  push:
+    paths:
+      - 'scripts/candidate_index_sqlite.py'
+      - 'tests/test_candidate_index_sqlite.py'
+      - 'docs/DURABLE_CANDIDATE_INDEX.md'
+      - '.github/workflows/candidate-store.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  candidate-store:
+    name: SQLite reorg-safe candidate evidence tests
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout pinned GitHub action
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Python bytecode preflight
+        run: |
+          python3 -m py_compile scripts/candidate_index_sqlite.py tests/test_candidate_index_sqlite.py
+      - name: Adversarial atomic commit and rollback tests
+        run: |
+          python3 -m unittest discover -s tests -p 'test_candidate_index_sqlite.py' -v
