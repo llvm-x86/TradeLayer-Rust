@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 import candidate_index_sqlite as index
@@ -33,6 +34,22 @@ def inputs(blocks, rows=(), completion=True):
     return b, c
 
 
+def ingest_fabricated_storage_fixture(db, network, bf, cf):
+    """Unit-test SQLite state transitions; block parsing has its own real fixtures.
+
+    Replace the proof implementation in the test process only. The actual
+    candidate_index_sqlite.ingest API has no validation-bypass argument.
+    """
+    def synthetic_blocks(_source, blocks):
+        for block in blocks:
+            yield block.height, [None] * block.tx_count
+
+    with patch.object(index, "verified_block_bodies", new=synthetic_blocks), \
+         patch.object(index, "check_candidate", new=lambda *_args: None):
+        return index.ingest(db, network, bf, cf)
+
+
+
 class StorageTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -51,9 +68,7 @@ class StorageTests(unittest.TestCase):
         bf, cf = self.dir / "blocks.tsv", self.dir / "rows.tsv"
         bf.write_text(b)
         cf.write_text(c)
-        return index.ingest(
-            self.db, network, bf, cf, _synthetic_unbound_test=True
-        )
+        return ingest_fabricated_storage_fixture(self.db, network, bf, cf)
 
     def test_init_empty_and_status(self):
         state = index.stats(self.db)
@@ -131,8 +146,7 @@ import os, sys
 sys.path.insert(0, sys.argv[1])
 import candidate_index_sqlite as store
 store.load_carriers = lambda *args, **kwargs: os._exit(79)
-store.ingest(sys.argv[2], 'regtest', sys.argv[3], sys.argv[4],
-             _synthetic_unbound_test=True)
+store.ingest(sys.argv[2], 'regtest', sys.argv[3], sys.argv[4])
 """
         child = subprocess.run(
             [sys.executable, "-c", script,
@@ -229,8 +243,8 @@ store.ingest(sys.argv[2], 'regtest', sys.argv[3], sys.argv[4],
         b,c = inputs([a])
         (self.dir / "blocks.tsv").write_text(b)
         (self.dir / "rows.tsv").write_text(c)
-        index.ingest(db, "regtest", self.dir / "blocks.tsv", self.dir / "rows.tsv",
-                     _synthetic_unbound_test=True)
+        ingest_fabricated_storage_fixture(db, "regtest", self.dir / "blocks.tsv",
+                                          self.dir / "rows.tsv")
         self.assertEqual(index.stats(db)["height"], 0)
 
 
