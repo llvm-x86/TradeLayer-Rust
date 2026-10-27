@@ -6,6 +6,7 @@ Rust transaction scanner and frozen raw block test fixture.
 """
 import hashlib
 import os
+import random
 from pathlib import Path
 import subprocess
 import tempfile
@@ -202,6 +203,43 @@ class StoreTests(unittest.TestCase):
         path.write_bytes(path.read_bytes()+b"CORRUPT")
         self.assertNotEqual(run("verify","--dir",self.data).returncode,0)
         self.assertNotEqual(run("get","--dir",self.data,"--height","5").returncode,0)
+
+    def test_deterministic_sixty_step_fork_reference_model(self):
+        """Compare every published fork with an independent Python height model."""
+        rng = random.Random(36629)
+        reference = []
+        for step in range(60):
+            fork_height = rng.randint(5, 5 + len(reference))
+            keep_count = fork_height - 5
+            parent = ANCHOR if keep_count == 0 else reference[keep_count - 1]["hash"]
+            new_blocks = []
+            rows = []
+            for j in range(rng.randint(1, 3)):
+                height = fork_height + j
+                entry = block(height, parent, 1000 + step * 10 + j)
+                new_blocks.append(entry)
+                rows.append((entry, 0, 0, f"{step * 10 + j + 1:064x}", "010203"))
+                parent = entry["hash"]
+            result = self.operate(new_blocks, rows)
+            self.assertEqual(result.returncode, 0, f"step {step}: {result.stderr}")
+            reference = reference[:keep_count] + new_blocks
+            state = run("status", "--dir", self.data)
+            self.assertEqual(state.returncode, 0, state.stderr)
+            self.assertIn(f"blocks={len(reference)}", state.stdout)
+            self.assertIn(f"hash={reference[-1]['hash']}", state.stdout)
+            checked = run("verify", "--dir", self.data)
+            self.assertEqual(checked.returncode, 0, f"step {step}: {checked.stderr}")
+            expected_id = rows[-1][3]
+            got = run("get", "--dir", self.data, "--height", str(new_blocks[-1]["height"]))
+            self.assertEqual(got.returncode, 0, got.stderr)
+            self.assertIn(expected_id, got.stdout)
+            # When reorg shortened the observed chain, old descendants
+            # must no longer be queryable even though their segments remain.
+            orphaned_height = 5 + len(reference)
+            if orphaned_height < fork_height + 5:
+                missing = run("get", "--dir", self.data,
+                              "--height", str(orphaned_height))
+                self.assertNotEqual(missing.returncode, 0)
 
     def test_live_rust_scanner_fixture_roundtrip(self):
         if not SCANNER.is_file():
