@@ -17,7 +17,7 @@
 #![forbid(unsafe_code)]
 
 #[allow(dead_code)]
-#[path = "../../../src/hash256.rs"]
+#[path = "../../src/hash256.rs"]
 mod hash256;
 
 use std::collections::BTreeMap;
