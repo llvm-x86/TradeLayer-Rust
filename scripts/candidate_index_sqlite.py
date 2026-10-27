@@ -11,6 +11,7 @@ import hashlib
 from pathlib import Path
 import sqlite3
 import sys
+from candidate_block_provenance import InvalidBlock, check_candidate, read_block
 
 MAX_FRAME = 8_000_512
 MAX_BLOCK_BYTES = 4_000_000
@@ -32,6 +33,7 @@ class Block:
     hash: str
     parent: str
     tx_count: int
+    raw_sha256: str | None = None
 
 
 def is_hash(value):
@@ -116,7 +118,7 @@ def parse_blocks(path):
                 previous = blocks[-1]
                 if height != previous.height + 1 or parent != previous.hash:
                     raise Incomplete("block stream is not contiguous and parent-linked")
-            blocks.append(Block(height, advertised, parent, count))
+            blocks.append(Block(height, advertised, parent, count, hashlib.sha256(raw).hexdigest()))
             tx_sum += count
             if len(blocks) > MAX_BLOCKS or tx_sum > MAX_TOTAL_TX:
                 raise Incomplete("block batch exceeds resource cap")
@@ -210,8 +212,45 @@ def parent_at(db, meta, height):
     return row[0] if row else None
 
 
-def load_carriers(db, path, blocks, tx_sum):
+def verified_block_bodies(path, blocks):
+    """Re-read every complete block, pin bytes across passes, verify TX/Merkle."""
+    incoming = frames(path)
+    for expected in blocks:
+        try:
+            columns = next(incoming)
+        except StopIteration as exc:
+            raise Incomplete("raw block file changed between scan and commit") from exc
+        if (len(columns) != 4 or columns[0] != "B" or
+                columns[1] != str(expected.height) or columns[2] != expected.hash):
+            raise Incomplete("raw block metadata changed between validation passes")
+        try:
+            raw = bytes.fromhex(columns[3])
+        except ValueError as exc:
+            raise Incomplete("raw block hex mutated before candidate binding") from exc
+        if hashlib.sha256(raw).hexdigest() != expected.raw_sha256:
+            raise Incomplete("raw block contents changed between validation passes")
+        try:
+            bodies = read_block(
+                raw, expected_hash=expected.hash, expected_count=expected.tx_count
+            )
+        except InvalidBlock as exc:
+            raise Incomplete(f"block {expected.height} failed independent transaction proof: {exc}") from exc
+        yield expected.height, bodies
+    try:
+        terminator = next(incoming)
+    except StopIteration as exc:
+        raise Incomplete("missing raw block completion marker on second pass") from exc
+    if terminator != ["E", "BLOCKS", str(len(blocks))]:
+        raise Incomplete("raw block end marker mutated between validation passes")
+    if next(incoming, None) is not None:
+        raise Incomplete("raw block file has trailing data on second pass")
+
+
+def load_carriers(db, path, blocks, tx_sum, block_frames=None):
     available = {block.height: block for block in blocks}
+    block_proofs = iter(verified_block_bodies(block_frames, blocks)) if block_frames else None
+    proof_height = -1
+    proof_txs = None
     seen = 0
     current_key = None
     tx_cache_key = None
@@ -235,6 +274,18 @@ def load_carriers(db, path, blocks, tx_sum):
                 raw = bytes.fromhex(rawhex)
             except ValueError as exc:
                 raise Incomplete("invalid candidate raw transaction") from exc
+            if block_proofs is not None:
+                while proof_height < height:
+                    try:
+                        proof_height, proof_txs = next(block_proofs)
+                    except StopIteration as exc:
+                        raise Incomplete("candidate points beyond verified raw block file") from exc
+                if proof_height != height:
+                    raise Incomplete("candidate height absent from verified raw block file")
+                try:
+                    check_candidate(proof_txs[pos], pos, txid, raw, vout, fmt)
+                except (InvalidBlock, IndexError) as exc:
+                    raise Incomplete(f"candidate failed block/TX/vout binding: {exc}") from exc
             for label in (fmt, tx_type, status):
                 if not 1 <= len(label) <= 100 or not all(c.isascii() and (c.isalnum() or c in "_-.:") for c in label):
                     raise Incomplete("candidate classification contains invalid characters")
@@ -268,10 +319,13 @@ def load_carriers(db, path, blocks, tx_sum):
             raise Incomplete("unknown or malformed Rust candidate frame")
     if not complete:
         raise Incomplete("truncated Rust candidate stream: missing END sentinel")
+    if block_proofs is not None:
+        for _height, _proof_txs in block_proofs:
+            pass  # Also verify blocks with no TradeLayer candidates.
     return seen
 
 
-def ingest(path, network, block_frames, candidate_frames):
+def ingest(path, network, block_frames, candidate_frames, *, _synthetic_unbound_test=False):
     blocks, tx_sum = parse_blocks(block_frames)
     db = open_database(path)
     try:
@@ -290,7 +344,10 @@ def ingest(path, network, block_frames, candidate_frames):
             db.executemany("INSERT INTO blocks VALUES (?,?,?,?)", [
                 (block.height, block.hash, block.parent, block.tx_count) for block in blocks
             ])
-            candidates = load_carriers(db, candidate_frames, blocks, tx_sum)
+            candidates = load_carriers(
+                db, candidate_frames, blocks, tx_sum,
+                block_frames=None if _synthetic_unbound_test else block_frames,
+            )
             db.execute("COMMIT")
         except BaseException:
             db.execute("ROLLBACK")
@@ -375,6 +432,6 @@ def main(argv=None):
 if __name__ == "__main__":
     try:
         main()
-    except (Incomplete, OSError, sqlite3.Error) as error:
+    except (Incomplete, InvalidBlock, OSError, sqlite3.Error) as error:
         print(f"REJECTED CANDIDATE INDEX: {error}", file=sys.stderr)
         raise SystemExit(1) from error
