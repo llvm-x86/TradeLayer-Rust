@@ -50,6 +50,43 @@ class EndToEnd(unittest.TestCase):
                 store.ingest(db_path, 'regtest', blocks, candidates)
             self.assertEqual(store.stats(db_path), before)
 
+            # The original Rust-produced rows are valid. Manipulate one
+            # field at a time while leaving both completion markers intact.
+            base_lines = scanned.stdout.splitlines(keepends=True)
+            first_index = next(i for i, line in enumerate(base_lines) if line.startswith('C\\t'))
+            original_fields = base_lines[first_index].rstrip('\\n').split('\\t')
+            for field, forged in (
+                (4, '0'),                    # Another TX position in the same block
+                (5, '00' * 32),            # Forged TXID
+                (6, '99999'),              # Vout outside parsed TX
+                (7, 'proposed-TLR' if original_fields[7] == 'legacy-tl' else 'legacy-tl'),
+                (10, original_fields[10] + '00'),  # Forged raw TX bytes
+            ):
+                with self.subTest(field=field):
+                    modified = original_fields.copy()
+                    modified[field] = forged
+                    changed_lines = base_lines.copy()
+                    changed_lines[first_index] = '\\t'.join(modified) + '\\n'
+                    candidates.write_text(''.join(changed_lines))
+                    with self.assertRaisesRegex(store.Incomplete,
+                                                'candidate failed block/TX/vout binding'):
+                        store.ingest(db_path, 'regtest', blocks, candidates)
+                    self.assertEqual(store.stats(db_path), before)
+
+            # Alter a serialized TX version while retaining the original
+            # block header/hash. The independent Merkle calculation must fail.
+            candidates.write_text(scanned.stdout)
+            change = list(block_frames.rstrip('\\n').split('\\n'))
+            columns = change[0].split('\\t')
+            rawbytes = bytearray.fromhex(columns[3])
+            rawbytes[81] ^= 1
+            columns[3] = rawbytes.hex()
+            change[0] = '\\t'.join(columns)
+            blocks.write_text('\\n'.join(change) + '\\n')
+            with self.assertRaisesRegex(store.Incomplete, 'Merkle root mismatch'):
+                store.ingest(db_path, 'regtest', blocks, candidates)
+            self.assertEqual(store.stats(db_path), before)
+
 
 if __name__ == '__main__':
     unittest.main()
