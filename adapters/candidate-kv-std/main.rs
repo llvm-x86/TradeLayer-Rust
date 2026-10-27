@@ -501,7 +501,7 @@ fn segment_bytes(b: &Incoming) -> Vec<u8> {
 }
 
 fn read_segment(dir: &Path, b: &Block) -> Result<String> {
-    if !valid_segment_name(&b.segment, b.height) {
+    if !valid_segment_name(&b.segment, b.height, &b.segment_digest) {
         return Err("invalid manifest segment path".into());
     }
     let bytes = fs::read(dir.join("segments").join(&b.segment))
