@@ -236,10 +236,9 @@ class StoreTests(unittest.TestCase):
             # When reorg shortened the observed chain, old descendants
             # must no longer be queryable even though their segments remain.
             orphaned_height = 5 + len(reference)
-            if orphaned_height < fork_height + 5:
-                missing = run("get", "--dir", self.data,
-                              "--height", str(orphaned_height))
-                self.assertNotEqual(missing.returncode, 0)
+            missing = run("get", "--dir", self.data,
+                          "--height", str(orphaned_height))
+            self.assertNotEqual(missing.returncode, 0)
 
     def test_live_rust_scanner_fixture_roundtrip(self):
         if not SCANNER.is_file():
