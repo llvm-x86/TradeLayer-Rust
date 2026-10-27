@@ -325,7 +325,7 @@ def load_carriers(db, path, blocks, tx_sum, block_frames=None):
     return seen
 
 
-def ingest(path, network, block_frames, candidate_frames, *, _synthetic_unbound_test=False):
+def ingest(path, network, block_frames, candidate_frames):
     blocks, tx_sum = parse_blocks(block_frames)
     db = open_database(path)
     try:
@@ -346,7 +346,7 @@ def ingest(path, network, block_frames, candidate_frames, *, _synthetic_unbound_
             ])
             candidates = load_carriers(
                 db, candidate_frames, blocks, tx_sum,
-                block_frames=None if _synthetic_unbound_test else block_frames,
+                block_frames=block_frames,
             )
             db.execute("COMMIT")
         except BaseException:
