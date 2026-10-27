@@ -444,6 +444,33 @@ fn write_new(path: &Path, bytes: &[u8]) -> Result<()> {
     file.sync_all().map_err(|e| io_error("fsync immutable file", e))
 }
 
+/// Publish a content-addressed segment via a separately fsynced temporary file.
+/// A crash during the write cannot leave a truncated *published* segment name.
+fn publish_segment(dir: &Path, filename: &str, bytes: &[u8]) -> Result<()> {
+    let target = dir.join(filename);
+    if target.exists() {
+        let prior = fs::read(&target).map_err(|e| io_error("read reused segment", e))?;
+        if prior != bytes {
+            return Err("existing immutable segment has conflicting bytes".into());
+        }
+        return Ok(());
+    }
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|_| "system clock before Unix epoch")?
+        .as_nanos();
+    let temporary = dir.join(format!(".{filename}.{}.{}.tmp", std::process::id(), nonce));
+    write_new(&temporary, bytes)?;
+    if env::var("TLCAND_TEST_FAILPOINT").ok().as_deref()
+        == Some("before_segment_publish")
+    {
+        std::process::abort();
+    }
+    fs::rename(&temporary, &target)
+        .map_err(|e| io_error("publish immutable segment", e))?;
+    sync_directory(dir)
+}
+
 fn publish(dir: &Path, manifest: &Manifest) -> Result<()> {
     check_manifest(manifest)?;
     let temp = dir.join(format!("CURRENT.{}.tmp", std::process::id()));
@@ -566,15 +593,7 @@ fn ingest(dir: &Path, network: &str, blocks_file: &Path, candidates_file: &Path)
         }
         let hash = digest(&data);
         let filename = segment_name(b.height, &hash);
-        let path = dir.join("segments").join(&filename);
-        if path.exists() {
-            let existing = fs::read(&path).map_err(|e| io_error("read existing segment", e))?;
-            if existing != data {
-                return Err("existing immutable segment has conflicting bytes".into());
-            }
-        } else {
-            write_new(&path, &data)?;
-        }
+        publish_segment(&dir.join("segments"), &filename, &data)?;
         kept.push(Block {
             height: b.height,
             hash: b.hash.clone(),
