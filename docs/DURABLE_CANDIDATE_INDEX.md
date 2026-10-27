@@ -60,10 +60,11 @@ block position, its TXID and an existing canonical single-push TradeLayer
 OP_RETURN output with the claimed carrier format. Even blocks containing
 no TradeLayer candidates receive a full Merkle check.
 
-Storage-state unit tests use an explicitly named private synthetic-fixture
-bypass because their tiny fabricated records are not Bitcoin transactions.
-The CLI exposes **no** such bypass. Only the tests that compile and run the
-actual Rust scanner establish source-byte binding.
+Storage-state unit tests use `unittest.mock` to replace the parser
+inside the **test process**, because their tiny fabricated records are not
+Bitcoin transactions. The storage implementation has **no proof-bypass
+option**, in either the CLI or the Python `ingest` API. Tests using the actual
+Rust scanner exercise the complete source-byte binding path.
 
 The adapter deliberately rejects `SCRIPT` mode because its candidate rows
 lack the ordered block-height and empty-block information needed to maintain
