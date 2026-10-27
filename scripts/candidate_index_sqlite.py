@@ -246,9 +246,11 @@ def verified_block_bodies(path, blocks):
         raise Incomplete("raw block file has trailing data on second pass")
 
 
-def load_carriers(db, path, blocks, tx_sum, block_frames=None):
+def load_carriers(db, path, blocks, tx_sum, block_frames):
+    if block_frames is None:
+        raise Incomplete("raw block provenance file is required for candidate storage")
     available = {block.height: block for block in blocks}
-    block_proofs = iter(verified_block_bodies(block_frames, blocks)) if block_frames else None
+    block_proofs = iter(verified_block_bodies(block_frames, blocks))
     proof_height = -1
     proof_txs = None
     seen = 0
