@@ -175,6 +175,26 @@ class StoreTests(unittest.TestCase):
         self.assertEqual(recovered.returncode,0,recovered.stderr)
         self.assertIn("blocks=2",run("verify","--dir",self.data).stdout)
 
+    def test_crash_during_segment_temp_write_keeps_prior_manifest(self):
+        a = block(5, ANCHOR, 34)
+        self.assertEqual(self.operate([a]).returncode, 0)
+        prior = (self.data / "CURRENT").read_bytes()
+        b = block(6, a["hash"], 35)
+        env = dict(os.environ, TLCAND_TEST_FAILPOINT="before_segment_publish")
+        crashed = self.operate([b], env=env)
+        self.assertNotEqual(crashed.returncode, 0)
+        self.assertEqual((self.data / "CURRENT").read_bytes(), prior)
+        self.assertIn("blocks=1", run("verify", "--dir", self.data).stdout)
+        leftovers = [p.name for p in (self.data / "segments").iterdir()
+                     if p.name.endswith(".tmp")]
+        self.assertTrue(leftovers, "expected an unreferenced interrupted temp segment")
+        # Crash leaves a fail-closed writer lock. Remove only after the test
+        # process has definitively terminated; the runtime never auto-breaks it.
+        (self.data / "LOCK").unlink()
+        retried = self.operate([b])
+        self.assertEqual(retried.returncode, 0, retried.stderr)
+        self.assertIn("blocks=2", run("verify", "--dir", self.data).stdout)
+
     def test_corrupt_segment_fails_integrity_checks(self):
         a = block(5, ANCHOR, 12)
         self.assertEqual(self.operate([a]).returncode,0)
