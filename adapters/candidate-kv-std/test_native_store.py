@@ -11,7 +11,7 @@ import subprocess
 import tempfile
 import unittest
 
-ROOT = Path(__file__).resolve().parents[3]
+ROOT = Path(__file__).resolve().parents[2]
 BINARY = Path(os.environ.get("TLCAND_RUST_STORE_BIN", "/tmp/tradelayer-candidate-kv-std"))
 SCANNER = Path(os.environ.get("TLCAND_RUST_SCANNER_BIN", str(ROOT / "target/debug/tradelayer-core-index-ingest")))
 ANCHOR = "11" * 32
