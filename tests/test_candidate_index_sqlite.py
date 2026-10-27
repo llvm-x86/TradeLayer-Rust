@@ -50,7 +50,9 @@ class StorageTests(unittest.TestCase):
         bf, cf = self.dir / "blocks.tsv", self.dir / "rows.tsv"
         bf.write_text(b)
         cf.write_text(c)
-        return index.ingest(self.db, network, bf, cf)
+        return index.ingest(
+            self.db, network, bf, cf, _synthetic_unbound_test=True
+        )
 
     def test_init_empty_and_status(self):
         state = index.stats(self.db)
@@ -185,7 +187,8 @@ class StorageTests(unittest.TestCase):
         b,c = inputs([a])
         (self.dir / "blocks.tsv").write_text(b)
         (self.dir / "rows.tsv").write_text(c)
-        index.ingest(db, "regtest", self.dir / "blocks.tsv", self.dir / "rows.tsv")
+        index.ingest(db, "regtest", self.dir / "blocks.tsv", self.dir / "rows.tsv",
+                     _synthetic_unbound_test=True)
         self.assertEqual(index.stats(db)["height"], 0)
 
 
