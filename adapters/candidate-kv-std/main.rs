@@ -16,6 +16,7 @@
 
 #![forbid(unsafe_code)]
 
+#[allow(dead_code)]
 #[path = "../../../src/hash256.rs"]
 mod hash256;
 
@@ -309,20 +310,12 @@ fn parse_candidates(path: &Path, blocks: &mut [Incoming], tx_sum: u64) -> Result
     Ok(())
 }
 
-fn segment_name(generation: u64, height: u32) -> String {
-    format!("seg-{generation:016x}-{height:010}.dat")
+fn segment_name(height: u32, digest: &str) -> String {
+    format!("seg-{height:010}-{digest}.dat")
 }
 
-fn valid_segment_name(name: &str, height: u32) -> bool {
-    if name.len() != 35 || !name.starts_with("seg-") || !name.ends_with(".dat") {
-        return false;
-    }
-    let g = &name[4..20];
-    let h = &name[21..31];
-    name.as_bytes()[20] == b'-'
-        && g.bytes().all(|b| b.is_ascii_hexdigit())
-        && h.bytes().all(|b| b.is_ascii_digit())
-        && h.parse::<u32>().ok() == Some(height)
+fn valid_segment_name(name: &str, height: u32, digest: &str) -> bool {
+    valid_hash(digest) && name == segment_name(height, digest)
 }
 
 fn render_manifest(m: &Manifest) -> String {
@@ -355,7 +348,7 @@ fn check_manifest(m: &Manifest) -> Result<()> {
     for b in &m.blocks {
         if i64::from(b.height) != last_height + 1 || b.parent != last_hash
             || !valid_hash(&b.hash) || !valid_hash(&b.parent)
-            || !valid_segment_name(&b.segment, b.height)
+            || !valid_segment_name(&b.segment, b.height, &b.segment_digest)
             || !valid_hash(&b.segment_digest) || b.tx_count == 0
         {
             return Err("manifest has gap, inconsistent parent, or malformed segment".into());
@@ -564,13 +557,21 @@ fn ingest(dir: &Path, blocks_file: &Path, candidates_file: &Path) -> Result<(usi
     }
     let generation = original.generation.checked_add(1).ok_or("generation overflow")?;
     for b in &new_blocks {
-        let filename = segment_name(generation, b.height);
         let data = segment_bytes(b);
         if data.len() > MAX_FILE_BYTES as usize {
             return Err("candidate block segment exceeds size cap".into());
         }
         let hash = digest(&data);
-        write_new(&dir.join("segments").join(&filename), &data)?;
+        let filename = segment_name(b.height, &hash);
+        let path = dir.join("segments").join(&filename);
+        if path.exists() {
+            let existing = fs::read(&path).map_err(|e| io_error("read existing segment", e))?;
+            if existing != data {
+                return Err("existing immutable segment has conflicting bytes".into());
+            }
+        } else {
+            write_new(&path, &data)?;
+        }
         kept.push(Block {
             height: b.height,
             hash: b.hash.clone(),
