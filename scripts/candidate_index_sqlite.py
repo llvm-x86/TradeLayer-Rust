@@ -317,10 +317,36 @@ def stats(path):
         db.close()
 
 
+def audit(path):
+    """Inspect SQLite physical integrity and the anchored observed-chain links."""
+    db = open_database(path)
+    try:
+        meta = metadata(db)
+        check = db.execute("PRAGMA quick_check").fetchone()
+        if check != ("ok",):
+            raise Incomplete("SQLite quick_check failed")
+        if db.execute("PRAGMA foreign_key_check").fetchone() is not None:
+            raise Incomplete("SQLite candidate foreign key mismatch")
+        last_height = int(meta["anchor_height"])
+        last_hash = meta["anchor_hash"]
+        count = 0
+        for height, blockhash, parent in db.execute(
+            "SELECT height,hash,parent FROM blocks ORDER BY height"
+        ):
+            if (height != last_height + 1 or parent != last_hash or
+                    not is_hash(blockhash) or not is_hash(parent)):
+                raise Incomplete("persisted candidate block chain is not anchor-linked")
+            last_height, last_hash = height, blockhash
+            count += 1
+        return count, last_height, last_hash
+    finally:
+        db.close()
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
     sub = ap.add_subparsers(dest="command", required=True)
-    for name in ("init", "ingest", "status"):
+    for name in ("init", "ingest", "status", "audit"):
         p = sub.add_parser(name)
         p.add_argument("--db", required=True)
         if name in ("init", "ingest"):
@@ -338,6 +364,9 @@ def main(argv=None):
     elif args.command == "ingest":
         blocks, txs, rows, last = ingest(args.db, args.network, args.blocks, args.candidates)
         print(f"committed=UNVERIFIED blocks={blocks} txs={txs} carriers={rows} tip={last.height}:{last.hash}")
+    elif args.command == "audit":
+        count, height, blockhash = audit(args.db)
+        print(f"audited=UNVERIFIED blocks={count} tip={height}:{blockhash}")
     else:
         for key, value in stats(args.db).items():
             print(f"{key}={value}")
