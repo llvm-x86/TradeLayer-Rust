@@ -2,6 +2,7 @@
 import hashlib
 from pathlib import Path
 import sqlite3
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -107,6 +108,47 @@ class StorageTests(unittest.TestCase):
         self.assertEqual(index.stats(self.db), before)
         with index.open_database(self.db) as db:
             self.assertEqual(db.execute("SELECT hash FROM blocks WHERE height=5").fetchone()[0], a[0].hash)
+
+    def test_writer_process_killed_after_suffix_delete_recovers_old_fork(self):
+        original = block(5, self.anchor)
+        descendant = block(6, original[0].hash)
+        self.apply([original, descendant],
+                   [(original[0], 0, 0, "aa"*32, "010203"),
+                    (descendant[0], 1, 0, "bb"*32, "040506")])
+        before = index.stats(self.db)
+        replacement = block(5, self.anchor, nonce=23)
+        block_rows, candidates = inputs(
+            [replacement], [(replacement[0], 0, 0, "cc"*32, "070809")]
+        )
+        bf = self.dir / "blocks.tsv"
+        cf = self.dir / "rows.tsv"
+        bf.write_text(block_rows)
+        cf.write_text(candidates)
+        # The patched subprocess hits os._exit after BEGIN IMMEDIATE,
+        # DELETE old suffix, and INSERT replacement. No COMMIT is reached.
+        script = """
+import os, sys
+sys.path.insert(0, sys.argv[1])
+import candidate_index_sqlite as store
+store.load_carriers = lambda *args, **kwargs: os._exit(79)
+store.ingest(sys.argv[2], 'regtest', sys.argv[3], sys.argv[4],
+             _synthetic_unbound_test=True)
+"""
+        child = subprocess.run(
+            [sys.executable, "-c", script,
+             str(Path(index.__file__).resolve().parent),
+             str(self.db), str(bf), str(cf)],
+            capture_output=True, text=True, timeout=15,
+            check=False,
+        )
+        self.assertEqual(child.returncode, 79, child.stderr)
+        self.assertEqual(index.stats(self.db), before)
+        self.assertEqual(index.audit(self.db), (2, 6, descendant[0].hash))
+        with index.open_database(self.db) as db:
+            self.assertEqual(
+                db.execute("SELECT txid FROM transactions ORDER BY height").fetchall(),
+                [("aa"*32,), ("bb"*32,)],
+            )
 
     def test_wrong_parent_and_gap_fail_without_mutation(self):
         a = block(7, self.anchor)
