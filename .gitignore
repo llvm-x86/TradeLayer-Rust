@@ -7,3 +7,6 @@
 
 # Private, node-backed archival observations and differential logs
 /archive/
+
+# Local SQLite read-only candidate evidence and WAL sidecars
+/candidate-data/
