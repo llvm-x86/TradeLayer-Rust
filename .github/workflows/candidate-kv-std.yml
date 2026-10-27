@@ -1,0 +1,43 @@
+name: Experimental native Rust candidate segments
+
+on:
+  push:
+    paths:
+      - 'adapters/candidate-kv-std/**'
+      - '.github/workflows/candidate-kv-std.yml'
+  pull_request:
+    paths:
+      - 'adapters/candidate-kv-std/**'
+      - '.github/workflows/candidate-kv-std.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-segments:
+    runs-on: ubuntu-24.04
+    env:
+      CARGO_NET_OFFLINE: "true"
+    steps:
+      - name: Checkout immutable pinned action
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Install frozen consensus Rust toolchain
+        run: rustup toolchain install 1.90.0 --profile minimal
+      - name: Verify zero third-party Rust crates and unmodified consensus policy
+        run: python3 scripts/check_rust_supply_chain.py
+      - name: Compile frozen existing Stage8C scanner
+        run: cargo build --frozen --bin tradelayer-core-index-ingest
+      - name: Compile standalone native Rust candidate segment adapter
+        run: |
+          rustc --edition=2021 -D warnings -O adapters/candidate-kv-std/main.rs \
+            -o target/debug/tradelayer-candidate-kv-std
+      - name: Adversarial native Rust crash, replay and fork tests
+        env:
+          TLCAND_RUST_STORE_BIN: target/debug/tradelayer-candidate-kv-std
+          TLCAND_RUST_SCANNER_BIN: target/debug/tradelayer-core-index-ingest
+        run: |
+          python3 -m unittest discover -s adapters/candidate-kv-std \
+            -p 'test_native_store.py' -v
