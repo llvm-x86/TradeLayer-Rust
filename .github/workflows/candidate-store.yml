@@ -9,6 +9,7 @@ on:
       - 'tests/test_candidate_index_sqlite.py'
       - 'tests/test_candidate_block_provenance.py'
       - 'tests/test_candidate_index_real_scanner.py'
+      - 'tests/test_candidate_index_reorg_scanner.py'
       - 'docs/DURABLE_CANDIDATE_INDEX.md'
       - '.github/workflows/candidate-store.yml'
   push:
@@ -19,6 +20,7 @@ on:
       - 'tests/test_candidate_index_sqlite.py'
       - 'tests/test_candidate_block_provenance.py'
       - 'tests/test_candidate_index_real_scanner.py'
+      - 'tests/test_candidate_index_reorg_scanner.py'
       - 'docs/DURABLE_CANDIDATE_INDEX.md'
       - '.github/workflows/candidate-store.yml'
   workflow_dispatch:
@@ -63,6 +65,8 @@ jobs:
         run: cargo build --frozen --bin tradelayer-core-index-ingest
       - name: Run actual scanner to SQLite completion and rollback test
         run: python3 -m unittest discover -s tests -p 'test_candidate_index_real_scanner.py' -v
+      - name: Replay A-B-A real-scanner fork replacement
+        run: python3 -m unittest discover -s tests -p 'test_candidate_index_reorg_scanner.py' -v
       - name: Measure checked multi-block offline throughput (no speed gate)
         run: |
           python3 scripts/bench_candidate_sqlite.py --count 16 > /tmp/candidate-sqlite-perf.log
