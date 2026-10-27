@@ -165,6 +165,17 @@ class StorageTests(unittest.TestCase):
             self.apply([a], network="main")
         self.assertEqual(index.stats(self.db)["blocks"], 0)
 
+    def test_anchor_audit_detects_mutated_parent_without_rewriting_data(self):
+        a = block(5, self.anchor)
+        b = block(6, a[0].hash)
+        self.apply([a,b])
+        count, height, tip = index.audit(self.db)
+        self.assertEqual((count, height, tip), (2, 6, b[0].hash))
+        with index.open_database(self.db) as db:
+            db.execute("UPDATE blocks SET parent=? WHERE height=6", ("22"*32,))
+        with self.assertRaises(index.Incomplete):
+            index.audit(self.db)
+
     def test_pre_genesis_anchor_rules(self):
         db = self.dir / "genesis.sqlite"
         with self.assertRaises(index.Incomplete):
