@@ -43,7 +43,7 @@ class ProvenanceTests(unittest.TestCase):
     def test_untouched_block_header_cannot_hide_mutated_transaction_bytes(self):
         source = bytearray(fixture_bytes())
         # Flip a value inside a transaction, preserving the original block header.
-        source[-7] ^= 1
+        source[81] ^= 1
         with self.assertRaises(InvalidBlock):
             read_block(bytes(source))
 
