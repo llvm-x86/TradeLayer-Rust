@@ -540,11 +540,14 @@ fn read_segment(dir: &Path, b: &Block) -> Result<String> {
     Ok(content)
 }
 
-fn ingest(dir: &Path, blocks_file: &Path, candidates_file: &Path) -> Result<(usize, usize)> {
+fn ingest(dir: &Path, network: &str, blocks_file: &Path, candidates_file: &Path) -> Result<(usize, usize)> {
     let (mut new_blocks, tx_sum) = parse_block_frames(blocks_file)?;
     parse_candidates(candidates_file, &mut new_blocks, tx_sum)?;
     let _guard = writer_lock(dir)?;
     let original = load_manifest(dir)?;
+    if original.network != network {
+        return Err("wrong network namespace for candidate store".into());
+    }
     let first = new_blocks.first().ok_or("empty block batch")?;
     let mut kept = original.blocks.iter()
         .take_while(|b| b.height < first.height).cloned().collect::<Vec<_>>();
@@ -667,9 +670,10 @@ fn run() -> Result<()> {
             println!("initialized=UNVERIFIED");
         }
         "ingest" => {
+            let network = option(&options, "--network")?;
             let blocks = Path::new(option(&options, "--blocks")?);
             let candidates = Path::new(option(&options, "--candidates")?);
-            let (n, c) = ingest(dir, blocks, candidates)?;
+            let (n, c) = ingest(dir, network, blocks, candidates)?;
             println!("committed=UNVERIFIED blocks={n} carriers={c}");
         }
         "status" => status(dir, false)?,
