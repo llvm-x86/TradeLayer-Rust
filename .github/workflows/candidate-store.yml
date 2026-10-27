@@ -4,14 +4,18 @@ on:
   pull_request:
     paths:
       - 'scripts/candidate_index_sqlite.py'
+      - 'scripts/candidate_block_provenance.py'
       - 'tests/test_candidate_index_sqlite.py'
+      - 'tests/test_candidate_block_provenance.py'
       - 'tests/test_candidate_index_real_scanner.py'
       - 'docs/DURABLE_CANDIDATE_INDEX.md'
       - '.github/workflows/candidate-store.yml'
   push:
     paths:
       - 'scripts/candidate_index_sqlite.py'
+      - 'scripts/candidate_block_provenance.py'
       - 'tests/test_candidate_index_sqlite.py'
+      - 'tests/test_candidate_block_provenance.py'
       - 'tests/test_candidate_index_real_scanner.py'
       - 'docs/DURABLE_CANDIDATE_INDEX.md'
       - '.github/workflows/candidate-store.yml'
@@ -31,7 +35,10 @@ jobs:
           persist-credentials: false
       - name: Python bytecode preflight
         run: |
-          python3 -m py_compile scripts/candidate_index_sqlite.py tests/test_candidate_index_sqlite.py
+          python3 -m py_compile scripts/candidate_index_sqlite.py scripts/candidate_block_provenance.py tests/test_candidate_index_sqlite.py tests/test_candidate_block_provenance.py
+      - name: Independent Bitcoin serialized transaction and Merkle integrity tests
+        run: |
+          python3 -m unittest discover -s tests -p 'test_candidate_block_provenance.py' -v
       - name: Adversarial atomic commit and rollback tests
         run: |
           python3 -m unittest discover -s tests -p 'test_candidate_index_sqlite.py' -v
