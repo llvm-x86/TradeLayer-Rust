@@ -27,6 +27,7 @@ pub mod clearing_pnl; // Stage 25C read-only per-address PnL and residual projec
 pub mod clearing_sandbox; // Stage 25A isolated single-ledger derivative margin and funding research.
 mod codec; // Bounded, checksummed snapshot codec.
 pub mod execution; // Prototype unified registry+ledger replay; input unverified.
+pub mod fees; // Standalone integer maker/taker fee arithmetic; not wired to spot matching or consensus.
 pub mod funding_audit; // Stage 24B read-only signed funding and conservation projections.
 mod hash160; // Dependency-free research RIPEMD160/HASH160, no production authorization.
 mod hash256; // Offline SHA-256d txid fingerprints; not trusted consensus.
