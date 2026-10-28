@@ -46,6 +46,8 @@ pub mod liquidation_input_gate; // Stage 25G read-only current-block provenance 
 pub mod liquidation_source_characterization; // Source-pinned read-only AMM priority and avg-vs-mark audit.
 pub mod network_bound; // Stage 21 profile-bound replay and versioned checkpoint envelopes; unverified.
 pub mod network_profile; // Independent Bitcoin/Litecoin/Dogecoin mainnet identities and proof capabilities.
+pub mod node_follower; // Phase 3 block-source follower over JointChainState; trusted node, no PoW/consensus.
+pub mod node_rpc; // std::net HTTP/1.1 JSON-RPC block source; loopback-only, bounded, credentials from env.
 pub mod parallel_txindex; // Bounded parallel read-only runtime TXID/OP_RETURN scan and ordered fetch; never consensus.
 pub mod protocol; // Audited legacy transaction catalog, not consensus execution.
 pub mod raw_block_ingest; // Stage8C borrowed raw Bitcoin block preindex, not consensus.
