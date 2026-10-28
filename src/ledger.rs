@@ -290,6 +290,37 @@ impl Ledger {
         self.properties.get(&id)
     }
 
+    /// Every property in ascending id order. Read-only; BTree order is
+    /// independent of hash seeds, so the sequence is reproducible.
+    pub fn properties(&self) -> impl Iterator<Item = (PropertyId, &Property)> + '_ {
+        self.properties.iter().map(|(id, property)| (*id, property))
+    }
+
+    /// Number of properties, so a caller can bound a listing before iterating.
+    pub fn property_count(&self) -> usize {
+        self.properties.len()
+    }
+
+    /// Stored available balances of one account in ascending property order.
+    /// Channel and settlement liabilities are not included; this is exactly
+    /// what [`Ledger::available_atoms`] reports, one property at a time.
+    pub fn available_balances_of(&self, account: &AccountId) -> Vec<(PropertyId, u128)> {
+        self.available
+            .iter()
+            .filter(|((_, owner), _)| owner == account)
+            .map(|((id, _), atoms)| (*id, *atoms))
+            .collect()
+    }
+
+    /// Stored available balances of one property in ascending account order.
+    pub fn holders_of(&self, id: PropertyId) -> Vec<(&AccountId, u128)> {
+        self.available
+            .range((id, AccountId(String::new()))..)
+            .take_while(|((property, _), _)| *property == id)
+            .map(|((_, owner), atoms)| (owner, *atoms))
+            .collect()
+    }
+
     pub fn available_atoms(&self, id: PropertyId, account: &AccountId) -> u128 {
         self.available
             .get(&(id, account.clone()))
