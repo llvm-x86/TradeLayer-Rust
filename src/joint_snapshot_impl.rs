@@ -176,4 +176,32 @@ impl JointProtocolState {
         }
         Ok(result)
     }
+
+    /// Bounded file read of a TLJP checkpoint. Network, admin and permitted
+    /// policy come from the caller, exactly as in `from_snapshot_bytes`.
+    pub fn from_snapshot_file(
+        path: &std::path::Path,
+        expected_network: TradeLayerMainnet,
+        expected_admin: &AccountId,
+        expected_permitted: &BTreeSet<PropertyId>,
+    ) -> Result<Self, JointSnapshotError> {
+        use std::io::Read;
+        let file =
+            std::fs::File::open(path).map_err(|_| joint_bad("checkpoint file unreadable"))?;
+        let length = file
+            .metadata()
+            .map_err(|_| joint_bad("checkpoint file unreadable"))?
+            .len();
+        if length > MAX_CHECKPOINT_BYTES as u64 {
+            return Err(joint_bad("checkpoint file excessive"));
+        }
+        let mut bytes = Vec::new();
+        file.take(MAX_CHECKPOINT_BYTES as u64 + 1)
+            .read_to_end(&mut bytes)
+            .map_err(|_| joint_bad("checkpoint file unreadable"))?;
+        if bytes.len() > MAX_CHECKPOINT_BYTES {
+            return Err(joint_bad("checkpoint read excessive"));
+        }
+        Self::from_snapshot_bytes(&bytes, expected_network, expected_admin, expected_permitted)
+    }
 }

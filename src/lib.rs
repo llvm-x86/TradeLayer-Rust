@@ -52,6 +52,7 @@ pub mod raw_block_ingest; // Stage8C borrowed raw Bitcoin block preindex, not co
 pub mod read_only; // Offline transaction scanning; cannot authorize ledger state.
 pub mod registry; // Standalone tx0/7-9/13-15 registry state; authentication external.
 pub mod root_reconciliation; // Read-only TLPT and zkTL metadata consistency.
+pub mod rpc_server; // Read-only JSON-RPC 2.0 over std::net for a restored TLJP checkpoint; DRAFT shapes.
 pub mod spot; // Stage 19 isolated type-5/6 rational matching experiment; unverified.
 pub mod spot_chain; // Stage 20 typed unverified spot block replay and complete TLSP/TLSC checkpoints.
 pub mod state_commitment; // Experimental domain-separated state and transition metadata; no proof verifier.
