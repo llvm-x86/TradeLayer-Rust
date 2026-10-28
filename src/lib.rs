@@ -47,6 +47,7 @@ pub mod liquidation_source_characterization; // Source-pinned read-only AMM prio
 pub mod network_bound; // Stage 21 profile-bound replay and versioned checkpoint envelopes; unverified.
 pub mod network_profile; // Independent Bitcoin/Litecoin/Dogecoin mainnet identities and proof capabilities.
 pub mod parallel_txindex; // Bounded parallel read-only runtime TXID/OP_RETURN scan and ordered fetch; never consensus.
+pub mod payload_builders; // Pure direct legacy txEncoder payloads for types 2/4/9; byte parity only where fixture-proven.
 pub mod protocol; // Audited legacy transaction catalog, not consensus execution.
 pub mod raw_block_ingest; // Stage8C borrowed raw Bitcoin block preindex, not consensus.
 pub mod read_only; // Offline transaction scanning; cannot authorize ledger state.
